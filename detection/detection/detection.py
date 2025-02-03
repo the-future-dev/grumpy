@@ -35,7 +35,7 @@ class Detection(Node):
 
         # Subscribe to point cloud topic and call callback function on each received message
         self.create_subscription(
-            PointCloud2, '/camera/depth/color/points', self.cloud_callback, 10)
+            PointCloud2, '/camera/camera/depth/color/points', self.cloud_callback, 10)
         
         # Initialize the transform listener and assign it a buffer
         self.tf_buffer = Buffer()
@@ -75,7 +75,7 @@ class Detection(Node):
         pose.orientation.w = q_euler[3]
         
         # Now we want to express the pose in the map frame, hence we get the transform between the frames
-        to_frame_rel = 'map'
+        to_frame_rel = 'odom'
         from_frame_rel = frame_id
         time = rclpy.time.Time().from_msg(stamp)
 
@@ -102,7 +102,7 @@ class Detection(Node):
 
         t = TransformStamped()
         t.header.stamp = stamp
-        t.header.frame_id = 'map'
+        t.header.frame_id = 'odom'
         t.child_frame_id = object_name
         t.transform.translation.x = pose.position.x
         t.transform.translation.y = pose.position.y
