@@ -16,3 +16,9 @@ To install the robp_robot depenendency:
 `cd ~/dd2419_ws`
 `colcon build --symlink-install`
 
+
+
+## Cool Commands
+
+Build a single package:
+`colcon build --packages-select <my_package>`
