@@ -78,8 +78,8 @@ class ObjectMapping(Node):
             y = float(round(t.transform.translation.y, 2))
             angle = 0
             with open(self.filename, 'a') as file:
-                file.write(f"{label} {x} {y} {angle}")
-
+                file.write(f"{label} {x} {y} {angle}\n")
+            return
 
 
 def main():
