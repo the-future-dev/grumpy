@@ -28,9 +28,15 @@ class ObjectMapping(Node):
     def __init__(self):
         super().__init__('object_mapping')
 
+        # Intialize object list
+        self.object_list = []
+
+        # Set margin for adding new object
+        self.margin = 0.1
+
         # Intialize map file
-        self.filename = 'object_map.txt'
-        with open(self.filename, 'w') as file:
+        self.filepath = '/home/robot/dd2419_ws/object_map.txt'
+        with open(self.filepath, 'w') as file:
             pass # creates empty file
 
         # Initialize the transform listener and assign it a buffer
@@ -63,6 +69,7 @@ class ObjectMapping(Node):
             # Spin until transform found or `timeout_sec` seconds has passed
             rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 
+            # lookup transform between object and odom
             try:
                 t = self.tf_buffer.lookup_transform(
                     to_frame_rel,
@@ -71,15 +78,38 @@ class ObjectMapping(Node):
             except TransformException as ex:
                 self.get_logger().info(
                     f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
-                return
+                continue
             
-            label = 'L'
+            # set parameters for potential new object or box
+            label = 'R' if object_name=='Red_Sphere' else 'G'
             x = float(round(t.transform.translation.x, 2))
             y = float(round(t.transform.translation.y, 2))
             angle = 0
-            with open(self.filename, 'a') as file:
-                file.write(f"{label} {x} {y} {angle}\n")
-            return
+
+            # if object list is empty add the first entry otherwise look for duplicates
+            if not self.object_list:
+                self.object_list.append((label,x,y,angle))
+                with open(self.filepath, 'a') as file:
+                    file.write(f"{label} {x} {y} {angle}\n")
+            
+            else:
+                # Go over current objects to not add duplicates
+                coordinates_list = []
+                for obj in self.object_list:
+                    _,x_obj,y_obj,_ = obj
+                    coordinates_list.append((x_obj,y_obj))
+
+                coordinates_array = np.array(coordinates_list)
+
+                differences = np.abs(coordinates_array - (x,y))
+                matches = np.all(differences <= self.margin, axis=1)
+                if np.any(matches):
+                    continue
+
+                # If new object is further away than the margin it is added in the map file and the object list
+                self.object_list.append((label,x,y,angle))
+                with open(self.filepath, 'a') as file:
+                    file.write(f"{label} {x} {y} {angle}\n")
 
 
 def main():
