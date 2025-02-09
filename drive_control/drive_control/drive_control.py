@@ -4,11 +4,12 @@ import rclpy
 from rclpy.node import Node
 import rclpy.time
 from robp_interfaces.msg import DutyCycles
-from geometry_msgs.msg import TwistStamped
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from tf2_ros import TransformException
+import tf2_geometry_msgs
 import random
+from geometry_msgs.msg import PointStamped
 
 class SampleDriveControlNode(Node):
 
@@ -25,75 +26,93 @@ class SampleDriveControlNode(Node):
         #Create publisher to publish motor control
         self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
 
-    def set_drive_input(self, point_x, point_y):
+        #Call method 
+        self.set_drive_input()
+
+    def set_drive_input(self):
 
         msg = DutyCycles()
-        point_yaw = math.atan2(point_y, point_x)
-        MAX_ITERATIONS = 100
-        iteration = 0
+        sample_point = PointStamped()
+
+        sample_point.header.frame_id = 'map'
+        sample_point.header.stamp = rclpy.time.Time()
+        sample_point.point.x = random.uniform(-1, 1)
+        sample_point.point.y = random.uniform(-1, 1)
+        sample_point.point.z = 0.0
+
 
         #While loop that rotates robot until aligned   
         while True:
 
+            tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'map', rclpy.time.Time())
+            rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+
             try:
-                pose_transform = self.tf_buffer.lookup_transform('/map','/base_link', rclpy.time.Time())
+                tf = self.tf_buffer.lookup_transform('base_link', 'map', rclpy.time.Time())
             except TransformException as ex:
-                self.get_logger().info(f'could nor transform')
-            
-            rob_yaw = 2 * math.atan2(
-                pose_transform.transform.rotation.z,
-                pose_transform.transform.rotation.w)
-                
-            diff_yaw = point_yaw - rob_yaw
-            diff_yaw = (diff_yaw + math.pi) % (2 * math.pi) - math.pi
-                
-            if abs(diff_yaw) < 0.1:
+                self.get_logger().info(f'could not transform{ex}')
+
+            #Transform point from map frame to base_link
+            point_transform = tf2_geometry_msgs.do_transform_point(sample_point, tf)
+            x = point_transform.point.x
+            y = point_transform.point.y
+        
+            #If y is zero and x > 0 means perfect alignment otherwise turning
+            if x > 0 and abs(y) < 0.1:
+                #Stop turning
                 msg.duty_cycle_right = 0.0
                 msg.duty_cycle_left = 0.0
                 self.motor_publisher.publish(msg)
                 break
-            elif diff_yaw < 0:
-                msg.duty_cycle_right = -self.vel_rotate
-                msg.duty_cycle_left = self.vel_rotate
-                self.motor_publisher.publish(msg)
-            elif diff_yaw > 0:
+            elif (x > 0 and y > 0) or (x < 0 and y < 0):
+                #Turn left
                 msg.duty_cycle_right = self.vel_rotate
                 msg.duty_cycle_left = -self.vel_rotate
                 self.motor_publisher.publish(msg)
+            elif (x > 0 and y < 0) or (x < 0 and y > 0):
+                #Turn right
+                msg.duty_cycle_right = -self.vel_rotate
+                msg.duty_cycle_left = self.vel_rotate
+                self.motor_publisher.publish(msg)
 
+ 
         #While loop that drives forward until reaching point
         while True:
+            
+            tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'map', rclpy.time.Time())
+            rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+
             try:
-                pose_transform = self.tf_buffer.lookup_transform('/map','/base_link', rclpy.time.Time())
+                tf = self.tf_buffer.lookup_transform('base_link', 'map', rclpy.time.Time())
             except TransformException as ex:
-                self.get_logger().info(f'could nor transform')
+                self.get_logger().info(f'could not transform{ex}')
 
-            rob_x = pose_transform.transform.translation.x
-            rob_y = pose_transform.transform.translation.y
+            #Transform point from map frame to base_link
+            point_transform = tf2_geometry_msgs.do_transform_point(sample_point, tf)
+            x = point_transform.point.x
+            y = point_transform.point.y
 
-            diff_x = abs(rob_x - point_x)
-            diff_y = abs(rob_y - point_y)
-
-            if diff_x < 0.1 and diff_y < 0.1:
+            if abs(x) < 0.1:
+                #Stop driving
                 msg.duty_cycle_right = 0.0
                 msg.duty_cycle_left = 0.0
                 self.motor_publisher.publish(msg)
+                self.get_logger().info(f'SUCCESS, point reached')
                 break
             else:
+                #Drive forward
                 msg.duty_cycle_right = self.vel_forward
                 msg.duty_cycle_left = self.vel_forward
                 self.motor_publisher.publish(msg)
 
+        self.set_drive_input()
 
 def main():
     rclpy.init()
     node = SampleDriveControlNode()
 
     try:
-        while True:
-            point_x = random.uniform(-2, 2)
-            point_y = random.uniform(-2, 2)
-            node.set_drive_input(point_x, point_y)
+        rclpy.spin(node)
     except KeyboardInterrupt:
         pass
 
