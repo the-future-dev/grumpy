@@ -64,12 +64,12 @@ class SampleDriveControlNode(Node):
                 msg.duty_cycle_left = 0.0
                 self.motor_publisher.publish(msg)
                 break
-            elif (x > 0 and y > 0) or (x < 0 and y < 0):
+            elif y >= 0.0:
                 #Turn left
                 msg.duty_cycle_right = self.vel_rotate
                 msg.duty_cycle_left = -self.vel_rotate
                 self.motor_publisher.publish(msg)
-            elif (x > 0 and y < 0) or (x < 0 and y > 0):
+            elif y < 0.0:
                 #Turn right
                 msg.duty_cycle_right = -self.vel_rotate
                 msg.duty_cycle_left = self.vel_rotate
