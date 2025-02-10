@@ -2,7 +2,7 @@ import launch
 import launch_ros.actions
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
-from launch.launch_description_sources import PythonLaunchDescriptionSource, XMLLaunchDescriptionSource, YamlLaunchDescriptionSource
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 import os
 
@@ -52,14 +52,14 @@ def generate_launch_description():
     static_tf_map_odom = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
-        arguments=['0', '0', '0', '0', '0', '1', 'map', 'odom'],
+        arguments=['0', '0', '0', '0', '0', '0',  '1', 'map', 'odom'],
         output='screen'
     )
 
     static_tf_base_lidar = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
-        arguments=['0', '0.1', '0.1', '0', '0', '1', 'base_link', 'lidar_link'],
+        arguments=['0', '0.09', '0.12', '0', '0', '0',  '1', 'base_link', 'lidar_link'],
         output='screen'
     )
 

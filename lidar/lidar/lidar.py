@@ -33,6 +33,11 @@ class Timestamp(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.proj = LaserProjection()
+        
+        # Initalize counter
+        self.counter = 0
+        self.N = 10
+        
 
     def listener_callback(self, msg):
         to_frame_rel = 'odom'
@@ -69,13 +74,20 @@ class Timestamp(Node):
                 f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
             return
 
-        # Project lidar to point cloud
-        cloud = self.proj.projectLaser(msg)
+        if self.counter == 0:
 
-        # Transform point cloud
-        cloud_out = do_transform_cloud(cloud, t)
+            # Project lidar to point cloud
+            cloud = self.proj.projectLaser(msg)
 
-        self.publisher.publish(cloud_out)
+            # Transform point cloud
+            cloud_out = do_transform_cloud(cloud, t)
+
+            self.publisher.publish(cloud_out)
+
+            self.counter= self.N
+        
+        else:
+            self.counter -= 1
 
 
 def main():
