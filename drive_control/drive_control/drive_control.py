@@ -1,6 +1,7 @@
 
 import math
 import rclpy
+import rclpy.clock
 from rclpy.node import Node
 import rclpy.time
 from robp_interfaces.msg import DutyCycles
@@ -13,7 +14,7 @@ from geometry_msgs.msg import PointStamped
 
 class SampleDriveControlNode(Node):
 
-    def __init__(self, sample_x, sample_y):
+    def __init__(self):
         super().__init__('sample_drive_control_node')
 
         self.vel_forward = 0.1
@@ -40,15 +41,17 @@ class SampleDriveControlNode(Node):
         sample_point.point.y = random.uniform(-1, 1)
         sample_point.point.z = 0.0
 
+        print(sample_point.point.x, sample_point.point.y)
 
+        self.get_logger().info(f'START TURNING')
         #While loop that rotates robot until aligned   
         while True:
 
-            tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'map', rclpy.time.Time())
+            tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'odom', self.get_clock().now())
             rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 
             try:
-                tf = self.tf_buffer.lookup_transform('base_link', 'map', rclpy.time.Time())
+                tf = self.tf_buffer.lookup_transform('base_link', 'odom', rclpy.time.Time())
             except TransformException as ex:
                 self.get_logger().info(f'could not transform{ex}')
 
@@ -58,7 +61,7 @@ class SampleDriveControlNode(Node):
             y = point_transform.point.y
         
             #If y is zero and x > 0 means perfect alignment otherwise turning
-            if x > 0 and abs(y) < 0.1:
+            if x >= 0.0 and abs(y) < 0.05:
                 #Stop turning
                 msg.duty_cycle_right = 0.0
                 msg.duty_cycle_left = 0.0
@@ -75,15 +78,16 @@ class SampleDriveControlNode(Node):
                 msg.duty_cycle_left = self.vel_rotate
                 self.motor_publisher.publish(msg)
 
+        self.get_logger().info(f'START DRIVING FORWARD')
  
         #While loop that drives forward until reaching point
         while True:
             
-            tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'map', rclpy.time.Time())
+            tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'odom', self.get_clock().now())
             rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 
             try:
-                tf = self.tf_buffer.lookup_transform('base_link', 'map', rclpy.time.Time())
+                tf = self.tf_buffer.lookup_transform('base_link', 'odom', rclpy.time.Time())
             except TransformException as ex:
                 self.get_logger().info(f'could not transform{ex}')
 
@@ -92,7 +96,7 @@ class SampleDriveControlNode(Node):
             x = point_transform.point.x
             y = point_transform.point.y
 
-            if abs(x) < 0.1:
+            if abs(x) < 0.05:
                 #Stop driving
                 msg.duty_cycle_right = 0.0
                 msg.duty_cycle_left = 0.0
