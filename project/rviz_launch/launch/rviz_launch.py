@@ -8,7 +8,7 @@ import os
 
 def generate_launch_description():
 
-     # Path to the RViz config file 
+    # Path to the RViz config file 
     rviz_config_file = os.path.join(
         os.path.expanduser('~'), 
         'dd2419_ws', 'rviz', 'default_rviz.rviz'
