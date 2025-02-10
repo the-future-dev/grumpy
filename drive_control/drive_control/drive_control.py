@@ -17,8 +17,9 @@ class SampleDriveControlNode(Node):
     def __init__(self):
         super().__init__('sample_drive_control_node')
 
-        self.vel_forward = 0.1
-        self.vel_rotate = 0.05
+        self.vel_forward = 0.2
+        self.vel_rotate = 0.1
+        self.vel_small_rotate = 0.02
 
         #Create buffer to look for transform 
         self.tf_buffer = Buffer()
@@ -37,11 +38,11 @@ class SampleDriveControlNode(Node):
 
         sample_point.header.frame_id = 'map'
         sample_point.header.stamp = rclpy.time.Time()
-        sample_point.point.x = random.uniform(-1, 1)
-        sample_point.point.y = random.uniform(-1, 1)
+        sample_point.point.x = random.uniform(-0.5, 0.5)
+        sample_point.point.y = random.uniform(-0.5, 0.5)
         sample_point.point.z = 0.0
 
-        print(sample_point.point.x, sample_point.point.y)
+        #print(sample_point.point.x, sample_point.point.y)
 
         self.get_logger().info(f'START TURNING')
         #While loop that rotates robot until aligned   
@@ -61,7 +62,7 @@ class SampleDriveControlNode(Node):
             y = point_transform.point.y
         
             #If y is zero and x > 0 means perfect alignment otherwise turning
-            if x >= 0.0 and abs(y) < 0.05:
+            if x >= 0.0 and abs(y) < 0.01:
                 #Stop turning
                 msg.duty_cycle_right = 0.0
                 msg.duty_cycle_left = 0.0
@@ -96,13 +97,24 @@ class SampleDriveControlNode(Node):
             x = point_transform.point.x
             y = point_transform.point.y
 
-            if abs(x) < 0.05:
+            if abs(x) < 0.01:
                 #Stop driving
+                print(x,y)
                 msg.duty_cycle_right = 0.0
                 msg.duty_cycle_left = 0.0
                 self.motor_publisher.publish(msg)
                 self.get_logger().info(f'SUCCESS, point reached')
                 break
+            elif y > 0.01:
+                #Small turn left
+                msg.duty_cycle_right = self.vel_forward + self.vel_small_rotate
+                msg.duty_cycle_left = self.vel_forward - self.vel_small_rotate
+                self.motor_publisher.publish(msg)
+            elif y < 0.01:
+                #Small turn right
+                msg.duty_cycle_right = self.vel_forward - self.vel_small_rotate
+                msg.duty_cycle_left = self.vel_forward + self.vel_small_rotate
+                self.motor_publisher.publish(msg)
             else:
                 #Drive forward
                 msg.duty_cycle_right = self.vel_forward
