@@ -31,6 +31,8 @@ class Detection(Node):
 
         self._pub_detected_objects = self.create_publisher(
             PointCloud2, '/perception/detected_objects', 10)
+        
+        self._object_pose = self.create_publisher(Pose, '/object_poses', 10)
 
         # Subscribe to point cloud topic and call callback function on each received message
         self.create_subscription(
@@ -163,6 +165,10 @@ class Detection(Node):
             y_obj = np.mean(y_points)
             z_obj = np.mean(z_points)
             
+            p = Pose()
+            p.position.x = x_obj
+            p.position.y = y_obj
+            self._object_pose.publish(p)
             self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"Object_{i}")
 
         #     msg_object_detected = LabelPointStamped()
