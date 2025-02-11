@@ -38,8 +38,8 @@ class SampleDriveControlNode(Node):
 
         sample_point.header.frame_id = 'map'
         sample_point.header.stamp = rclpy.time.Time()
-        sample_point.point.x = random.uniform(-0.75, 0.75)
-        sample_point.point.y = random.uniform(-0.75, 0.75)
+        sample_point.point.x = random.uniform(-0.5, 0.5)
+        sample_point.point.y = random.uniform(-0.5, 0.5)
         sample_point.point.z = 0.0
 
         #print(sample_point.point.x, sample_point.point.y)
