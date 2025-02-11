@@ -46,12 +46,12 @@ def generate_launch_description():
         ),
         
         # Start detection node
-        Node(
-            package='detection',
-            executable='detection',
-            name='detection',
-            output='screen'
-        ),
+        # Node(
+        #     package='detection',
+        #     executable='detection',
+        #     name='detection',
+        #     output='screen'
+        # ),
         
         # Start lidar node
         Node(
