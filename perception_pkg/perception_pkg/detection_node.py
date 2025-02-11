@@ -87,7 +87,7 @@ class Detection(Node):
             return
          
         filtered_points = points # self.voxel_grid_filter(points, leaf_size=0.05)
-        db = DBSCAN(eps=1.0, min_samples=40)
+        db = DBSCAN(eps=0.5, min_samples=40)
         labels = db.fit_predict(filtered_points)
         self.get_logger().debug(f"COMPLETED: Point Cluster")
         
@@ -121,11 +121,11 @@ class Detection(Node):
                 bbox_size_cm = bbox_size * 100 
 
                 # Classify Objects
-                if np.all(bbox_size_cm >= 5):
+                if bbox_size_cm[0] >= 3.0 and bbox_size_cm[1] >= 3.0 and bbox_size_cm[2] >= 2.0 :
                     # Classify Objects (using volume as before, but you could also use area if appropriate)
                     volume = np.prod(bbox_size_cm)  # Use cm for volume calculation
 
-                    if volume < 10: 
+                    if volume < 9:
                         self.get_logger().info(
                             f'! Detected Cube or Sphere at {np.mean(cluster_points, axis=0)} § volume: {bbox_size_cm}')
                         classified_labels.append(1)
