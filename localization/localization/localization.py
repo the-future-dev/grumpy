@@ -7,20 +7,14 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 
-from tf2_ros import TransformBroadcaster
-from tf_transformations import quaternion_from_euler, euler_from_quaternion
 
-from tf2_ros import TransformException
-from sensor_msgs.msg import PointCloud2, PointField
-from geometry_msgs.msg import TransformStamped, Pose
-from robp_interfaces.msg import Encoders
-from nav_msgs.msg import Path
+
+from tf2_ros import TransformException, TransformBroadcaster
+from sensor_msgs.msg import  Imu, LaserScan
 from geometry_msgs.msg import PoseStamped
 
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
-
-
 
 
 class Localization(Node):
@@ -32,22 +26,24 @@ class Localization(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
-        # Initialize the transform broadcaster
-        self.tf_broadcaster = TransformBroadcaster(self)
-
-        # Initialize the path subsrciber, to know when to look for odometry information from the wheel encoders
-        self.create_subscription(Path, 'path', self.odometry_callback , 10)
+        # Intialize subscriber to imu
+        self.create_subscription(Imu, '/imu/data_raw', self.imu_callback , 10)
 
         # Initalize publisher to publish new pose
         self.new_pose_pub = self.create_publisher(PoseStamped, 'new_dead_reckoning_position', 10)
 
+        # Initalize subscriber to lidar node
+        self.create_subscription(LaserScan, '/scan', self.lidar_callback , 10)
+
+        # Intialize to true to be able to save the first lidar scan
+        self.first_lidar_scan = True
 
 
-    def odometry_callback(self, msg: Path):
+
+    def imu_callback(self, msg: Imu):
         """
-        Callback that publishes pose of the robot given odometry information.
+        Callback that publishes pose of the robot given odometry information from motor encoders and imu.
         """
-
         from_frame_rel = 'odom'
         to_frame_rel = 'base_link'
 
@@ -77,20 +73,29 @@ class Localization(Node):
         pose_stamped = PoseStamped()
         pose_stamped.header.stamp = msg.header.stamp
         pose_stamped.header.frame_id = 'odom'
+
+        # Set x y and z position based on transform from odometry node
         pose_stamped.pose.position.x = t.transform.translation.x
         pose_stamped.pose.position.y = t.transform.translation.y
         pose_stamped.pose.position.z = t.transform.translation.z
-        pose_stamped.pose.orientation.x = t.transform.rotation.x
-        pose_stamped.pose.orientation.y = t.transform.rotation.y
-        pose_stamped.pose.orientation.z = t.transform.rotation.z
-        pose_stamped.pose.orientation.w = t.transform.rotation.w
+
+        # Set orientation based on data from the imu
+        pose_stamped.pose.orientation.x = msg.orientation.x
+        pose_stamped.pose.orientation.y = msg.orientation.y
+        pose_stamped.pose.orientation.z = msg.orientation.z
+        pose_stamped.pose.orientation.w = msg.orientation.w
 
         self.new_pose_pub.publish(pose_stamped)
+
+
+    def lidar_callback(self, msg: LaserScan):
+        if self.first_lidar_scan:
+            self.lidar_control = msg
+            self.first_lidar_scan = False
+        else:
+            # Do ICP on new lidar scan and broadcast the new transform between map and odom
+            pass
         
-
-  
-  
-
 
 def main():
     rclpy.init()
