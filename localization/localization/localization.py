@@ -30,7 +30,7 @@ class Localization(Node):
         self.create_subscription(Imu, '/imu/data_raw', self.imu_callback , 10)
 
         # Initalize publisher to publish new pose
-        self.new_pose_pub = self.create_publisher(PoseStamped, 'new_dead_reckoning_position', 10)
+        self.new_pose_pub = self.create_publisher(PoseStamped, 'dead_reckoning_position', 10)
 
         # Initalize subscriber to lidar node
         self.create_subscription(LaserScan, '/scan', self.lidar_callback , 10)
