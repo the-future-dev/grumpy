@@ -17,7 +17,7 @@ class SampleDriveControlNode(Node):
     def __init__(self):
         super().__init__('sample_drive_control_node')
 
-        self.vel_forward = 0.2
+        self.vel_forward = 0.12
         self.vel_rotate = 0.1
         self.vel_small_rotate = 0.02
 
@@ -101,7 +101,6 @@ class SampleDriveControlNode(Node):
 
             if abs(x) < 0.01:
                 #Stop driving
-                print(x,y)
                 msg.duty_cycle_right = 0.0
                 msg.duty_cycle_left = 0.0
                 self.motor_publisher.publish(msg)
