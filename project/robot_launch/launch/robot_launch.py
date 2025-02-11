@@ -8,39 +8,58 @@ import os
 def generate_launch_description():
     package_name = 'robp_launch'
 
-    # Paths to different launch files
-    phidgets_launch_path = os.path.join(
+    phidgets_path = os.path.join(
         launch_ros.substitutions.FindPackageShare(package_name).perform(None),
         'launch',
         'phidgets_launch.py'
     )
 
-    frames_launch_path = os.path.join(
+    front_camera_path = os.path.join(
+        launch_ros.substitutions.FindPackageShare(package_name).perform(None),
+        'launch',
+        'rs_d435i_launch.py'
+    )
+
+
+    frames_path = os.path.join(
         launch_ros.substitutions.FindPackageShare(package_name).perform(None),
         'launch',
         'frames_launch.xml'
     )
 
-    # yaml_launch_path = os.path.join(
-    #     launch_ros.substitutions.FindPackageShare(package_name).perform(None),
-    #     'launch',
-    #     'yaml_launch.yaml'
-    # )
 
-    # Include Python launch file
+    arm_camera_path = os.path.join(
+        launch_ros.substitutions.FindPackageShare(package_name).perform(None),
+        'launch',
+        'arm_camera_launch.yaml'
+    )
+
+    lidar_path = os.path.join(
+        launch_ros.substitutions.FindPackageShare(package_name).perform(None),
+        'launch',
+        'lidar_launch.yaml'
+    )
+
     phidgets_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(phidgets_launch_path)
+        PythonLaunchDescriptionSource(phidgets_path)
     )
 
-    # Include XML launch file
+    front_camera_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(front_camera_path)
+    )
+
     frames_launch = IncludeLaunchDescription(
-        XMLLaunchDescriptionSource(frames_launch_path)
+        XMLLaunchDescriptionSource(frames_path)
     )
 
-    # # Include YAML launch file
-    # include_yaml = IncludeLaunchDescription(
-    #     YamlLaunchDescriptionSource(yaml_launch_path)
-    # )
+    lidar_launch = IncludeLaunchDescription(
+        YamlLaunchDescriptionSource(lidar_path)
+    )
+
+    arm_camera_launch = IncludeLaunchDescription(
+        YamlLaunchDescriptionSource(arm_camera_path)
+    )
+
 
     # Start nodes
     odometry = Node(
@@ -54,6 +73,12 @@ def generate_launch_description():
         executable='lidar',
         output='screen'
     ) 
+
+    drive_control = Node(
+        package='drive_control',
+        executable='drive_control',
+        screen='screen'
+    )
 
     detection = Node(
         package='detection',
@@ -83,8 +108,12 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        arm_camera_launch,
         phidgets_launch,
         frames_launch,
+        lidar_launch,
+        front_camera_launch,
+        drive_control,
         odometry,
         lidar,
         detection,
