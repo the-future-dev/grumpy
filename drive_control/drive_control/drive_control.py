@@ -38,8 +38,8 @@ class SampleDriveControlNode(Node):
 
         sample_point.header.frame_id = 'map'
         sample_point.header.stamp = rclpy.time.Time()
-        sample_point.point.x = random.uniform(-0.5, 0.5)
-        sample_point.point.y = random.uniform(-0.5, 0.5)
+        sample_point.point.x = random.uniform(-0.75, 0.75)
+        sample_point.point.y = random.uniform(-0.75, 0.75)
         sample_point.point.z = 0.0
 
         #print(sample_point.point.x, sample_point.point.y)
@@ -55,6 +55,7 @@ class SampleDriveControlNode(Node):
                 tf = self.tf_buffer.lookup_transform('base_link', 'odom', rclpy.time.Time())
             except TransformException as ex:
                 self.get_logger().info(f'could not transform{ex}')
+                continue
 
             #Transform point from map frame to base_link
             point_transform = tf2_geometry_msgs.do_transform_point(sample_point, tf)
@@ -91,6 +92,7 @@ class SampleDriveControlNode(Node):
                 tf = self.tf_buffer.lookup_transform('base_link', 'odom', rclpy.time.Time())
             except TransformException as ex:
                 self.get_logger().info(f'could not transform{ex}')
+                continue
 
             #Transform point from map frame to base_link
             point_transform = tf2_geometry_msgs.do_transform_point(sample_point, tf)
