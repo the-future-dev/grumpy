@@ -9,6 +9,8 @@ import sensor_msgs_py.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, PointField
 from rclpy.node import Node
 
+from grumpy_interfaces.msg import ObjectDetection1D 
+
 from tf2_ros import TransformException, TransformBroadcaster
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
@@ -32,7 +34,7 @@ class Detection(Node):
         self._pub_detected_objects = self.create_publisher(
             PointCloud2, '/perception/detected_objects', 10)
         
-        self._object_pose = self.create_publisher(Pose, '/object_poses', 10)
+        self._object_pose = self.create_publisher(ObjectDetection1D, '/perception/object_poses', 10)
 
         # Subscribe to point cloud topic and call callback function on each received message
         self.create_subscription(
@@ -56,16 +58,14 @@ class Detection(Node):
 
         # GROUND REMOVAL #######################################################################
         # Distance filter: approximate implementation as no transform
-            # TODO: test
+        # Transformation from camera_depth_optical_frame to base_link for correct x,y,z
+        points = self.fast_transform2(points)
             # fast_transformed_points = np.asarray(self.fast_transform(points))
         distances = np.linalg.norm(points, axis=1)
-        distance_rel_indexes = np.where(distances <= 0.7)[0]
+        distance_rel_indexes = np.where(distances <= 0.9)[0]
 
         gen = gen[distance_rel_indexes, :]
         points = points[distance_rel_indexes, :]
-
-        # Transformation from camera_depth_optical_frame to base_link for correct x,y,z
-        points = self.fast_transform2(points)
         
         # Ground and heigh filter
         z_values = np.asarray(points)[:, 2]
@@ -89,7 +89,7 @@ class Detection(Node):
             return
          
         filtered_points = points # self.voxel_grid_filter(points, leaf_size=0.05)
-        db = DBSCAN(eps=0.5, min_samples=40)
+        db = DBSCAN(eps=0.3, min_samples=60)
         labels = db.fit_predict(filtered_points)
         self.get_logger().debug(f"COMPLETED: Point Cluster")
         
@@ -105,7 +105,7 @@ class Detection(Node):
                 cluster_points = filtered_points[labels == label]
 
                 if cluster_points.shape[0] < 10:
-                    self.get_logger().info(f"Neglecting small cluster")
+                    self.get_logger().info(f"Neglecting small cluster / {cluster_points.shape[0]}")
                     continue
 
                 # Compute Bounding Box (More Robust)
@@ -123,22 +123,27 @@ class Detection(Node):
                 bbox_size_cm = bbox_size * 100 
 
                 # Classify Objects
-                if bbox_size_cm[0] >= 3.0 and bbox_size_cm[1] >= 3.0 and bbox_size_cm[2] >= 2.0 :
+                def debug_detection_print(obj_name, label, bbox_size_cm, volume, position):
+                    return f"detected: {label} | {obj_name} | {bbox_size_cm} | {volume} | {position} "
+
+                if (bbox_size_cm[0] + bbox_size_cm[1]) >= 5.0 and bbox_size_cm[2] >= 1.5:
                     # Classify Objects (using volume as before, but you could also use area if appropriate)
                     volume = np.prod(bbox_size_cm)  # Use cm for volume calculation
 
-                    if volume < 9:
+                    if volume < 1000:
                         self.get_logger().info(
-                            f'! Detected Cube or Sphere at {np.mean(cluster_points, axis=0)} § volume: {bbox_size_cm}')
-                        classified_labels.append(1)
-                    else:  # Larger object (Box)
+                            debug_detection_print("Object", label, bbox_size_cm, volume, np.mean(cluster_points, axis=0))
+                        )
+                        classified_labels.append("Object")
+                    elif volume < 3720:  # Larger object (Box)
                         self.get_logger().info(
-                            f'! Detected Large Box at {np.mean(cluster_points, axis=0)} § volume: {bbox_size_cm}')
-                        classified_labels.append(2)
+                            debug_detection_print("Box", label, bbox_size_cm, volume, np.mean(cluster_points, axis=0))
+                        )
+                        classified_labels.append("Box")
                     detected_objects.append(cluster_points)
                 else:
                     self.get_logger().info(
-                        f"Neglecting small cluster {bbox_size_cm}")
+                        f"Label {label} Neglecting small cluster {bbox_size_cm}")
             else:
                     self.get_logger().info("No labels found, no clusters to process.")
 
@@ -150,8 +155,9 @@ class Detection(Node):
         # all_detected_points = np.concatenate(detected_objects, axis=0) if detected_objects else np.array([])
         # msg_detected_objects = pc2.create_cloud(pointcloud_header, msg.fields, all_detected_points)
         # self._pub_detected_objects.publish(msg_detected_objects)
+        
 
-        for i, cluster in enumerate(detected_objects):
+        for i, (cluster, label) in enumerate(zip(detected_objects, classified_labels)):
             x_points = []
             y_points = []
             z_points = []
@@ -165,11 +171,17 @@ class Detection(Node):
             y_obj = np.mean(y_points)
             z_obj = np.mean(z_points)
             
-            p = Pose()
-            p.position.x = x_obj
-            p.position.y = y_obj
-            self._object_pose.publish(p)
-            self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"Object_{i}")
+           
+            s = ObjectDetection1D()
+            s.header.stamp = msg.header.stamp
+            s.header.frame_id = "base_link"
+            s.label.data = 'B' if 'Box' in label else 'O'
+            s.pose.position.x = x_obj
+            s.pose.position.y = y_obj
+            s.pose.position.z = z_obj
+
+            self._object_pose.publish(s)
+            self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{i}| {label}")
 
         #     msg_object_detected = LabelPointStamped()
         #     msg_object_detected.label.data = "Ciao"

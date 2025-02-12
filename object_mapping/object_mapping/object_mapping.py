@@ -16,6 +16,9 @@ from geometry_msgs.msg import TransformStamped, Pose
 from robp_interfaces.msg import Encoders
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
+from grumpy_interfaces.msg import ObjectDetection1D
+
+import tf2_geometry_msgs
 
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
@@ -47,18 +50,46 @@ class ObjectMapping(Node):
         self.tf_broadcaster = TransformBroadcaster(self)
         
         # Initialize the subscriber to the object poses 
-        self.create_subscription(Pose, '/object_poses', self.object_pose_callback, 10)
+        self.create_subscription(ObjectDetection1D, '/perception/object_poses', self.object_pose_callback, 10)
         
     
-    def object_pose_callback(self, msg: Pose):
+    def object_pose_callback(self, msg: ObjectDetection1D):
         """
         Writes the object poses and removes (or at least tries) duplicates
         """
-        label = 'L'
-        x = float(round(msg.position.x, 2))
-        y = float(round(msg.position.y, 2))
-        angle = 0
+        pose = msg.pose
+
+        # Now we want to express the pose in the map frame, hence we get the transform between the frames
+        to_frame_rel = 'odom'
+        from_frame_rel = msg.header.frame_id
+        time = rclpy.time.Time().from_msg(msg.header.stamp)
+
+        # Wait for the transform asynchronously
+        tf_future = self.tf_buffer.wait_for_transform_async(
+            target_frame=to_frame_rel,
+            source_frame=from_frame_rel,
+            time=time
+        )
+
+        # Spin until transform found or `timeout_sec` seconds has passed
+        rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+
+        # lookup transform from frame id to map 
+        try:
+            t = self.tf_buffer.lookup_transform(to_frame_rel, from_frame_rel, time)
+        except TransformException as ex:
+            self.get_logger().info(
+                f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
+            return
         
+        # transform the marker pose so that it is expressed in map coordinates 
+        pose = tf2_geometry_msgs.do_transform_pose(pose, t)
+
+        label = msg.label.data
+        x = float(round(pose.position.x, 2))
+        y = float(round(pose.position.y, 2))
+        angle = 0
+
         #if object list is empty add the first entry otherwise look for duplicates
         if not self.object_list:
             self.object_list.append((label,x,y,angle))
