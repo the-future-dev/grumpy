@@ -27,6 +27,7 @@ class OccupancyGridMapNode(Node):
         self.frame_id = 'map'
         self.map_xlength = np.max(self.workspace[0])*2
         self.map_ylength = np.max(self.workspace[1])*2
+        self.counter = 0
         
         #Values for grid cells
         self.unknown = -1
@@ -34,30 +35,29 @@ class OccupancyGridMapNode(Node):
         self.free = 1
 
         #Create grid
-        self.resolution = 5 # Can be changed
+        self.resolution = 10 #Can be changed 
         self.grid_xlength = int(self.map_xlength/self.resolution)
         self.grid_ylength = int(self.map_ylength/self.resolution)
-        self.grid = np.full((self.grid_xlength, self.grid_ylength), self.unknown, dtype=np.int32)
+        self.grid = np.full((self.grid_ylength, self.grid_xlength), self.unknown, dtype=np.int32)
 
         #Fill outside grid with 
         self.fill_outside_grid()
 
-        fig, ax = plt.subplots()
-        cbar = ax.imshow(self.grid, cmap='viridis', origin='lower')
+        # fig, ax = plt.subplots()
+        # cbar = ax.imshow(self.grid, cmap='viridis', origin='lower')
 
-        # Adjust the colorbar ticks
-        cbar = plt.colorbar(cbar)
-        cbar.set_ticks([self.unknown, self.occupied, self.free])
+        # # Adjust the colorbar ticks
+        # cbar = plt.colorbar(cbar)
+        # cbar.set_ticks([self.unknown, self.occupied, self.free])
 
-        plt.savefig('/home/robot/occupancy_grid.png')
-
+        # plt.savefig('/home/group5/occupancy_grid.png')
 
         #Transfrom between lidar link and map
         self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self)
+        self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
         #Subscribe to both lidar scan
-        #self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 10)
+        self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 10)
     
 
     #Function which fills the space outside workspace as occupied, very slow now but have not succeded with other
@@ -71,15 +71,19 @@ class OccupancyGridMapNode(Node):
             for j in range(self.grid_ylength):
 
                 x_ind = (i * self.resolution) - self.map_xlength/2
-                y_ind = -(j * self.resolution) + self.map_ylength/2
+                y_ind = (j * self.resolution) - self.map_ylength/2
 
                 point = Point(x_ind, y_ind)
                 if not polygon.contains(point):
-                    self.grid[i, j] = self.occupied
+                    self.grid[j, i] = self.occupied
         return
 
     #Lidar callback calculates detected object from laser scan, would implement to only run every xth time
     def lidar_cb(self, msg:LaserScan):
+
+        self.counter += 1
+        if self.counter % 20 != 0:
+            return
         
         #Get data from message
         min_angle = msg.angle_min
@@ -94,16 +98,17 @@ class OccupancyGridMapNode(Node):
 
         indices = indices[boundary_mask]
         ranges = ranges[boundary_mask]
+        angles = min_angle + indices * inc
         
         #Calculat x and y according ot lidar link frame
-        x_angles = np.cos(min_angle + indices * inc)
-        y_angles = np.sin(min_angle + indices * inc)
+        # x_angles = np.cos(min_angle + indices * inc)
+        # y_angles = np.sin(min_angle + indices * inc)
 
-        lidar_x = ranges*x_angles
-        lidar_y = ranges*y_angles
+        lidar_x = ranges * np.cos(angles)
+        lidar_y = ranges * np.sin(angles)
 
         self.point_to_map(msg, lidar_x, lidar_y, True)
-        free_x, free_y = self.bresenham_line(lidar_x, lidar_y)
+        free_x, free_y = self.raytrace_float(lidar_x, lidar_y)
         self.point_to_map(msg, free_x, free_y, False)
 
     #Transform point from one message to map
@@ -117,6 +122,7 @@ class OccupancyGridMapNode(Node):
             tf = self.tf_buffer.lookup_transform('map', msg.header.frame_id, msg.header.stamp)
         except TransformException as ex:
             self.get_logger().info(f'Could not transform{ex}')
+            return
 
         #Taking transformation and create transformation matrix
         tf_translation = np.array([tf.transform.translation.x, 
@@ -134,57 +140,51 @@ class OccupancyGridMapNode(Node):
         tf_matrix[:3, 3] = tf_translation
 
         measure_points = np.vstack([x_points, y_points, np.zeros_like(x_points), np.ones_like(y_points)])
+    
         transformed_points = tf_matrix @ measure_points
 
         self.map_to_grid(transformed_points, bool)
 
     #Convert map coordinate to grid indices and set as occupied or free
     def map_to_grid(self, map_points, bool):
-        
-        grid_points = np.zeros_like(map_points[:2, :])
-        
-        grid_points[0, :] = np.floor(map_points[0, :]/self.resolution - self.grid_xlength/2)
-        grid_points[1, :] = np.floor(-map_points[1, :]/self.resolution + self.grid_ylength/2)
+
+
+        x_map = map_points[0, :]*100
+        y_map = map_points[1, :]*100
+
+        x_grid_points = np.floor((x_map + self.map_xlength/2)/self.resolution)
+        y_grid_points = np.floor((y_map + self.map_ylength/2)/self.resolution)
+
+        x_grid_points = x_grid_points.astype(int)
+        y_grid_points = y_grid_points.astype(int)
 
         if bool == True:
-            self.grid[grid_points] = self.occupied
+            self.grid[y_grid_points, x_grid_points] = self.occupied
         elif bool == False:
-            self.grid[grid_points] = self.free
+            self.grid[y_grid_points, x_grid_points] = self.free
 
-    #Bresenham algorithm that i am not to familiar with, so i have taken it from elsewhere
-    def bresenham_line(self, lidar_x, lidar_y):
+        # fig, ax = plt.subplots()
+        # cbar = ax.imshow(self.grid, cmap='viridis', origin='lower')
 
-        free_x = []
-        free_y = []
-        threshold = 3
+        # # Adjust the colorbar ticks
+        # cbar = plt.colorbar(cbar)
+        # cbar.set_ticks([self.unknown, self.occupied, self.free])
 
-        x_0 = np.zeros_like(lidar_x)
-        y_0 = np.zeros_like(lidar_y)
-        dx = np.abs(lidar_x)
-        dy = np.abs(lidar_y)
-        sx = np.sign(lidar_x)
-        sy = np.sign(lidar_y)
+        # plt.savefig('/home/group5/occupancy_grid_new.png')
 
-        err = dx - dy
-        max_len = np.maximum(dx, dy) + 1
+    #Creating a linspace between lidar-link and point so that teh point in between can be marked as free
+    def raytrace_float(self, lidar_x, lidar_y):
 
-        for i in range(np.max(max_len)):
+        start = np.zeros_like(lidar_x)
+        x_line = np.linspace(start, lidar_x, 50)
+        y_line = np.linspace(start, lidar_y, 50)
+        x_line = x_line[:-10]
+        y_line = y_line[:-10]
+        
+        x_free = np.concatenate(x_line)
+        y_free = np.concatenate(y_line)
 
-            err2 = 2*err
-            mask_x = err2 > -dy
-            mask_y = err2 < dx
-            err[mask_x] -= dy[mask_x]
-            x_0 += sx[mask_x]
-            err[mask_y] += dx[mask_y]
-            y_0[mask_y] += sy[mask_y]
-
-            free_x.append(x_0)
-            free_y.append(y_0)
-            
-            if np.all(np.abs(x_0 - lidar_x) < threshold) and np.all((np.abs(y_0 - lidar_y) < threshold)):
-                break
-
-        return free_x, free_y
+        return x_free, y_free
 
 def main():
     rclpy.init()
