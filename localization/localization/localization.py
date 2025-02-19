@@ -13,11 +13,12 @@ from tf2_ros import TransformException, TransformBroadcaster
 from tf_transformations import quaternion_from_euler, euler_from_quaternion
 from sensor_msgs.msg import  Imu, LaserScan
 from robp_interfaces.msg import Encoders
-from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, PoseStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, PoseStamped, Pose
 from nav_msgs.msg import Path
 
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
+import tf2_geometry_msgs
 
 
 class Localization(Node):
@@ -55,22 +56,30 @@ class Localization(Node):
         self.mu_bar = np.array([[0.0], [0.0], [0.0]]) # estimated mean of he robot's position after predict step, in the order (x,y,theta)
         self.mu = np.array([[0.0], [0.0], [0.0]]) # estimated mean of he robot's position after update step, in the order (x,y,theta)
         
-        d = np.array([1.0, 1.0, 1.0]) # variance in the order (x,y,theta)
+        d = np.array([0.01, 0.01, 0.01]) # variance in the order (x,y,theta)
         self.sigma_bar = np.diag(d) # covariance matrix of the robot's position after predict step, initialized as a diagonal matrix
         self.sigma = np.diag(d) # covariance matrix of the robot's position after update step, initialized as a diagonal matrix
 
         # covariance matrices for the uncertainty in the motion model and measurement model
-        d_R = np.array([1.0, 1.0, 1.0]) # variance in the order (x,y,theta)
+        d_R = np.array([0.01, 0.01, 3.0]) # variance in the order (x,y,theta)
         self.R = np.diag(d_R)
-        d_Q = np.array([1.0, 1.0, 1.0]) # variance in the order (x,y, theta)
+        d_Q = np.array([1000, 10000, 0.1]) # variance in the order (x,y, theta)
         self.Q = np.diag(d_Q)
+        
+        # Move to different node?
+        # # Initalize subscriber to lidar node
+        # self.create_subscription(LaserScan, '/scan', self.lidar_callback , 10)
 
-        # Initalize subscriber to lidar node
-        self.create_subscription(LaserScan, '/scan', self.lidar_callback , 10)
+        # # Intialize to true to be able to save the first lidar scan
+        # self.first_lidar_scan = True
+    
 
-        # Intialize to true to be able to save the first lidar scan
-        self.first_lidar_scan = True
-   
+    def wrap_angle(self, angle):
+        """
+        Method that takes the angle and returns the equivalent in the [-pi,pi] range.
+        """
+        return (angle + math.pi) % (2 * math.pi) - math.pi
+
     
     def encoder_callback(self, msg: Encoders):
         """
@@ -95,16 +104,30 @@ class Localization(Node):
         D = (r/2)*K*(delta_ticks_right + delta_ticks_left) # v*dt
         dtheta = (r/B)*K*(delta_ticks_right - delta_ticks_left) # w*dt
 
+ 
+        theta = float(self.mu[2])
+
         # Jacobian of motion model
-        G = np.array([[1.0, 0.0, -D*np.sin(self.mu[2])],
-                      [0.0, 1.0, D*np.cos(self.mu[2])],
+        G = np.array([[1.0, 0.0, -D*math.sin(theta)],
+                      [0.0, 1.0, D*math.cos(theta)],
                       [0.0, 0.0, 1.0]])
 
         # Doing the predict step
-        self.mu_bar = self.mu + np.array([[D*np.cos(self.mu[2])],
-                                          [D*np.sin()],
+        self.mu_bar = self.mu + np.array([[D*math.cos(theta)],
+                                          [D*math.sin(theta)],
                                           [dtheta]])
+        
+        # set angle to be in the interval [-pi, pi]
+        self.mu_bar[2] =  self.wrap_angle(self.mu_bar[2])
+
         self.sigma_bar = np.dot(np.dot(G, self.sigma), G.T) + self.R
+
+        x = float(self.mu[0])
+        y = float(self.mu[1])
+        yaw = float(self.mu[2])
+
+        q = quaternion_from_euler(0.0, 0.0, yaw)
+        stamp = msg.header.stamp
 
 
     def broadcast_transform(self, stamp, x, y, q):
@@ -134,11 +157,14 @@ class Localization(Node):
         self._tf_broadcaster.sendTransform(t)
 
     
-    def publish_path(self, x, y, q):
+    def publish_path(self, stamp, x, y, q):
         """
         Method for publishing the path of the robot
         """
         # Update the path
+        self._path.header.stamp = stamp
+        self._path.header.frame_id = 'odom'
+
         pose = PoseStamped()
         pose.header = self._path.header
 
@@ -207,42 +233,86 @@ class Localization(Node):
             self.vel += acc*dt
             self.pos += self.vel*dt
 
+            # Now we want to express the pose in the map frame, hence we get the transform between the frames
+            to_frame_rel = 'base_link'
+            from_frame_rel = msg.header.frame_id
+            time = rclpy.time.Time().from_msg(msg.header.stamp)
+
+            # Wait for the transform asynchronously
+            tf_future = self.tf_buffer.wait_for_transform_async(
+                target_frame=to_frame_rel,
+                source_frame=from_frame_rel,
+                time=time
+            )
+
+            # Spin until transform found or `timeout_sec` seconds has passed
+            rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+
+            # lookup transform from frame id to map 
+            try:
+                t_base_imu = self.tf_buffer.lookup_transform(to_frame_rel, from_frame_rel, time)
+            except TransformException as ex:
+                self.get_logger().info(
+                    f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
+                return
+
+            pose = Pose()
+            pose.position.x = float(self.pos[0])
+            pose.position.y = float(self.pos[1])
+            pose.position.z = float(self.pos[2])
+            pose.orientation.x = msg.orientation.x
+            pose.orientation.y = msg.orientation.y
+            pose.orientation.z = msg.orientation.z
+            pose.orientation.w = msg.orientation.w
+
+            pose = tf2_geometry_msgs.do_transform_pose(pose, t_base_imu)
+
             # Kalman gain, jacobian of measurement model is an indentity matrix and is therefore not included
             K = np.dot(self.sigma_bar, np.linalg.inv(self.sigma_bar+self.Q))
 
             # innovation
-            quaternion_imu = np.array([[msg.orientation.x], [msg.orientation.y], [msg.orientation.z], [msg.orientation.w]])
+            quaternion_imu = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
             euler_angles = euler_from_quaternion(quaternion_imu)
             theta_imu = euler_angles[2]
-            innovation = np.array([[self.pos[0]         -self.mu_bar[0]],
-                                [self.pos[1]         -self.mu_bar[1]],
-                                [theta_imu           -self.mu_bar[2]]])
-            
+
+            pose_imu = np.array([[pose.position.x], [pose.position.y]])
+
+            innovation = np.array([pose_imu[0]-self.mu_bar[0], pose_imu[1]-self.mu_bar[1],theta_imu-self.mu_bar[2]])
+
+            innovation[2] = self.wrap_angle(innovation[2])
+
             # update mean and covariance matrix
             self.mu = self.mu_bar + np.dot(K, innovation)
+
+            # constrain angle into interval [-pi,pi]
+            self.mu[2] =  self.wrap_angle(self.mu[2])
+
             self.sigma = np.dot((np.eye(3)-K), self.sigma_bar)
 
-        x = self.mu[0]
-        y = self.mu[1]
-        yaw = self.mu[2]
+        x = float(self.mu[0])
+        y = float(self.mu[1])
+        yaw = float(self.mu[2])
+
         q = quaternion_from_euler(0.0, 0.0, yaw)
         stamp = msg.header.stamp
 
         self.broadcast_transform(stamp, x, y, q)
         
-        self.publish_path(x, y, q)
+        self.publish_path(stamp, x, y, q)
 
         # Not needed right now
         # self.publish_pose_with_covariance(stamp, x, y, q)
 
 
-    def lidar_callback(self, msg: LaserScan):
-        if self.first_lidar_scan:
-            self.lidar_control = msg
-            self.first_lidar_scan = False
-        else:
-            # Do ICP on new lidar scan and broadcast the new transform between map and odom
-            pass
+
+    # Move to different node?
+    # def lidar_callback(self, msg: LaserScan):
+    #     if self.first_lidar_scan:
+    #         self.lidar_control = msg
+    #         self.first_lidar_scan = False
+    #     else:
+    #         # Do ICP on new lidar scan and broadcast the new transform between map and odom
+    #         pass
         
 
 def main():

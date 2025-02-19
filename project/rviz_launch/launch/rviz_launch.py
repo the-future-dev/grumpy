@@ -1,7 +1,7 @@
 import launch
 import launch_ros.actions
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, ExecuteProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 import os
@@ -24,29 +24,35 @@ def generate_launch_description():
 
 
     # Start nodes
-    odometry = Node(
-        package='odometry',
-        executable='odometry',
+    localization = Node(
+        package='localization',
+        executable='localization',
         output='screen'
     )
 
-    lidar = Node(
-        package='lidar',
-        executable='lidar',
-        output='screen'
-    ) 
+    # odometry = Node(
+    #     package='odometry',
+    #     executable='odometry',
+    #     output='screen'
+    # )
 
-    detection = Node(
-        package='detection',
-        executable='detection',
-        output='screen'
-    )
+    # lidar = Node(
+    #     package='lidar',
+    #     executable='lidar',
+    #     output='screen'
+    # ) 
 
-    object_mapping = Node(
-        package='object_mapping',
-        executable='object_mapping',
-        output='screen'
-    )
+    # detection = Node(
+    #     package='detection',
+    #     executable='detection',
+    #     output='screen'
+    # )
+
+    # object_mapping = Node(
+    #     package='object_mapping',
+    #     executable='object_mapping',
+    #     output='screen'
+    # )
 
     # Static Transforms
     static_tf_map_odom = Node(
@@ -63,12 +69,10 @@ def generate_launch_description():
         output='screen'
     )
 
+
     return LaunchDescription([
         rviz_node,
-        odometry,
-        lidar,
-        detection,
-        object_mapping,
+        localization,
         static_tf_map_odom,
         static_tf_base_lidar
     ])
