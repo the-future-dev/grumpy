@@ -35,7 +35,7 @@ class OccupancyGridMapNode(Node):
         self.free = 1
 
         #Create grid
-        self.resolution = 10 #Can be changed 
+        self.resolution = 3 #Can be changed 
         self.grid_xlength = int(self.map_xlength/self.resolution)
         self.grid_ylength = int(self.map_ylength/self.resolution)
         self.grid = np.full((self.grid_ylength, self.grid_xlength), self.unknown, dtype=np.int32)
@@ -66,7 +66,7 @@ class OccupancyGridMapNode(Node):
         #Creat polygon from workspace
         polygon = Polygon(self.workspace.T)
 
-        #Go thrpugh all points to see if inside or outside, why so slow
+        #Go through all points to see if inside or outside, making the initialization slow
         for i in range(self.grid_xlength):
             for j in range(self.grid_ylength):
 
@@ -82,7 +82,7 @@ class OccupancyGridMapNode(Node):
     def lidar_cb(self, msg:LaserScan):
 
         self.counter += 1
-        if self.counter % 20 != 0:
+        if self.counter % 10 != 0: #Only use every 10th scan 
             return
         
         #Get data from message
@@ -96,15 +96,11 @@ class OccupancyGridMapNode(Node):
         indices = np.arange(len(ranges))
         boundary_mask = (ranges >= lower_bound) & (ranges <= upper_bound)
 
-        indices = indices[boundary_mask]
+        indices = indices[boundary_mask] #Filter out scans with ranges to large and small
         ranges = ranges[boundary_mask]
         angles = min_angle + indices * inc
-        
-        #Calculat x and y according ot lidar link frame
-        # x_angles = np.cos(min_angle + indices * inc)
-        # y_angles = np.sin(min_angle + indices * inc)
 
-        lidar_x = ranges * np.cos(angles)
+        lidar_x = ranges * np.cos(angles) #Calculate lidar point in lidar frame
         lidar_y = ranges * np.sin(angles)
 
         self.point_to_map(msg, lidar_x, lidar_y, True)
@@ -139,6 +135,7 @@ class OccupancyGridMapNode(Node):
         tf_matrix[:3, :3] = tf_rotation
         tf_matrix[:3, 3] = tf_translation
 
+        #create array to multiply transform to, homogenous added 1
         measure_points = np.vstack([x_points, y_points, np.zeros_like(x_points), np.ones_like(y_points)])
     
         transformed_points = tf_matrix @ measure_points
@@ -148,29 +145,41 @@ class OccupancyGridMapNode(Node):
     #Convert map coordinate to grid indices and set as occupied or free
     def map_to_grid(self, map_points, bool):
 
-
-        x_map = map_points[0, :]*100
+        x_map = map_points[0, :]*100 #Scale to centimeters
         y_map = map_points[1, :]*100
 
-        x_grid_points = np.floor((x_map + self.map_xlength/2)/self.resolution)
+        x_grid_points = np.floor((x_map + self.map_xlength/2)/self.resolution) #Convert to grid indices
         y_grid_points = np.floor((y_map + self.map_ylength/2)/self.resolution)
 
-        x_grid_points = x_grid_points.astype(int)
+        x_grid_points = x_grid_points.astype(int) #Make sure int index
         y_grid_points = y_grid_points.astype(int)
+        
+        #Mask to filter out grids already known
+        mask_unknown = self.grid[y_grid_points, x_grid_points] == self.unknown 
 
+        x_grid_points = x_grid_points[mask_unknown]
+        y_grid_points = y_grid_points[mask_unknown]
+
+        #Mask to filter out of bounds points
+        mask_in_bounds = x_grid_points < self.grid.shape[1] & y_grid_points < self.grid.shape[0]
+
+        x_grid_points = x_grid_points[mask_in_bounds]
+        y_grid_points = y_grid_points[mask_in_bounds]
+
+        #Set indice to either occupied or free depending on bool
         if bool == True:
             self.grid[y_grid_points, x_grid_points] = self.occupied
         elif bool == False:
             self.grid[y_grid_points, x_grid_points] = self.free
 
-        # fig, ax = plt.subplots()
-        # cbar = ax.imshow(self.grid, cmap='viridis', origin='lower')
+        #Plot in matplotlib, taken code 
+        fig, ax = plt.subplots()
+        cbar = ax.imshow(self.grid, cmap='viridis', origin='lower')
 
-        # # Adjust the colorbar ticks
-        # cbar = plt.colorbar(cbar)
-        # cbar.set_ticks([self.unknown, self.occupied, self.free])
+        cbar = plt.colorbar(cbar)
+        cbar.set_ticks([self.unknown, self.occupied, self.free])
 
-        # plt.savefig('/home/group5/occupancy_grid_new.png')
+        plt.savefig('/home/group5/occupancy_grid_new.png')
 
     #Creating a linspace between lidar-link and point so that teh point in between can be marked as free
     def raytrace_float(self, lidar_x, lidar_y):
