@@ -26,7 +26,7 @@ class ServoAngleControlNode(Node):
 
     def publish_servo_angles(self):
         
-        self.servo_angle_publisher.publish(msg)
+        self.servo_angle_publisher.publish()
 
 def main(args=None):
     rclpy.init()
