@@ -7,10 +7,8 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 
-
-
 from tf2_ros import TransformException, TransformBroadcaster
-from tf_transformations import quaternion_from_euler, euler_from_quaternion
+from tf_transformations import quaternion_from_euler, euler_from_quaternion, quaternion_multiply
 from sensor_msgs.msg import  Imu, LaserScan
 from robp_interfaces.msg import Encoders
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, PoseStamped, Pose
@@ -19,6 +17,8 @@ from nav_msgs.msg import Path
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 import tf2_geometry_msgs
+
+from scipy.spatial.transform import Rotation as R
 
 
 class Localization(Node):
@@ -34,7 +34,7 @@ class Localization(Node):
         self._tf_broadcaster = TransformBroadcaster(self)
 
         # Initalize publisher to publish pose after update step of EKF
-        self.pose_with_cov_pub = self.create_publisher(PoseWithCovarianceStamped, 'dead_reckoning_position', 10)
+        self.pose_with_cov_pub = self.create_publisher(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', 10)
 
         # Initialize the path publisher
         self._path_pub = self.create_publisher(Path, 'path', 10)
@@ -50,7 +50,7 @@ class Localization(Node):
 
         # initialization of parameters for EKF
         self.first_encoder_msg = True
-        self.vel = np.array([[0.0], [0.0], [0.0]]) # keep track of velocity to be able to predict position from IMU data
+        self.vel = np.array([[0.0], [0.0]]) # keep track of velocity to be able to predict position from IMU data
         self.pos = np.array([[0.0], [0.0], [0.0]]) # keep track of position from imu
         
         self.mu_bar = np.array([[0.0], [0.0], [0.0]]) # estimated mean of he robot's position after predict step, in the order (x,y,theta)
@@ -61,10 +61,14 @@ class Localization(Node):
         self.sigma = np.diag(d) # covariance matrix of the robot's position after update step, initialized as a diagonal matrix
 
         # covariance matrices for the uncertainty in the motion model and measurement model
-        d_R = np.array([0.01, 0.01, 3.0]) # variance in the order (x,y,theta)
+        d_R = np.array([0.00001, 0.00001, 0.01]) # variance in the order (x,y,theta)
         self.R = np.diag(d_R)
-        d_Q = np.array([1000, 10000, 0.1]) # variance in the order (x,y, theta)
-        self.Q = np.diag(d_Q)
+
+        self.Q = np.array([1.0]) # variance in theta, for only updating angle via IMU
+
+        # initialize boolean to get predict and update to happen after each other
+        self.new_encoder_pos = False
+        self.first_imu_msg = True
         
         # Move to different node?
         # # Initalize subscriber to lidar node
@@ -74,11 +78,11 @@ class Localization(Node):
         # self.first_lidar_scan = True
     
 
-    def wrap_angle(self, angle):
+    def wrap_angle(self, angle:np.array):
         """
         Method that takes the angle and returns the equivalent in the [-pi,pi] range.
         """
-        return (angle + math.pi) % (2 * math.pi) - math.pi
+        return (angle + np.pi) % (2 * np.pi) - np.pi
 
     
     def encoder_callback(self, msg: Encoders):
@@ -104,7 +108,6 @@ class Localization(Node):
         D = (r/2)*K*(delta_ticks_right + delta_ticks_left) # v*dt
         dtheta = (r/B)*K*(delta_ticks_right - delta_ticks_left) # w*dt
 
- 
         theta = float(self.mu[2])
 
         # Jacobian of motion model
@@ -122,12 +125,8 @@ class Localization(Node):
 
         self.sigma_bar = np.dot(np.dot(G, self.sigma), G.T) + self.R
 
-        x = float(self.mu[0])
-        y = float(self.mu[1])
-        yaw = float(self.mu[2])
+        self.new_encoder_pos = True
 
-        q = quaternion_from_euler(0.0, 0.0, yaw)
-        stamp = msg.header.stamp
 
 
     def broadcast_transform(self, stamp, x, y, q):
@@ -181,7 +180,7 @@ class Localization(Node):
         self._path_pub.publish(self._path)
 
 
-    def publish_pose_with_covariance(self, stamp, x, y, q):
+    def publish_pose_with_covariance(self, stamp, x:float, y:float, q:tuple) -> None:
         """
         Method for publishing the current pose with covariance from sigma. Note that the covariance matrix of this message type is 6x6 (x,y,z,roll,pitch,yaw)
         """
@@ -192,14 +191,14 @@ class Localization(Node):
 
         pose_with_covariance.pose.pose.position.x = x
         pose_with_covariance.pose.pose.position.y = y
-        pose_with_covariance.pose.pose.position.z = 0
+        pose_with_covariance.pose.pose.position.z = 0.0
 
         pose_with_covariance.pose.pose.orientation.x = q[0]
         pose_with_covariance.pose.pose.orientation.y = q[1]
         pose_with_covariance.pose.pose.orientation.z = q[2]
         pose_with_covariance.pose.pose.orientation.w = q[3]
 
-        covariance_matrix = np.zeros((6, 6))
+        covariance_matrix = np.zeros((6, 6), dtype=float)
         covariance_matrix[:2, :2] = self.sigma[:2, :2]
         covariance_matrix[5, 5] = self.sigma[2, 2]
         covariance_matrix[0, 5] = self.sigma[0, 2]
@@ -212,86 +211,66 @@ class Localization(Node):
         self.pose_with_cov_pub.publish(pose_with_covariance)
 
 
-    def imu_callback(self, msg: Imu):
+    def imu_callback(self, msg: Imu)->None:
         """
         Take IMU data to do the update step of the EKF and then publish the transform between odom and baselink
         """
-        # If this is the first imu message we use the encoder information only and after that updates with imu 
-        if self.first_imu_msg:
-            self.mu = self.mu_bar
-            self.sigma = self.sigma_bar
-            self.t_old = msg.header.stamp.nanosec
-            self.first_imu_msg = False
-        else:
-            # Calculating delta time and updating old time
-            current_time = msg.header.stamp.nanosec
-            dt = (current_time - self.t_old)*1e-9 # tranform to seconds from nanonseconds
-            self.t_old = current_time
+        if self.new_encoder_pos:
+            self.new_encoder_pos = False
+            return
+        # else:
+        #     # If no new pose set predict step to previous update step to be able to update
+        #     self.mu_bar = self.mu
+        #     self.sigma_bar = self.sigma
 
-            # Estimate position from imu by integrating two times. This is then used as measurement for the update step in the EKF. 
-            acc = np.array([[msg.linear_acceleration.x], [msg.linear_acceleration.y], [msg.linear_acceleration.z]])
-            self.vel += acc*dt
-            self.pos += self.vel*dt
+        q_imu = np.array([msg.orientation.x, msg.orientation.y, -msg.orientation.z, msg.orientation.w])
 
-            # Now we want to express the pose in the map frame, hence we get the transform between the frames
-            to_frame_rel = 'base_link'
-            from_frame_rel = msg.header.frame_id
-            time = rclpy.time.Time().from_msg(msg.header.stamp)
+        t = TransformStamped()
+        t.header.stamp = msg.header.stamp
+        t.header.frame_id = 'odom'
+        t.child_frame_id = 'imu_test'
 
-            # Wait for the transform asynchronously
-            tf_future = self.tf_buffer.wait_for_transform_async(
-                target_frame=to_frame_rel,
-                source_frame=from_frame_rel,
-                time=time
-            )
+        t.transform.translation.x = 0.0
+        t.transform.translation.y = 0.0
+        t.transform.translation.z = 0.1
 
-            # Spin until transform found or `timeout_sec` seconds has passed
-            rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+        t.transform.rotation.x = q_imu[0]
+        t.transform.rotation.y = q_imu[1]
+        t.transform.rotation.z = q_imu[2]
+        t.transform.rotation.w = q_imu[3]
 
-            # lookup transform from frame id to map 
-            try:
-                t_base_imu = self.tf_buffer.lookup_transform(to_frame_rel, from_frame_rel, time)
-            except TransformException as ex:
-                self.get_logger().info(
-                    f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
-                return
+        self._tf_broadcaster.sendTransform(t)
 
-            pose = Pose()
-            pose.position.x = float(self.pos[0])
-            pose.position.y = float(self.pos[1])
-            pose.position.z = float(self.pos[2])
-            pose.orientation.x = msg.orientation.x
-            pose.orientation.y = msg.orientation.y
-            pose.orientation.z = msg.orientation.z
-            pose.orientation.w = msg.orientation.w
+        # Kalman gain, jacobian of measurement model is an indentity matrix and is therefore not included
+        H = np.array([[0.0, 0.0, 1.0]]) # for only using angle update
+        sigma_HT = np.dot(self.sigma_bar, H.T)
+        H_sigma_HT = np.dot(np.dot(H, self.sigma_bar), H.T)
 
-            pose = tf2_geometry_msgs.do_transform_pose(pose, t_base_imu)
+        K = np.dot(sigma_HT, np.linalg.inv(H_sigma_HT+self.Q))
 
-            # Kalman gain, jacobian of measurement model is an indentity matrix and is therefore not included
-            K = np.dot(self.sigma_bar, np.linalg.inv(self.sigma_bar+self.Q))
+        # innovation
+        euler_angles = euler_from_quaternion(q_imu)
+        theta_imu = euler_angles[2]
 
-            # innovation
-            quaternion_imu = [pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w]
-            euler_angles = euler_from_quaternion(quaternion_imu)
-            theta_imu = euler_angles[2]
+        innovation = np.array([theta_imu-self.mu_bar[2]]) # for only updating angle
+        innovation = self.wrap_angle(innovation)
 
-            pose_imu = np.array([[pose.position.x], [pose.position.y]])
+        # update mean and covariance matrix
+        self.mu = self.mu_bar + np.dot(K, innovation)
 
-            innovation = np.array([pose_imu[0]-self.mu_bar[0], pose_imu[1]-self.mu_bar[1],theta_imu-self.mu_bar[2]])
+        # constrain angle into interval [-pi,pi]
+        self.mu[2] =  self.wrap_angle(self.mu[2])
 
-            innovation[2] = self.wrap_angle(innovation[2])
-
-            # update mean and covariance matrix
-            self.mu = self.mu_bar + np.dot(K, innovation)
-
-            # constrain angle into interval [-pi,pi]
-            self.mu[2] =  self.wrap_angle(self.mu[2])
-
-            self.sigma = np.dot((np.eye(3)-K), self.sigma_bar)
+        self.sigma = np.dot((np.eye(3)-np.dot(K, H)), self.sigma_bar)
 
         x = float(self.mu[0])
         y = float(self.mu[1])
         yaw = float(self.mu[2])
+
+        # logging parameters to troubleshoot
+        # self.get_logger().info(f"K: {K}")
+        # self.get_logger().info(f"Innovation: {innovation}")
+        # self.get_logger().info(f"Sigma: {np.diag(self.sigma)}")
 
         q = quaternion_from_euler(0.0, 0.0, yaw)
         stamp = msg.header.stamp
@@ -300,8 +279,7 @@ class Localization(Node):
         
         self.publish_path(stamp, x, y, q)
 
-        # Not needed right now
-        # self.publish_pose_with_covariance(stamp, x, y, q)
+        self.publish_pose_with_covariance(stamp, x, y, q)
 
 
 
