@@ -10,13 +10,13 @@ class ServoAngleControlNode(Node):
         self.servo_angle_publisher = self.create_publisher(
             Int16MultiArray,
             '/multi_servo_cmd_sub',
-            10)
+            1)
         
         self.servo_subscription = self.create_subscription(
             Int16MultiArray,
-            '/keyboard_control/keys',
+            '/servo_pos_publisher',
             self.servo_callback,
-            10)
+            1)
         
         self.get_logger().info("Keyboard Motor Control initialized")
         
