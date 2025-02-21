@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'talker = arm_manipulation.servo_manipulator:main',
+            'talk = arm_manipulation.servo_manipulator:main',
         ],
     },
 )
