@@ -36,23 +36,23 @@ def generate_launch_description():
     #     output='screen'
     # )
 
-    lidar = Node(
-        package='lidar',
-        executable='lidar',
-        output='screen'
-    ) 
+    # lidar = Node(
+    #     package='lidar',
+    #     executable='lidar',
+    #     output='screen'
+    # ) 
 
-    detection = Node(
-        package='detection',
-        executable='detection',
-        output='screen'
-    )
+    # detection = Node(
+    #     package='detection',
+    #     executable='detection',
+    #     output='screen'
+    # )
 
-    object_mapping = Node(
-        package='object_mapping',
-        executable='object_mapping',
-        output='screen'
-    )
+    # object_mapping = Node(
+    #     package='object_mapping',
+    #     executable='object_mapping',
+    #     output='screen'
+    # )
 
     # Static Transforms
     static_tf_map_odom = Node(
@@ -72,9 +72,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         rviz_node,
-        lidar,
-        detection,
-        object_mapping,
         localization,
         static_tf_map_odom,
         static_tf_base_lidar

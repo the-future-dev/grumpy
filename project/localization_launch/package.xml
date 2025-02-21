@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>localization_launch</name>
+  <version>1.0.0</version>
+  <description>localization_launch</description>
+  <author email="maltesu@kth.se">Malte Sundgren</author>
+  <maintainer email="maltesu@kth.se">Malte Sundgren</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>aruco_ros</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
