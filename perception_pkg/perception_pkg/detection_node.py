@@ -103,7 +103,7 @@ class Detection(Node):
             return
         
         # Point Clustering #######################################################################
-        db = DBSCAN(eps=0.25, min_samples=60)
+        db = DBSCAN(eps=0.05, min_samples=100)
         labels = db.fit_predict(points)
         
         for label in set(labels):
@@ -120,7 +120,7 @@ class Detection(Node):
             # SAVE #################################################################################
             cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             self.object_data_list.append(cluster)
-            self.save_object_data()
+            # self.save_object_data()
 
             # Object Detection and Classification ##################################################
             object_data = self.classify_object(cluster_points, cluster_rgb)
@@ -143,16 +143,15 @@ class Detection(Node):
     
     def save_object_data(self):
         """Saves all collected object data to a .npz file."""
-        data_save_path = "object_data"
+        data_save_path = "data_SPHERE"
         # Prepare a dictionary to save, where keys are like 'cluster_0', 'cluster_1', etc.
         arrays_to_save = {}
         for i, item in enumerate(self.object_data_list):
             arrays_to_save[f'cluster_{i}'] = item
 
         np.savez_compressed(data_save_path, **arrays_to_save)
-        print(f"Object data saved to: {data_save_path}")
-        
-        self.get_logger().info(f"Saved object data to object_data.npz")
+
+        self.get_logger().info(f"Saved object data to {data_save_path}")
 
 
     def fast_transform2(self, points):
