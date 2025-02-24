@@ -30,38 +30,21 @@ def generate_launch_description():
         output='screen'
     )
 
+    icp = Node(
+        package='icp_node',
+        executable='icp_node',
+        output='screen'
+    ) 
+
     # odometry = Node(
     #     package='odometry',
     #     executable='odometry',
     #     output='screen'
     # )
 
-    # lidar = Node(
-    #     package='lidar',
-    #     executable='lidar',
-    #     output='screen'
-    # ) 
 
-    # detection = Node(
-    #     package='detection',
-    #     executable='detection',
-    #     output='screen'
-    # )
-
-    # object_mapping = Node(
-    #     package='object_mapping',
-    #     executable='object_mapping',
-    #     output='screen'
-    # )
 
     # Static Transforms
-    static_tf_map_odom = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        arguments=['0', '0', '0', '0', '0', '0',  '1', 'map', 'odom'],
-        output='screen'
-    )
-
     static_tf_base_lidar = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -72,7 +55,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         rviz_node,
+        icp,
         localization,
-        static_tf_map_odom,
         static_tf_base_lidar
     ])

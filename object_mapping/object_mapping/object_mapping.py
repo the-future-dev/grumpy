@@ -25,7 +25,6 @@ from tf2_ros.transform_listener import TransformListener
 
 
 
-
 class ObjectMapping(Node):
 
     def __init__(self):
@@ -50,7 +49,7 @@ class ObjectMapping(Node):
         self.tf_broadcaster = TransformBroadcaster(self)
         
         # Initialize the subscriber to the object poses 
-        self.create_subscription(Pose, '/perception/object_poses', self.object_pose_callback, 10)
+        self.create_subscription(ObjectDetection1D, '/perception/object_poses', self.object_pose_callback, 10)
 
         # Initialize publisher to publish non-duplicate object poses
         self.object_pose_pub = self.create_publisher(ObjectDetection1D, '/object_mapping/object_poses', 10)
@@ -123,9 +122,10 @@ class ObjectMapping(Node):
                 with open(self.filepath, 'a') as file:
                     file.write(f"{label} {x} {y} {angle}\n")
 
-                pose = Pose()
-                pose.position.x = x
-                pose.position.y = y
+                pose = ObjectDetection1D()
+                pose.pose.x = x
+                pose.pose.y = y
+                pose.label = label
 
                 self.object_pose_pub.publish(pose) 
 

@@ -46,7 +46,6 @@ class Localization(Node):
 
         # Intialize subscriber to imu
         self.create_subscription(Imu, '/imu/data_raw', self.imu_callback , 10)
-        self.first_imu_msg = True # to be able to handle dt
 
         # initialization of parameters for EKF
         self.first_encoder_msg = True
@@ -56,26 +55,19 @@ class Localization(Node):
         self.mu_bar = np.array([[0.0], [0.0], [0.0]]) # estimated mean of he robot's position after predict step, in the order (x,y,theta)
         self.mu = np.array([[0.0], [0.0], [0.0]]) # estimated mean of he robot's position after update step, in the order (x,y,theta)
         
-        d = np.array([0.01, 0.01, 0.01]) # variance in the order (x,y,theta)
+        d = np.array([0.0, 0.0, 0.0]) # variance in the order (x,y,theta)
         self.sigma_bar = np.diag(d) # covariance matrix of the robot's position after predict step, initialized as a diagonal matrix
         self.sigma = np.diag(d) # covariance matrix of the robot's position after update step, initialized as a diagonal matrix
 
         # covariance matrices for the uncertainty in the motion model and measurement model
-        d_R = np.array([0.00001, 0.00001, 0.01]) # variance in the order (x,y,theta)
+        d_R = np.array([0.01**2, 0.01**2, 0.01]) # variance in the order (x,y,theta)
         self.R = np.diag(d_R)
 
-        self.Q = np.array([1.0]) # variance in theta, for only updating angle via IMU
+        self.Q = np.array([0.01]) # variance in theta, for only updating angle via IMU
 
         # initialize boolean to get predict and update to happen after each other
         self.new_encoder_pos = False
-        self.first_imu_msg = True
         
-        # Move to different node?
-        # # Initalize subscriber to lidar node
-        # self.create_subscription(LaserScan, '/scan', self.lidar_callback , 10)
-
-        # # Intialize to true to be able to save the first lidar scan
-        # self.first_lidar_scan = True
     
 
     def wrap_angle(self, angle:np.array):
@@ -90,7 +82,6 @@ class Localization(Node):
         Take motor encoder readings and use them to do the prediction step of the Extended Kalman Filter
         """
         # The kinematic parameters for the differential configuration
-        dt = 50 / 1000
         ticks_per_rev = 48 * 64
         wheel_radius =  0.04921 
         base = 0.31 # actual base: 0.3, but can be experimented with to improve performance, found 0.31 to be a bit better
@@ -147,8 +138,8 @@ class Localization(Node):
         # For the same reason, the robot can only rotate around one axis
         # and this why we set rotation in x and y to 0 and obtain
         # rotation in z axis from the message
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
         t.transform.rotation.z = q[2]
         t.transform.rotation.w = q[3]
 
@@ -156,28 +147,53 @@ class Localization(Node):
         self._tf_broadcaster.sendTransform(t)
 
     
-    def publish_path(self, stamp, x, y, q):
-        """
-        Method for publishing the path of the robot
-        """
-        # Update the path
-        self._path.header.stamp = stamp
-        self._path.header.frame_id = 'odom'
-
-        pose = PoseStamped()
-        pose.header = self._path.header
-
-        pose.pose.position.x = x
-        pose.pose.position.y = y
-        pose.pose.position.z = 0.01  # 1 cm up so it will be above ground level
-
-        pose.pose.orientation.x = q[0]
-        pose.pose.orientation.y = q[1]
-        pose.pose.orientation.z = q[2]
-        pose.pose.orientation.w = q[3]
+    # def publish_path(self, stamp, x, y, q):
+    #     """
+    #     Method for publishing the path of the robot
+    #     """
         
-        self._path.poses.append(pose)
-        self._path_pub.publish(self._path)
+    #     # Get transform between map and odom
+    #     to_frame_rel = 'map'
+    #     from_frame_rel = 'odom'
+    #     time = rclpy.time.Time().from_msg(stamp)
+
+    #     # Wait for the transform asynchronously
+    #     tf_future = self.tf_buffer.wait_for_transform_async(
+    #         target_frame=to_frame_rel,
+    #         source_frame=from_frame_rel,
+    #         time=time)
+
+    #     # Spin until transform found or `timeout_sec` seconds has passed
+    #     rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+
+    #     try:
+    #         t = self.tf_buffer.lookup_transform(to_frame_rel,from_frame_rel,time)
+        
+    #     except TransformException as ex:
+    #         self.get_logger().info(
+    #             f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
+    #         return
+
+    #     pose = PoseStamped()
+    #     pose.header = self._path.header
+
+    #     pose.pose.position.x = x
+    #     pose.pose.position.y = y
+    #     pose.pose.position.z = 0.01  # 1 cm up so it will be above ground level
+
+    #     pose.pose.orientation.x = q[0]
+    #     pose.pose.orientation.y = q[1]
+    #     pose.pose.orientation.z = q[2]
+    #     pose.pose.orientation.w = q[3]
+
+    #     pose = tf2_geometry_msgs.do_transform_pose_stamped(pose, t)
+
+    #     # Update the path
+    #     self._path.header.stamp = stamp
+    #     self._path.header.frame_id = 'map'
+
+    #     self._path.poses.append(pose)
+    #     self._path_pub.publish(self._path)
 
 
     def publish_pose_with_covariance(self, stamp, x:float, y:float, q:tuple) -> None:
@@ -215,34 +231,33 @@ class Localization(Node):
         """
         Take IMU data to do the update step of the EKF and then publish the transform between odom and baselink
         """
-        if self.new_encoder_pos:
-            self.new_encoder_pos = False
+        # Only update when a new encoder pose is avaiable
+        if self.new_encoder_pos is False:
             return
-        # else:
-        #     # If no new pose set predict step to previous update step to be able to update
-        #     self.mu_bar = self.mu
-        #     self.sigma_bar = self.sigma
+     
+        # Set encoder pose to False if a new one when it is received so it has to be set as true in encoder callback
+        self.new_encoder_pos = False
 
-        q_imu = np.array([msg.orientation.x, msg.orientation.y, -msg.orientation.z, msg.orientation.w])
+        q_imu = np.array([0.0, 0.0, -msg.orientation.z, msg.orientation.w])
 
-        t = TransformStamped()
-        t.header.stamp = msg.header.stamp
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'imu_test'
+        # t = TransformStamped()
+        # t.header.stamp = msg.header.stamp
+        # t.header.frame_id = 'odom'
+        # t.child_frame_id = 'imu_test'
 
-        t.transform.translation.x = 0.0
-        t.transform.translation.y = 0.0
-        t.transform.translation.z = 0.1
+        # t.transform.translation.x = 0.0
+        # t.transform.translation.y = 0.0
+        # t.transform.translation.z = 0.1
 
-        t.transform.rotation.x = q_imu[0]
-        t.transform.rotation.y = q_imu[1]
-        t.transform.rotation.z = q_imu[2]
-        t.transform.rotation.w = q_imu[3]
+        # t.transform.rotation.x = q_imu[0]
+        # t.transform.rotation.y = q_imu[1]
+        # t.transform.rotation.z = q_imu[2]
+        # t.transform.rotation.w = q_imu[3]
 
-        self._tf_broadcaster.sendTransform(t)
+        # self._tf_broadcaster.sendTransform(t)
 
-        # Kalman gain, jacobian of measurement model is an indentity matrix and is therefore not included
-        H = np.array([[0.0, 0.0, 1.0]]) # for only using angle update
+        # Kalman gain
+        H = np.array([[0.0, 0.0, 1.0]]) # Only updates angle
         sigma_HT = np.dot(self.sigma_bar, H.T)
         H_sigma_HT = np.dot(np.dot(H, self.sigma_bar), H.T)
 
@@ -252,8 +267,9 @@ class Localization(Node):
         euler_angles = euler_from_quaternion(q_imu)
         theta_imu = euler_angles[2]
 
-        innovation = np.array([theta_imu-self.mu_bar[2]]) # for only updating angle
-        innovation = self.wrap_angle(innovation)
+        # innovation for angle
+        innovation = np.array([theta_imu-self.mu_bar[2]]) 
+        innovation = self.wrap_angle(innovation) # wrap angle to always stay in interval [-pi,pi]
 
         # update mean and covariance matrix
         self.mu = self.mu_bar + np.dot(K, innovation)
@@ -277,21 +293,10 @@ class Localization(Node):
 
         self.broadcast_transform(stamp, x, y, q)
         
-        self.publish_path(stamp, x, y, q)
+        # self.publish_path(stamp, x, y, q)
 
         self.publish_pose_with_covariance(stamp, x, y, q)
 
-
-
-    # Move to different node?
-    # def lidar_callback(self, msg: LaserScan):
-    #     if self.first_lidar_scan:
-    #         self.lidar_control = msg
-    #         self.first_lidar_scan = False
-    #     else:
-    #         # Do ICP on new lidar scan and broadcast the new transform between map and odom
-    #         pass
-        
 
 def main():
     rclpy.init()
