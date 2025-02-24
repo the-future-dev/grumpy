@@ -146,54 +146,9 @@ class Localization(Node):
         # Send the transformation
         self._tf_broadcaster.sendTransform(t)
 
-    
-    # def publish_path(self, stamp, x, y, q):
-    #     """
-    #     Method for publishing the path of the robot
-    #     """
+
         
-    #     # Get transform between map and odom
-    #     to_frame_rel = 'map'
-    #     from_frame_rel = 'odom'
-    #     time = rclpy.time.Time().from_msg(stamp)
 
-    #     # Wait for the transform asynchronously
-    #     tf_future = self.tf_buffer.wait_for_transform_async(
-    #         target_frame=to_frame_rel,
-    #         source_frame=from_frame_rel,
-    #         time=time)
-
-    #     # Spin until transform found or `timeout_sec` seconds has passed
-    #     rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
-
-    #     try:
-    #         t = self.tf_buffer.lookup_transform(to_frame_rel,from_frame_rel,time)
-        
-    #     except TransformException as ex:
-    #         self.get_logger().info(
-    #             f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
-    #         return
-
-    #     pose = PoseStamped()
-    #     pose.header = self._path.header
-
-    #     pose.pose.position.x = x
-    #     pose.pose.position.y = y
-    #     pose.pose.position.z = 0.01  # 1 cm up so it will be above ground level
-
-    #     pose.pose.orientation.x = q[0]
-    #     pose.pose.orientation.y = q[1]
-    #     pose.pose.orientation.z = q[2]
-    #     pose.pose.orientation.w = q[3]
-
-    #     pose = tf2_geometry_msgs.do_transform_pose_stamped(pose, t)
-
-    #     # Update the path
-    #     self._path.header.stamp = stamp
-    #     self._path.header.frame_id = 'map'
-
-    #     self._path.poses.append(pose)
-    #     self._path_pub.publish(self._path)
 
 
     def publish_pose_with_covariance(self, stamp, x:float, y:float, q:tuple) -> None:
@@ -283,17 +238,11 @@ class Localization(Node):
         y = float(self.mu[1])
         yaw = float(self.mu[2])
 
-        # logging parameters to troubleshoot
-        # self.get_logger().info(f"K: {K}")
-        # self.get_logger().info(f"Innovation: {innovation}")
-        # self.get_logger().info(f"Sigma: {np.diag(self.sigma)}")
-
         q = quaternion_from_euler(0.0, 0.0, yaw)
         stamp = msg.header.stamp
 
         self.broadcast_transform(stamp, x, y, q)
         
-        # self.publish_path(stamp, x, y, q)
 
         self.publish_pose_with_covariance(stamp, x, y, q)
 

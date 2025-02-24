@@ -52,10 +52,18 @@ def generate_launch_description():
         output='screen'
     )
 
+    # static_tf_base_imu = Node(
+    #     package='tf2_ros',
+    #     executable='static_transform_publisher',
+    #     arguments=['0', '0.09', '0.12', '0.7071', '0.7071', '0',  '0', 'base_link', 'imu_link'],
+    #     output='screen'
+    # )
+
 
     return LaunchDescription([
         rviz_node,
         icp,
         localization,
-        static_tf_base_lidar
+        static_tf_base_lidar,
+        # static_tf_base_imu
     ])

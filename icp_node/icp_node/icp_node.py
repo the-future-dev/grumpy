@@ -20,9 +20,6 @@ import numpy as np
 
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 
-
-
-
 class ICP_node(Node):
     def __init__(self):
         super().__init__('icp_node')
@@ -147,11 +144,11 @@ class ICP_node(Node):
         # Transform point cloud to odom
         cloud_odom = do_transform_cloud(cloud, t)
 
-        # Transform point cloud to map
-        transformed_cloud = do_transform_cloud(cloud_odom, self.t)
+        # # Transform point cloud to map
+        # transformed_cloud = do_transform_cloud(cloud_odom, self.t)
 
         # Transform to open3d format
-        pointcloud = self.create_open3d_pointcloud(transformed_cloud)
+        pointcloud = self.create_open3d_pointcloud(cloud_odom)
 
         # set reference cloud if it is first scan
         
@@ -159,34 +156,40 @@ class ICP_node(Node):
             self.reference_cloud = pointcloud
             self.get_reference = False
 
+
+        if self.t_mat_old is None:
+            previous_transform = np.identity(4)
+        else:
+            previous_transform = self.t_mat_old
+
         # Do ICP algorithm
         result_icp = registration_icp(source=pointcloud,
                         target=self.reference_cloud,
                         max_correspondence_distance= 0.02,
-                        init=np.identity(4), # Default transformation matrix
+                        init=previous_transform, # The algorithm start with this and then tries to optimize for a better transform for map-odom
                         estimation_method=TransformationEstimationPointToPoint(),
-                        criteria=ICPConvergenceCriteria(relative_fitness=1e-6, relative_rmse=1e-6, max_iteration=100)
+                        criteria=ICPConvergenceCriteria(relative_fitness=1e-6, relative_rmse=1e-6, max_iteration=1000)
                         )
 
-        # check how high overlapping between source and target cloud is, higher is better maximum is 1
-        if result_icp.fitness < 0.3 or result_icp.inlier_rmse > 0.1:
-            self.get_logger().info(f'Not good enough conditions, fitness: {result_icp.fitness}, rmse: {result_icp.inlier_rmse}')
+        # Checking overlap and inlier rmse to make sure transform is good to use
+        overlap = result_icp.fitness 
+        rmse = result_icp.inlier_rmse
+       
+        if overlap < 0.3 or rmse > 0.1:
+            self.get_logger().info(f'Not good enough conditions, fitness: {overlap}, rmse: {rmse}')
             return
 
         # reset counter since an update is going to be processed
         self.counter = self.N
 
+        # copy result from icp, has to copy to be able to write to it
         transform_matrix = result_icp.transformation.copy()
 
+        # Make sure that we are only operating in the xy-plane
         transform_matrix[2,3] = 0.0 # zero out translation in z
-        transform_matrix[:3, 2] = [0.0, 0.0, 1.0]
+        # no rotations around x or y axises
+        transform_matrix[:3, 2] = [0.0, 0.0, 1.0] 
         transform_matrix[2, :3] = [0.0, 0.0, 1.0]
-        # self.get_logger().info(f"transform matrix: {transform_matrix}")
-
-        # compare with previous transform if a previous transform exist
-        if self.t_mat_old is not None:
-            transform_matrix = np.dot(transform_matrix, self.t_mat_old)
-
 
         self.t_mat_old = transform_matrix
 
@@ -208,6 +211,7 @@ class ICP_node(Node):
         self.t.transform.rotation.w = quat[3]
 
         self._tf_broadcaster.sendTransform(self.t)
+
 
     def localization_pose_cb(self, msg: PoseWithCovarianceStamped):
         """
