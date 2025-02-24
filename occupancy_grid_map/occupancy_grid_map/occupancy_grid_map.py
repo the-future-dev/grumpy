@@ -11,8 +11,7 @@ import tf_transformations
 from shapely.geometry.polygon import Polygon
 from shapely.geometry import Point
 import matplotlib.pyplot as plt
-from std_msgs.msg import Int16MultiArray
-from grumpy_interfaces.msg import ObjectDetection1D
+from std_msgs.msg import Int16MultiArray, MultiArrayDimension
 
 class OccupancyGridMapNode(Node):
     
@@ -27,7 +26,7 @@ class OccupancyGridMapNode(Node):
                                    [-130, -130, 130, 130]])
 
         self.polygon = Polygon(self.workspace.T)
-        self.polygon.buffer(-0.35)
+        self.inflate_polygon = self.polygon.buffer(-30)
 
         #Initial data
         self.frame_id = 'map'
@@ -50,8 +49,8 @@ class OccupancyGridMapNode(Node):
         self.grid_ylength = int(self.map_ylength/self.resolution)
         self.grid = np.full((self.grid_ylength, self.grid_xlength), self.unknown, dtype=np.int16)
 
-        #Declare variables to be used outside code
-        self.grid_declare_params()
+        #Create publisher fo grid
+        self.grid_pub = self.create_publisher(Int16MultiArray, 'map/gridmap', 10)
 
         #Fill outside grid with 
         self.fill_outside_grid()
@@ -63,37 +62,14 @@ class OccupancyGridMapNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
-        #Create publisher fo grid
-        self.grid_pub = self.create_publisher(Int16MultiArray, 'map/gridmap', 1)
-
         #Subscribe to both lidar scan
         self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
-
-        #Plot in matplotlib, taken code 
-        # fig, ax = plt.subplots()
-        # cbar = ax.imshow(self.grid, cmap='viridis', origin='lower')
-
-        # cbar = plt.colorbar(cbar)
-        # cbar.set_ticks([self.unknown, self.occupied, self.free])
-
-        # plt.savefig('/home/group5/occupancy_grid_new.png')
-
-        #Publish grid in topic 
 
         #Subsrciber to object mapping
         #self.object_mapping = self.create_subscription(ObjectDetection1D, 'object_mapping/object_poses', self.rgbd_cb, 10)
 
     #Function which fills the space outside workspace as occupied, very slow now but have not succeded with other
-
-    def grid_declare_params(self):
-        self.declare_parameters('grid', [('resolution', self.resolution),
-                                         ('map_xlength', self.map_xlength),
-                                         ('map_ylength', self.map_ylength),])
-
     def fill_outside_grid(self):
-        
-        #Creat polygon from workspace
-        polygon = Polygon(self.workspace.T)
 
         #Go through all points to see if inside or outside, making the initialization slow
         for i in range(self.grid_xlength):
@@ -103,8 +79,10 @@ class OccupancyGridMapNode(Node):
                 y_ind = (j * self.resolution) - self.map_ylength/2
 
                 point = Point(x_ind, y_ind)
-                if not polygon.contains(point):
+                if not self.polygon.contains(point):
                     self.grid[j, i] = self.outside
+                if (not self.inflate_polygon.contains(point)) and (self.polygon.contains(point)):
+                    self.grid[j, i] = self.obstacle
         return
     
     def given_objects_boxes(self):
@@ -116,8 +94,8 @@ class OccupancyGridMapNode(Node):
         
         mask_objects = object_box_map[0, :] < 4
 
-        object_map = object_box_map[mask_objects]
-        box_map = object_box_map[~mask_objects]
+        object_map = object_box_map[:, mask_objects]
+        box_map = object_box_map[:, ~mask_objects]
 
         self.map_to_grid(object_map[1:, :], self.object)
         self.map_to_grid(box_map[1:, :], self.box)
@@ -200,19 +178,34 @@ class OccupancyGridMapNode(Node):
 
         x_grid_points = x_grid_points.astype(int) #Make sure int index
         y_grid_points = y_grid_points.astype(int)
+        inflate = inflate.astype(int)
 
-        x_grid_points, y_grid_points = self.filter_points(x_grid_points, y_grid_points)
+        x_grid_points, y_grid_points = self.filter_points(x_grid_points, y_grid_points, value)
 
         #Set indice to either occupied or free depending on bool
-
-        self.grid[y_grid_points - inflate:y_grid_points + inflate, x_grid_points - inflate:x_grid_points + inflate] = value
+    
+        self.grid[y_grid_points, x_grid_points] = value
 
         #Publish grid
         msg_grid = Int16MultiArray()
-        msg_grid.data = self.grid
+        msg_grid.data = self.grid.flatten().tolist()
+        dim1 = MultiArrayDimension()
+        dim2 = MultiArrayDimension()
+        dim1.label = 'rows'
+        dim2.label = 'columns'
+        dim1.size = self.grid.shape[0]
+        dim2.size = self.grid.shape[1]
+        msg_grid.layout.dim = [dim1, dim2]
+
         self.grid_pub.publish(msg_grid)
     
     def filter_points(self, x_grid_points, y_grid_points, value):
+
+        #Mask to filter out of bounds points
+        mask_in_bounds = (x_grid_points < self.grid.shape[1]) & (y_grid_points < self.grid.shape[0])
+
+        x_grid_points = x_grid_points[mask_in_bounds]
+        y_grid_points = y_grid_points[mask_in_bounds]
         
         #Mask to filter out grids outside workspace
         mask_workspace = self.grid[y_grid_points, x_grid_points] == self.outside 
@@ -220,16 +213,18 @@ class OccupancyGridMapNode(Node):
         x_grid_points = x_grid_points[~mask_workspace]
         y_grid_points = y_grid_points[~mask_workspace]
 
-        #Mask to filter out of bounds points
-        mask_in_bounds = x_grid_points < self.grid.shape[1] & y_grid_points < self.grid.shape[0]
+        #filter out object values so they are not set as something else
 
-        x_grid_points = x_grid_points[mask_in_bounds]
-        y_grid_points = y_grid_points[mask_in_bounds]
+        if (value != self.object) and (value != self.box):
+            mask_not_object = self.grid[y_grid_points, x_grid_points] != self.object
+            x_grid_points = x_grid_points[mask_not_object]
+            y_grid_points = y_grid_points[mask_not_object]
+        if value == self.free:
+            mask_unknown = self.grid[y_grid_points, x_grid_points] == self.unknown
+            x_grid_points = x_grid_points[mask_unknown]
+            y_grid_points = y_grid_points[mask_unknown]
 
-        #If free, filter out object values so they are not set as something else
-        mask_not_object = self.grid[y_grid_points, x_grid_points] != self.object
-        x_grid_points = x_grid_points[mask_not_object]
-        y_grid_points = y_grid_points[mask_not_object]
+        return x_grid_points, y_grid_points
 
     #Creating a linspace between lidar-link and point so that teh point in between can be marked as free
     def raytrace_float(self, lidar_x, lidar_y):
