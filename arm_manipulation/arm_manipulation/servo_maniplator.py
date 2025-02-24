@@ -9,7 +9,7 @@ class ServoAngleControlNode(Node):
 
         self.servo_angle_publisher = self.create_publisher(
             Int16MultiArray,
-            '/multi_servo_cmd_sub',
+            'multi_servo_cmd_sub',
             1)
         
         self.servo_subscription = self.create_subscription(
