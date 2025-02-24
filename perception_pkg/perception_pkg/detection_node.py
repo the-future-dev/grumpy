@@ -103,7 +103,7 @@ class Detection(Node):
             return
         
         # Point Clustering #######################################################################
-        db = DBSCAN(eps=0.05, min_samples=100)
+        db = DBSCAN(eps=0.1, min_samples=50)
         labels = db.fit_predict(points)
         
         for label in set(labels):
@@ -120,7 +120,7 @@ class Detection(Node):
             # SAVE #################################################################################
             cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             self.object_data_list.append(cluster)
-            # self.save_object_data()
+            self.save_object_data()
 
             # Object Detection and Classification ##################################################
             object_data = self.classify_object(cluster_points, cluster_rgb)
@@ -143,7 +143,7 @@ class Detection(Node):
     
     def save_object_data(self):
         """Saves all collected object data to a .npz file."""
-        data_save_path = "data_SPHERE"
+        data_save_path = "data_BOX"
         # Prepare a dictionary to save, where keys are like 'cluster_0', 'cluster_1', etc.
         arrays_to_save = {}
         for i, item in enumerate(self.object_data_list):
