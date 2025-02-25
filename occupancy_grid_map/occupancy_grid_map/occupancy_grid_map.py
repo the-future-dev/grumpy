@@ -63,7 +63,7 @@ class OccupancyGridMapNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
         #Subscribe to both lidar scan
-        self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
+       # self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
 
         #Subsrciber to object mapping
         #self.object_mapping = self.create_subscription(ObjectDetection1D, 'object_mapping/object_poses', self.rgbd_cb, 10)

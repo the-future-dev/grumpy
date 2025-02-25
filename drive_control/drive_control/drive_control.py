@@ -31,14 +31,20 @@ class SampleDriveControlNode(Node):
 
         #Create publisher to publish motor control
         self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
+        self.drive_feedback = self.create_publisher(Bool, '/drive/feedback', 1)
 
         self.create_subscription(Path, 'path/nextgoal', self.path_cb, 1)
-
 
     def path_cb(self, msg:Path):
 
         for pose in msg.poses:
-            self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+          result =   self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+
+        msg_feedback = Bool()
+        msg_feedback.data = result
+        self.drive_feedback.publish(msg_feedback)
+
+        
 
     def set_drive_input(self, x, y):
 
@@ -53,7 +59,6 @@ class SampleDriveControlNode(Node):
 
         #print(sample_point.point.x, sample_point.point.y)
 
-        self.get_logger().info(f'START TURNING')
         #While loop that rotates robot until aligned   
         while True:
 
@@ -88,8 +93,6 @@ class SampleDriveControlNode(Node):
                 msg.duty_cycle_right = -self.vel_rotate
                 msg.duty_cycle_left = self.vel_rotate
                 self.motor_publisher.publish(msg)
-
-        self.get_logger().info(f'START DRIVING FORWARD')
  
         #While loop that drives forward until reaching point
         while True:
