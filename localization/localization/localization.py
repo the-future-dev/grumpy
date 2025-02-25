@@ -68,6 +68,9 @@ class Localization(Node):
         # initialize boolean to get predict and update to happen after each other
         self.new_encoder_pos = False
         
+        # if IMU is not zero when starting this is used to calibrate it
+        self.imu_offset = None
+        
     
 
     def wrap_angle(self, angle:np.array):
@@ -147,10 +150,6 @@ class Localization(Node):
         self._tf_broadcaster.sendTransform(t)
 
 
-        
-
-
-
     def publish_pose_with_covariance(self, stamp, x:float, y:float, q:tuple) -> None:
         """
         Method for publishing the current pose with covariance from sigma. Note that the covariance matrix of this message type is 6x6 (x,y,z,roll,pitch,yaw)
@@ -194,6 +193,14 @@ class Localization(Node):
         self.new_encoder_pos = False
 
         q_imu = np.array([0.0, 0.0, -msg.orientation.z, msg.orientation.w])
+        euler_angles = euler_from_quaternion(q_imu)
+
+        if self.imu_offset is None:
+            self.imu_offset = euler_angles[2]
+            return
+
+        theta_imu = euler_angles[2] - self.imu_offset
+        
 
         # t = TransformStamped()
         # t.header.stamp = msg.header.stamp
@@ -217,10 +224,6 @@ class Localization(Node):
         H_sigma_HT = np.dot(np.dot(H, self.sigma_bar), H.T)
 
         K = np.dot(sigma_HT, np.linalg.inv(H_sigma_HT+self.Q))
-
-        # innovation
-        euler_angles = euler_from_quaternion(q_imu)
-        theta_imu = euler_angles[2]
 
         # innovation for angle
         innovation = np.array([theta_imu-self.mu_bar[2]]) 
