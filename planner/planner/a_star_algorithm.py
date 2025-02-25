@@ -59,7 +59,7 @@ class AStarAlgorithmNode(Node):
         self.grid_xg, self.grid_yg = self.map_to_grid(self.goal_x, self.goal_y)
         self.checked = 10   
 
-        self.publish_path()
+        # self.publish_path()
 
     def grid_cb(self, msg:Int16MultiArray):
         #Return array from message of grid

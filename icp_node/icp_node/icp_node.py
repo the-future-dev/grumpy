@@ -176,7 +176,7 @@ class ICP_node(Node):
         rmse = result_icp.inlier_rmse
        
         if overlap < 0.3 or rmse > 0.1:
-            self.get_logger().info(f'Not good enough conditions, fitness: {overlap}, rmse: {rmse}')
+            # self.get_logger().info(f'Not good enough conditions, fitness: {overlap}, rmse: {rmse}')
             return
 
         # reset counter since an update is going to be processed
