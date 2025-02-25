@@ -25,11 +25,11 @@ def generate_launch_description():
         output='screen'
     )
 
-    perception = Node(
-        package='perception_pkg',
-        executable='detection_node',
-        output='screen'
-    )
+    # perception = Node(
+    #     package='perception_pkg',
+    #     executable='detection_node',
+    #     output='screen'
+    # )
 
     object_mapping = Node(
         package='object_mapping',
@@ -42,6 +42,6 @@ def generate_launch_description():
         drive_control,
         odometry,
         lidar,
-        perception,
+        # perception,
         object_mapping
     ])

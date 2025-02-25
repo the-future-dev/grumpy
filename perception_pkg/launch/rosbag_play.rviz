@@ -3,7 +3,8 @@ Panels:
     Help Height: 78
     Name: Displays
     Property Tree Widget:
-      Expanded: ~
+      Expanded:
+        - /Detected Object1
       Splitter Ratio: 0.5
     Tree Height: 813
   - Class: rviz_common/Selection
@@ -23,7 +24,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: PointCloud2
+    SyncSource: DetectedPointCloud
 Visualization Manager:
   Class: ""
   Displays:
@@ -141,8 +142,6 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: true
-        Object_0:
-          Value: true
         base_link:
           Value: true
         camera_color_frame:
@@ -171,8 +170,6 @@ Visualization Manager:
       Tree:
         map:
           odom:
-            Object_0:
-              {}
             base_link:
               camera_link:
                 camera_color_frame:
@@ -279,39 +276,19 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
-    - Alpha: 1
-      Autocompute Intensity Bounds: true
-      Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
-        Value: true
-      Axis: Z
-      Channel Name: intensity
-      Class: rviz_default_plugins/PointCloud2
-      Color: 255; 255; 255
-      Color Transformer: ""
-      Decay Time: 0
-      Enabled: false
-      Invert Rainbow: false
-      Max Color: 255; 255; 255
-      Max Intensity: 4096
-      Min Color: 0; 0; 0
-      Min Intensity: 0
-      Name: DetectedObjects
-      Position Transformer: ""
-      Selectable: true
-      Size (Pixels): 3
-      Size (m): 0.009999999776482582
-      Style: Flat Squares
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Detected Object
+      Namespaces:
+        object_names: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
+        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /perception/detected_objects
-      Use Fixed Frame: true
-      Use rainbow: true
-      Value: false
+        Value: /perception/object_names_marker
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -358,7 +335,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 4.843198776245117
+      Distance: 2.490152359008789
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -373,10 +350,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5697973966598511
+      Pitch: 0.6847977042198181
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.8435721397399902
+      Yaw: 2.188544988632202
     Saved: ~
 Window Geometry:
   Arm Camera:
