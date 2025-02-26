@@ -99,9 +99,10 @@ class ObjectMapping(Node):
             with open(self.filepath, 'a') as file:
                 file.write(f"{label} {x} {y} {angle}\n")
             
-            pose = Pose()
-            pose.position.x = x
-            pose.position.y = y
+            pose = ObjectDetection1D()
+            pose.pose.position.x = x
+            pose.pose.position.y = y
+            pose.label.data = label
 
             self.object_pose_pub.publish(pose) 
 
@@ -123,9 +124,9 @@ class ObjectMapping(Node):
                     file.write(f"{label} {x} {y} {angle}\n")
 
                 pose = ObjectDetection1D()
-                pose.pose.x = x
-                pose.pose.y = y
-                pose.label = label
+                pose.pose.position.x = x
+                pose.pose.position.y = y
+                pose.label.data = label
 
                 self.object_pose_pub.publish(pose) 
 

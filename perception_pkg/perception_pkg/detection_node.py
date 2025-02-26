@@ -139,19 +139,22 @@ class Detection(Node):
             # Object Classification ################################################################
             cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             object_data = self.classify_object(cluster)
+
             if object_data:
                 x_obj, y_obj, z_obj = object_data['centroid']
                 object_label = object_data['label']
+                object_label_enum = ObjectEnum(object_label)
+                if object_label_enum != ObjectEnum.NOISE:
 
-                s = ObjectDetection1D()
-                s.header.stamp = msg.header.stamp
-                s.header.frame_id = "base_link"
-                s.label.data = 'B' if object_label == 'Box' else 'O'
-                s.pose.position.x = x_obj
-                s.pose.position.y = y_obj
-                s.pose.position.z = z_obj
+                    s = ObjectDetection1D()
+                    s.header.stamp = msg.header.stamp
+                    s.header.frame_id = "base_link"                    
+                    s.label.data = 'B' if object_label_enum == ObjectEnum.BOX else f'{object_label}'
+                    s.pose.position.x = x_obj
+                    s.pose.position.y = y_obj
+                    s.pose.position.z = z_obj
 
-                self._object_pose.publish(s)
+                    self._object_pose.publish(s)
 
                 packed_rgb = self.pack_rgb(cluster_rgb)
                 cluster_pc2 = np.concatenate([cluster_points, packed_rgb], axis=1)
@@ -297,12 +300,12 @@ class Detection(Node):
 
         pred_values = self.classification_model(cluster_tensor)
         prediction = torch.argmax(pred_values, dim=1)
-        pred_string = ObjectEnum(prediction.item()).name
+        pred_label = prediction.item()
 
         centroid = np.mean(cluster[:, :3], axis=0)
 
         return {
-            'label': pred_string, 
+            'label': pred_label, 
             'centroid': centroid,
         } 
 

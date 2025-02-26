@@ -24,8 +24,8 @@ def generate_launch_description():
 
     #  Start nodes
     localization = Node(
-        package='odometry',
-        executable='odometry',
+        package='localization',
+        executable='localization',
         output='screen'
     )
 
