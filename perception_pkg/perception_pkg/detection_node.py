@@ -30,7 +30,6 @@ import os
 import ament_index_python.packages as packages
 
 import torch
-from perception_pkg.interfaces import ObjectEnum
 from perception_pkg.classification_model import PointNetEncoderXYZRGB, PointNetClassifier
 
 from enum import Enum

@@ -14,37 +14,54 @@ def generate_launch_description():
         'dd2419_ws', 'rviz', 'default_rviz.rviz'
     )
 
-    # RViz Node
-    rviz_node = Node(
-        package='rviz2',                
-        executable='rviz2',              
-        output='screen',               
-        arguments=['-d', rviz_config_file]  
-    )
-
-
-    # Start nodes
-    localization = Node(
-        package='localization',
-        executable='localization',
-        output='screen'
-    )
-
-    # odometry = Node(
-    #     package='odometry',
-    #     executable='odometry',
-    #     output='screen'
+    # # RViz Node
+    # rviz_node = Node(
+    #     package='rviz2',                
+    #     executable='rviz2',              
+    #     output='screen',               
+    #     arguments=['-d', rviz_config_file]  
     # )
 
-    lidar = Node(
-        package='lidar',
-        executable='lidar',
+    #  Start nodes
+    localization = Node(
+        package='odometry',
+        executable='odometry',
         output='screen'
-    ) 
+    )
 
-    detection = Node(
-        package='detection',
-        executable='detection',
+    icp_node = Node(
+        package='icp_node',
+        executable='icp_node',
+        output='screen'
+    )
+
+    occupancy_grid_map = Node(
+        package='occupancy_grid_map',
+        executable='occupancy_grid_map',
+        output='screen'
+    )
+
+    planner = Node(
+        package='planner',
+        executable='planner_exploration',
+        output='screen'
+    )
+
+    a_star = Node(
+        package='planner',
+        executable='a_star_algorithm',
+        output='screen'
+    )
+
+    drive_control = Node(
+        package='drive_control',
+        executable='drive_control',
+        output='screen'
+    )
+
+    perception = Node(
+        package='perception_pkg',
+        executable='detection_node',
         output='screen'
     )
 
@@ -54,28 +71,22 @@ def generate_launch_description():
         output='screen'
     )
 
-    # Static Transforms
-    static_tf_map_odom = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        arguments=['0', '0', '0', '0', '0', '0',  '1', 'map', 'odom'],
-        output='screen'
-    )
-
     static_tf_base_lidar = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        arguments=['0', '0.09', '0.12', '0', '0', '0',  '1', 'base_link', 'lidar_link'],
-        output='screen'
+    package='tf2_ros',
+    executable='static_transform_publisher',
+    arguments=['0', '0.09', '0.12', '0', '0', '0',  '1', 'base_link', 'lidar_link'],
+    output='screen'
     )
-
 
     return LaunchDescription([
-        rviz_node,
-        lidar,
-        detection,
-        object_mapping,
+        drive_control,
+        occupancy_grid_map,
+        planner,
+        a_star,
         localization,
-        static_tf_map_odom,
+        icp_node,
+        perception,
+        object_mapping,
         static_tf_base_lidar
     ])
+
