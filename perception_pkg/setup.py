@@ -11,10 +11,12 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
+        
         (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))),
         ('share/' + package_name, ['package.xml']),
-        # (os.path.join('share', package_name, 'msg'), glob(os.path.join('launch', '*.msg*')))
-        # ('share/' + package_name + '/msg', ['msg/ObjectDetection1D.msg']),,
+
+        (os.path.join('share', package_name, 'models'),
+         glob(os.path.join('weights', '04.pth'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

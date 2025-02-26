@@ -21,62 +21,74 @@ from geometry_msgs.msg import Pose
 import math
 from sklearn.cluster import DBSCAN
 from scipy.spatial import cKDTree
-# from sklearn.decomposition import PCA
 
 
-import ctypes
+# import ctypes
 import struct
+
+import os
+import ament_index_python.packages as packages
+
+import torch
+from perception_pkg.interfaces import ObjectEnum
+from perception_pkg.classification_model import PointNetEncoderXYZRGB, PointNetClassifier
+
+from enum import Enum
+
+class ObjectEnum(Enum):
+    NOISE = 0
+    PUPPY = 1
+    CUBE = 2
+    SPHERE = 3
+    BOX = 4
 
 class Detection(Node):
 
     def __init__(self):
         super().__init__('detection')
-        # Initialize the publisher
-        self._pub = self.create_publisher(
-            PointCloud2, '/perception/camera/ground_filter', 10)
 
-        self.marker_publisher = self.create_publisher(Marker, '/perception/object_names_marker', 10)
-
-        self._object_pose = self.create_publisher(ObjectDetection1D, '/perception/object_poses', 10)
-
-        # Subscribe to point cloud topic and call callback function on each received message
+        # Data IN: Front Camera PointCloud
         self.create_subscription(
             PointCloud2, '/camera/camera/depth/color/points', self.cloud_callback, 10)
+
+        # Data OUT: 
+        self._object_pose = self.create_publisher(ObjectDetection1D, '/perception/object_poses', 10)
+        self._pub = self.create_publisher(PointCloud2, '/perception/camera/ground_filter', 10) # TODO: remove debug
+        self.marker_publisher = self.create_publisher(Marker, '/perception/object_names_marker', 10) # TODO: remove debug
 
         # Initialize TF
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = TransformBroadcaster(self)
 
-        # self.static_transform = self.get_static_transform()
-        self.get_logger().info(f"COMPLETED: Node initialization")
+        self.get_logger().info(f"Ros2 initialization completed")
 
-        self.object_data_list = []
+        
+        try:
+            package_share_directory = packages.get_package_share_directory('perception_pkg')
+            model_path = os.path.join(package_share_directory, 'models', '04.pth')
+            
+            self.DEVICE = "cpu"
+            self.classification_model = PointNetClassifier(PointNetEncoderXYZRGB(in_channels=6, out_channels=1024, use_layernorm=True), num_classes=len(ObjectEnum)).to(self.DEVICE)
+            self.classification_model.load_state_dict(torch.load(model_path, map_location=self.DEVICE))
+            self.get_logger().info(f"Classification model loaded in {self.DEVICE} completed")
+
+        except Exception as e:
+            self.get_logger().error(f"Error loading model: {e}")
+
+        self.object_data_list = [] # TODO: remove debug
 
     def cloud_callback(self, msg: PointCloud2):
-        # Convert ROS -> NumPy
-        gen = pc2.read_points_numpy(msg, skip_nans=True)
+        gen = pc2.read_points_numpy(msg, skip_nans=True) # Convert ROS -> NumPy        
         points = np.asarray(gen[:, :3])
-        colors_rgb = np.empty(points.shape, dtype=np.uint32)
-
-        for idx, x in enumerate(gen):
-            c = x[3]
-            s = struct.pack('>f', c)
-            i = struct.unpack('>l', s)[0]
-            pack = ctypes.c_uint32(i).value
-            colors_rgb[idx, 0] = np.asarray((pack >> 16) & 255, dtype=np.uint8)
-            colors_rgb[idx, 1] = np.asarray((pack >> 8) & 255, dtype=np.uint8)
-            colors_rgb[idx, 2] = np.asarray(pack & 255, dtype=np.uint8)
-
-        colors_rgb = colors_rgb.astype(np.float32) / 255
+        colors_rgb = self.unpack_rgb(gen[:, 3])
 
         # GROUND REMOVAL #######################################################################
-        # Transform from camera_depth_optical_frame to base_link
-        points = self.fast_transform2(points)
+        points = self.fast_transform2(points) # points transformed to the robot's frame 
 
         # Analyze relevant points
-        #  - 2D disance less than 1.5 meters
-        #  - z-axis height less than 20 cm TODO: analyze in "production" (1) obstacles? (2) human noise
+        #  - 2D disance less than 2 meters
+        #  - z-axis height between [0.010, 0.2]
         distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 1.5
         height_relevance = (points[:, 2] <= 0.2) & (points[:, 2] >= 0.010)
         
@@ -88,22 +100,21 @@ class Detection(Node):
 
         # Ground filtering 
         # - slope based method
-        # - static cut of points with z between [0.010, 0.2] (for efficiency)
-        ground_inds, non_ground_inds = self.slope_based_ground_filter(points[:, 0], points[:, 1], points[:, 2])
+        ground_inds, _ = self.slope_based_ground_filter(points[:, 0], points[:, 1], points[:, 2])
         non_ground_mask = ~np.isin(np.arange(len(points)), ground_inds, invert=False)
         gen = gen[non_ground_mask]
         points = points[non_ground_mask]
         colors_rgb = colors_rgb[non_ground_mask]
 
-        msgs_pub = pc2.create_cloud(msg.header, msg.fields, gen)
-        self._pub.publish(msgs_pub) # TODO: remove debug
-
-        if points.size == 0:
-            self.get_logger().debug("No relevant points detected after filtering.")
+        if points.size == 0: #No relevant points detected after filtering.
             return
         
         # Point Clustering #######################################################################
-        db = DBSCAN(eps=0.1, min_samples=50)
+        # eps = 0.02
+        # min_samples = 40
+        eps = 0.10
+        min_samples = 80
+        db = DBSCAN(eps=eps, min_samples=min_samples)
         labels = db.fit_predict(points)
         
         for label in set(labels):
@@ -117,13 +128,18 @@ class Detection(Node):
             if cluster_points.size == 0:
                 continue
             
-            # SAVE #################################################################################
-            cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
-            self.object_data_list.append(cluster)
-            self.save_object_data()
+            if np.max(cluster_points[:, 2]) >= 0.17:
+                # self.get_logger().info(f"Cluster with label {label} is filtered out due to z > 19")
+                continue
+            
+            # SAVE Locally ##########################################################################
+            # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
+            # self.object_data_list.append(cluster)
+            # self.save_object_data()
 
-            # Object Detection and Classification ##################################################
-            object_data = self.classify_object(cluster_points, cluster_rgb)
+            # Object Classification ################################################################
+            cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
+            object_data = self.classify_object(cluster)
             if object_data:
                 x_obj, y_obj, z_obj = object_data['centroid']
                 object_label = object_data['label']
@@ -137,30 +153,82 @@ class Detection(Node):
                 s.pose.position.z = z_obj
 
                 self._object_pose.publish(s)
-                self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{label}| {object_label}")  # Use label and object_label
+
+                packed_rgb = self.pack_rgb(cluster_rgb)
+                cluster_pc2 = np.concatenate([cluster_points, packed_rgb], axis=1)
+
+                msgs_pub = pc2.create_cloud(msg.header, msg.fields, cluster_pc2) # TODO: remove debug
+                msgs_pub.header.frame_id = "base_link"
+                self._pub.publish(msgs_pub) # TODO: remove debug
+
+                self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{label}| {object_label}")
             else:
                 self.get_logger().info(f"Label {label} Neglecting potential cluster")
     
-    def save_object_data(self):
-        """Saves all collected object data to a .npz file."""
-        data_save_path = "data_BOX"
-        # Prepare a dictionary to save, where keys are like 'cluster_0', 'cluster_1', etc.
-        arrays_to_save = {}
-        for i, item in enumerate(self.object_data_list):
-            arrays_to_save[f'cluster_{i}'] = item
+    def unpack_rgb(self, packed_colors):
+        """
+        Args:
+            packed_colors: shape (n, 1), packed colors as float32
+        Returns:
+            colors_rgb: shape (n, 3), unpacked RGB values in range [0, 1]
+        """
+        colors_rgb = np.empty((packed_colors.shape[0], 3), dtype=np.uint8)
+        
+        for idx, packed in enumerate(packed_colors):
+            # Unpack the float back to a 32-bit integer
+            s = struct.pack('>f', packed)
+            packed_color = struct.unpack('>l', s)[0]
+            
+            # Extract r, g, b components from the packed integer
+            r = (packed_color >> 16) & 255
+            g = (packed_color >> 8) & 255
+            b = packed_color & 255
+            
+            # Store the RGB values
+            colors_rgb[idx, 0] = r
+            colors_rgb[idx, 1] = g
+            colors_rgb[idx, 2] = b
 
-        np.savez_compressed(data_save_path, **arrays_to_save)
+        # Convert to float and normalize to [0, 1]
+        colors_rgb = colors_rgb.astype(np.float32) / 255.0
+        
+        return colors_rgb
 
-        self.get_logger().info(f"Saved object data to {data_save_path}")
+    def pack_rgb(self, colors_rgb):
+        """
+        Args:
+            colors_rgb: shape (n, 3)
+        Returns:
+            colors_rgb_packed: shape (n, 1)
+        """
+        colors_rgb = (colors_rgb * 255).astype(np.uint8)
+        packed_colors = np.empty(colors_rgb.shape[0], dtype=np.uint32)
+        for idx, color in enumerate(colors_rgb):
+            # Reconstruct the packed integer from the RGB values
+            r, g, b = color[0], color[1], color[2]
+            # Shift and combine to get a single packed integer
+            packed_color = (r << 16) | (g << 8) | b
+            # Store the packed color
+            packed_colors[idx] = packed_color
+        colors_floats = []
+        for packed in packed_colors:
+            # Unpack the integer back into a float (this is the reverse of your initial process)
+            s = struct.pack('>l', packed)
+            c = struct.unpack('>f', s)[0]
+            colors_floats.append(c)
 
+        colors_floats = np.array(colors_floats).reshape(-1, 1)
 
+        return colors_floats
+    
     def fast_transform2(self, points):
-        """Static Transform from ´camera_depth_optical_frame´ to ´base_link´"""
+        """
+        Static Transform from ´camera_depth_optical_frame´ to ´base_link´
+        """
         translation = np.array([0.08987, 0.0175, 0.10456])
         rotation = np.array([-0.5, 0.5, -0.5, 0.5])
 
         def quaternion_matrix(quaternion):
-            """Return 4x4 rotation matrix from quaternion."""
             _EPS = np.finfo(float).eps * 4.0
 
             q = np.array(quaternion, dtype=np.float64, copy=True)
@@ -179,21 +247,6 @@ class Detection(Node):
 
         transformed_points = np.dot(points, R.T) + translation
         return transformed_points
-    
-    def voxel_grid_filter(self, points, leaf_size=0.05):
-        """Downsamples the point cloud using a voxel grid filter."""
-        # Create voxel grid by downsampling points to grid size
-        # Points are binned by floor division on leaf size.
-        grid_indices = np.floor(points[:, :3] / leaf_size).astype(int)
-        unique_grid_indices = np.unique(grid_indices, axis=0)
-        # For each grid cell, compute the centroid
-        downsampled_points = []
-        for idx in unique_grid_indices:
-            mask = np.all(grid_indices == idx, axis=1)
-            points_in_cell = points[mask]
-            centroid = np.mean(points_in_cell, axis=0)
-            downsampled_points.append(centroid)
-        return np.array(downsampled_points)
 
     def slope_based_ground_filter(self, x, y, z):
         """
@@ -207,7 +260,7 @@ class Detection(Node):
             non_ground_indices: Indices of points classified as non-ground.
         """
         SLOPE_THRESHOLD = 100
-        K = 3
+        K = 1
 
         num_points = len(x)
         ground_indices = []
@@ -224,18 +277,11 @@ class Detection(Node):
         distances, neighbor_indices = tree.query(np.column_stack((x, y)), k=K + 1)
         neighbor_indices = neighbor_indices[:, 1:]  # Exclude self
 
-        # Get difference in z-coordinates of the neighbors
-        delta_z = z[neighbor_indices] - z[:, np.newaxis]  # Shape: (num_points, k)
-        # Calculate the distances in the x-y plane (vectorized)
-        delta_xy = np.sqrt((x[neighbor_indices] - x[:, np.newaxis])**2 + (y[neighbor_indices] - y[:, np.newaxis])**2)
-        
-        # Handle cases where delta_xy is zero to avoid division by zero.
-        delta_xy[delta_xy == 0] = 1e-6 # Or another very small value
+        delta_z = z[neighbor_indices] - z[:, np.newaxis]  # z-coordinates difference of neighbors
+        delta_xy = np.sqrt((x[neighbor_indices] - x[:, np.newaxis])**2 + (y[neighbor_indices] - y[:, np.newaxis])**2) # distances in x-y plane
+        delta_xy[delta_xy == 0] = 1e-6
 
-        # Calculate slopes (vectorized)
         slopes = np.abs(delta_z / delta_xy)  # Shape: (num_points, k)
-
-        # Find the maximum slope for each point
         max_slopes = np.max(slopes, axis=1)  # Shape: (num_points,)
 
         # Identify ground points based on the slope threshold
@@ -244,37 +290,35 @@ class Detection(Node):
         non_ground_indices = np.where(~ground_mask)[0]
 
         return ground_indices, non_ground_indices
-
-
-    def classify_object(self, cluster_points, cluster_rgb):
+    
+    def classify_object(self, cluster):
         """Classifies a point cloud cluster into an object type."""
+        #  TODO: VOLUME BASED Pre-filtering
+        cluster_tensor = torch.tensor(cluster, dtype=torch.float32).unsqueeze(0).to(self.DEVICE)
 
-        bbox_min = np.min(cluster_points, axis=0)
-        bbox_max = np.max(cluster_points, axis=0)
-        bbox_size = bbox_max - bbox_min
-        bbox_size_cm = bbox_size * 100
-        volume = np.prod(bbox_size_cm)
+        pred_values = self.classification_model(cluster_tensor)
+        prediction = torch.argmax(pred_values, dim=1)
+        pred_string = ObjectEnum(prediction.item()).name
 
-        centroid = np.mean(cluster_points, axis=0)
+        centroid = np.mean(cluster[:, :3], axis=0)
 
-        return {'label': f"OBJ", 'centroid': centroid, 'bbox_min': bbox_min, 'bbox_max': bbox_max, 'volume': volume} 
+        return {
+            'label': pred_string, 
+            'centroid': centroid,
+        } 
 
-        # if (bbox_size_cm[0] + bbox_size_cm[1]) >= 5.0 and bbox_size_cm[2] >= 1.5:  # Size threshold (tune this)
-        #     if volume < 1000:
-        #         object_label = "Object"
-        #     elif volume < 3720:
-        #         object_label = "Box"
-        #     else:  # Handle cases where the object is larger than the box threshold
-        #         object_label = "Large Object"
-        #         self.get_logger().info(f"Large Object detected: {bbox_size_cm} | {volume}")
-            
-        #     self.get_logger().info(f"detected: {object_label} | Box size: {bbox_size_cm} | Volume: {volume} | Cluster point mean: {centroid}")
 
-        #     return {'label': object_label, 'centroid': centroid, 'bbox_min': bbox_min, 'bbox_max': bbox_max}  # Return object data
+    def save_object_data(self):
+        """
+        Saves cluster data to a .npz file.
+        """
+        data_save_path = "data_BOX"
+        arrays_to_save = {}
+        for i, item in enumerate(self.object_data_list):
+            arrays_to_save[f'cluster_{i}'] = item
 
-        # else:
-        #     self.get_logger().info(f"Neglecting small cluster {bbox_size_cm}")
-        #     return None
+        np.savez_compressed(data_save_path, **arrays_to_save)
+        self.get_logger().info(f"Saved object data to {data_save_path}")
 
     def place_object_frame(self, point, frame_id, stamp, object_name):
         """Take points that correspond to an object and place a frame for it in RViz"""
@@ -286,7 +330,7 @@ class Detection(Node):
         pose.position.z = z
         
         marker = Marker()
-        marker.header.frame_id = 'base_link' # Same frame as your transform
+        marker.header.frame_id = frame_id
         marker.header.stamp = stamp
         marker.ns = "object_names"  # Namespace for your markers (important!)
         marker.id = id(object_name) # Unique ID for each object (use a counter or hash)
@@ -302,7 +346,7 @@ class Detection(Node):
         marker.scale.x = 0.1  # Adjust text size
         marker.scale.y = 0.1
         marker.scale.z = 0.1
-        marker.color.r = 1.0  # Text color (red in this example)
+        marker.color.r = 1.0  # Text color
         marker.color.g = 1.0
         marker.color.b = 1.0
         marker.color.a = 1.0  # Alpha (transparency)
@@ -312,12 +356,20 @@ class Detection(Node):
 
         self.marker_publisher.publish(marker)
 
+    def node_closure(self):
+        del self.classification_model
+        self.get_logger().info("Classification model unloaded successfully.")
+        
+        super().destroy_node()
+
 def main():
     rclpy.init()
     node = Detection()
+    
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        node.node_closure()
         pass
 
     rclpy.shutdown()
