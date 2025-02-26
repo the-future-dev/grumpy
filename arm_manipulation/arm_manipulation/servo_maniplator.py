@@ -5,10 +5,10 @@ from std_msgs.msg import Int16MultiArray
 from geometry_msgs.msg import Pose
 import numpy as np
 
-class ServoAngleControlNode(Node):
+class ServoThetaControlNode(Node):
 
     def __init__(self):
-        super().__init__('arm_control_node')
+        super().__init__('servo_thetas_control_node')
 
         # Origin of servo 5 in base_link frame:
         self.x_origin_servo5 = -0.00450
@@ -111,7 +111,7 @@ class ServoAngleControlNode(Node):
 
 def main(args=None):
     rclpy.init()
-    node = ServoAngleControlNode()
+    node = ServoThetaControlNode()
 
     try:
         rclpy.spin(node)
