@@ -25,7 +25,6 @@ from tf2_ros.transform_listener import TransformListener
 
 
 
-
 class ObjectMapping(Node):
 
     def __init__(self):
@@ -51,8 +50,11 @@ class ObjectMapping(Node):
         
         # Initialize the subscriber to the object poses 
         self.create_subscription(ObjectDetection1D, '/perception/object_poses', self.object_pose_callback, 10)
+
+        # Initialize publisher to publish non-duplicate object poses
+        self.object_pose_pub = self.create_publisher(ObjectDetection1D, '/object_mapping/object_poses', 10)
         
-    
+
     def object_pose_callback(self, msg: ObjectDetection1D):
         """
         Writes the object poses and removes (or at least tries) duplicates
@@ -60,7 +62,7 @@ class ObjectMapping(Node):
         pose = msg.pose
 
         # Now we want to express the pose in the map frame, hence we get the transform between the frames
-        to_frame_rel = 'odom'
+        to_frame_rel = 'map'
         from_frame_rel = msg.header.frame_id
         time = rclpy.time.Time().from_msg(msg.header.stamp)
 
@@ -96,6 +98,13 @@ class ObjectMapping(Node):
 
             with open(self.filepath, 'a') as file:
                 file.write(f"{label} {x} {y} {angle}\n")
+            
+            pose = Pose()
+            pose.position.x = x
+            pose.position.y = y
+
+            self.object_pose_pub.publish(pose) 
+
         
         else:
             # Go over current objects to not add duplicates
@@ -113,9 +122,14 @@ class ObjectMapping(Node):
                 with open(self.filepath, 'a') as file:
                     file.write(f"{label} {x} {y} {angle}\n")
 
+                pose = ObjectDetection1D()
+                pose.pose.x = x
+                pose.pose.y = y
+                pose.label = label
 
-                
+                self.object_pose_pub.publish(pose) 
 
+    
 
 
 def main():
