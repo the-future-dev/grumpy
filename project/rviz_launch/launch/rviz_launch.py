@@ -35,11 +35,11 @@ def generate_launch_description():
         output='screen'
     )
 
-    occupancy_grid_map = Node(
-        package='occupancy_grid_map',
-        executable='occupancy_grid_map',
-        output='screen'
-    )
+    # occupancy_grid_map = Node(
+    #     package='occupancy_grid_map',
+    #     executable='occupancy_grid_map',
+    #     output='screen'
+    # )
 
     planner = Node(
         package='planner',
@@ -80,7 +80,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         drive_control,
-        occupancy_grid_map,
+        # occupancy_grid_map,
         planner,
         a_star,
         localization,
