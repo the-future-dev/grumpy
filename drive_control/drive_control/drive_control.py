@@ -20,7 +20,7 @@ class SampleDriveControlNode(Node):
         super().__init__('sample_drive_control_node')
 
         self.vel_forward = 0.12
-        self.vel_rotate = 0.1
+        self.vel_rotate = 0.08
         self.vel_small_rotate = 0.01
 
         #Create buffer to look for transform 
@@ -33,12 +33,13 @@ class SampleDriveControlNode(Node):
         self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
         self.drive_feedback = self.create_publisher(Bool, '/drive/feedback', 1)
 
-        self.create_subscription(Path, 'path/nextgoal', self.path_cb, 1)
+        self.create_subscription(Path, 'path/next_goal', self.path_cb, 1)
 
     def path_cb(self, msg:Path):
 
         for pose in msg.poses:
-          result =   self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+          result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+          print(pose.pose.position.x, pose.pose.position.y)
 
         msg_feedback = Bool()
         msg_feedback.data = result

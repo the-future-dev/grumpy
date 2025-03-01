@@ -13,6 +13,7 @@ from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
 import heapq
 from builtin_interfaces.msg import Time
+from scipy.interpolate import interp1d
 
 class ANode:
     #Create a A-star Node for queueing
@@ -43,36 +44,50 @@ class AStarAlgorithmNode(Node):
         # Priotrity ques for A star algorithm
         self.Q = None
         self.grid = None
+        self.checked = 10   
+        self.grid_xg = 0
+        self.grid_yg = 0
+        self.grid_recieved = False
+        self.goal_pose_recieved = False
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
         # Publisher to puclish path to follow
-        self.path_pub = self.create_publisher(Path, 'path/Astar', 10)
+        self.path_pub = self.create_publisher(Path, 'path/Astar', 1)
 
-        # Subscribe to grid topic 
-        self.grid_sub = self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 10)
+        # Subscribe to grid and next goal topic
+        self.next_goal_sub = self.create_subscription(PoseStamped, 'pose/goal_next', self.next_goal_cb, 1)
+        self.grid_sub = self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
 
-        # Initalize goal points, in future subscribe to planning topic
-        self.goal_x = 199
-        self.goal_y = 116
-        self.grid_xg, self.grid_yg = self.map_to_grid(self.goal_x, self.goal_y)
-        self.checked = 10   
+    def next_goal_cb(self, msg:PoseStamped):
 
-        self.publish_path()
+        if self.goal_pose_recieved == False:
+
+            goal_x = msg.pose.position.x
+            goal_y = msg.pose.position.y
+
+            self.grid_xg, self.grid_yg = self.map_to_grid(goal_x, goal_y)
+            self.goal_pose_recieved = True
+
+            self.publish_path()
 
     def grid_cb(self, msg:Int16MultiArray):
         #Return array from message of grid
-        rows = msg.layout.dim[0].size
-        columns = msg.layout.dim[1].size
-        data = msg.data
-        self.grid = np.array([data]).reshape(rows, columns)
+
+        if self.grid_recieved == False:
+            rows = msg.layout.dim[0].size
+            columns = msg.layout.dim[1].size
+            data = msg.data
+            self.grid = np.array([data]).reshape(rows, columns)
+            self.grid_recieved = True
+            self.publish_path()
         
     def map_to_grid(self, x, y):
         #Take map coordinates and convert to grid
          
-        grid_x = np.floor((x + 440/2)/3)
-        grid_y = np.floor((y + 260/2)/3)
+        grid_x = np.floor((x + 1400/2)/3)
+        grid_y = np.floor((y + 568/2)/3)
 
         grid_x = grid_x.astype(int)
         grid_y = grid_y.astype(int)
@@ -82,8 +97,8 @@ class AStarAlgorithmNode(Node):
     def grid_to_map(self, grid_x, grid_y):
         #Take grid indices and converts to some x,y in that grid
        
-        x = (grid_x*3 - 440/2)/100 #Hard coded parameters right now 
-        y = (grid_y*3 - 260/2)/100
+        x = (grid_x*3 - 1400/2)/100 #Hard coded parameters right now 
+        y = (grid_y*3 - 568/2)/100
 
         return x, y
     
@@ -101,22 +116,33 @@ class AStarAlgorithmNode(Node):
         x = tf.transform.translation.x
         y = tf.transform.translation.y
 
-        grid_x, grid_y = self.map_to_grid(x, y) #Convert to grid indices
+        grid_x, grid_y = self.map_to_grid(100*x, 100*y) #Convert to grid indices, scale to centimeters
 
         return grid_x, grid_y
     
     def publish_path(self):
         #Function whihc finally publish un simplified path
 
-        list_poses, time = self.solve_path_points()
+        if self.goal_pose_recieved == False or self.grid_recieved == False:
+            return
 
-        if len(list_poses) != 0:
-            msg_path = Path() #Create Pth message
-            msg_path.header.frame_id = 'map'
-            msg_path.header.stamp = time
-            msg_path.poses = list_poses
+        result = self.solve_path_points()
+        
+        if not result:
+            msg_empty = Path()
+            self.path_pub.publish(msg_empty)
+        else:
+            list_poses, time = result
+            if list_poses:
+                msg_path = Path() #Create Pth message
+                msg_path.header.frame_id = 'map'
+                msg_path.header.stamp = time
+                msg_path.poses = list_poses
 
-            self.path_pub.publish(msg_path)
+                self.path_pub.publish(msg_path)
+
+        self.grid_recieved = False
+        self.goal_pose_recieved = False
 
         return
     
@@ -136,9 +162,12 @@ class AStarAlgorithmNode(Node):
             grid_x = node_curr.grid_x
             grid_y = node_curr.grid_y
 
-            if abs(self.grid_xg - grid_x) < 10 and abs(self.grid_yg - grid_y) < 10: #limits can be changed
+            if abs(self.grid_xg - grid_x) < 5 and abs(self.grid_yg - grid_y) < 5: #limits can be changed
                 pose_list, time = self.end_point(node_curr)
-                return pose_list, time
+                if not pose_list:
+                    return None, time
+                else:
+                    return pose_list, time
             else:
                 self.check_new_cells(node_curr)
     
@@ -147,7 +176,6 @@ class AStarAlgorithmNode(Node):
         
         neighbor_grid_x = np.array([-1, 0, 1, -1, 1, -1, 0, 1]) + node_curr.grid_x
         neighbor_grid_y = np.array([1, 1, 1, 0, 0, -1, -1 ,-1]) + node_curr.grid_y
-        
 
         mask_free = self.grid[neighbor_grid_y, neighbor_grid_x] < 1 #Filter if cells are occupied
 
@@ -198,26 +226,47 @@ class AStarAlgorithmNode(Node):
         #Function when reaching endpoint criteria to trace back from node to parent
 
         pose_list = []
+        x_list = []
+        y_list = []
         time = Time() #Unsure why this tim object is the only working på not rclpy
 
         while node_curr.parent != None:
 
             x, y = self.grid_to_map(node_curr.grid_x, node_curr.grid_y)
-            
-            pose = PoseStamped() #Create a list of PoseStamped
+
+            x_list.append(x)
+            y_list.append(y)
+            node_curr = node_curr.parent
+
+        x_list = x_list[::-1]
+        y_list = y_list[::-1]
+
+        if not x_list:
+            return None, time
+        
+        new_x, new_y = self.reduce_poses(x_list, y_list)
+
+        for i in range(len(new_x)):
+            pose = PoseStamped()
             pose.header.frame_id = 'map'
             pose.header.stamp = time
-            pose.pose.position.x = x
-            pose.pose.position.y = y
+            pose.pose.position.x = new_x[i]
+            pose.pose.position.y = new_y[i]
             pose.pose.position.z = 0.0
-
             pose_list.append(pose)
-            node_curr = node_curr.parent
-        
-        pose_list = pose_list[::-1] #reverse lisst so that first pose is first in list
 
         return pose_list, time
+    
+    def reduce_poses(self, x_list, y_list):
 
+        N = len(x_list) // 5
+
+        cs = interp1d(x_list, y_list)
+
+        x_new = np.linspace(x_list[0], x_list[-1], N)
+        y_new = cs(x_new)
+        
+        return x_new, y_new
 
 def main():
     rclpy.init()

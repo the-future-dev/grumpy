@@ -13,6 +13,8 @@ from geometry_msgs.msg import PoseStamped, PoseArray
 from builtin_interfaces.msg import Time
 from std_msgs.msg import Int16MultiArray
 from robp_interfaces.msg import DutyCycles
+import matplotlib.pyplot as plt
+from std_msgs.msg import Bool
 
 class PlannerExplorationNode(Node):
     
@@ -20,10 +22,10 @@ class PlannerExplorationNode(Node):
     def __init__(self):
         super().__init__('planner_exploration_node') 
 
-        self.free = 0
         self.grid = None
-        self.vel_rot = 0.1
-
+        self.give_goal = True
+        self.give_path = False
+    
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
@@ -32,14 +34,46 @@ class PlannerExplorationNode(Node):
 
         self.grid_sub = self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
         self.path_sub = self.create_subscription(Path, 'path/Astar', self.path_cb, 1)
+        self.drive_feedback_sub = self.create_subscription(Bool, 'drive/feedback', self.drive_cb, 1)
     
     def grid_cb(self, msg:Int16MultiArray):
-        
-        #Return array from message of grid
-        rows = msg.layout.dim[0].size
-        columns = msg.layout.dim[1].size
-        data = msg.data
-        self.grid = np.array([data]).reshape(rows, columns)
+
+            #Return array from message of grid
+            rows = msg.layout.dim[0].size
+            columns = msg.layout.dim[1].size
+            data = msg.data
+            self.grid = np.array([data]).reshape(rows, columns)
+
+            self.choose_next()
+
+    def path_cb(self, msg:Path):
+
+        if self.give_path == True:
+
+            if not msg.poses:
+                self.get_logger().warning(f'Couldnt find path')
+                return 
+    
+            self.path_pub.publish(msg)
+            self.give_path = False
+
+    def drive_cb(self, msg:Bool):
+        #Callback for feedback from drive control if any issue, when implementing obstacle avoidance
+
+        if msg.data == True:
+            self.get_logger().info(f'Getting next point')
+            self.give_goal = True
+
+        cmap = plt.cm.get_cmap('viridis', 5)
+
+        plt.figure(figsize=(10, 10))
+        plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
+        cbar = plt.colorbar()
+        cbar.set_ticks([0, 1, 2, 3, 4])
+        plt.savefig('test')
+        plt.close()
+
+    def current_pos(self):
 
         tf_future = self.tf_buffer.wait_for_transform_async('map', 'base_link', self.get_clock().now())
         rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
@@ -48,57 +82,56 @@ class PlannerExplorationNode(Node):
             tf = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
         except TransformException as ex:
              self.get_logger().info(f'Could not transform{ex}')
-             return
+             return None, None
         
         rob_x = tf.transform.translation.x
         rob_y = tf.transform.translation.y
 
-        self.choose_next(rob_x, rob_y)
+        return rob_x, rob_y
 
-    def path_cb(self, msg:Path):
+    def choose_next(self):
 
-        if msg.poses == None:
-            self.get_logger().warning(f'Couldnt find path')
-            return 
-        
-        self.path_pub.publish(msg)
+        rob_x, rob_y = self.current_pos()
 
-    def choose_next(self, rob_x, rob_y):
+        if rob_x == None:
+            return
 
         indices_unkown = np.argwhere(self.grid == -1)
        
-        if indices_unkown == None:
+        if len(indices_unkown) == 0:
             self.get_logger().info(f'exploration finished')
        
-        x = indices_unkown[0, :]
-        y = indices_unkown[1, :]
+        x = indices_unkown[:, 1]
+        y = indices_unkown[:, 0]
 
         next_x, next_y = self.grid_to_map(x, y)
-        dists = abs(next_x - rob_x)**2 + abs(next_y - rob_y)**2
-        dist_msk = dists < 1
+        dists = np.sqrt(abs(next_x - rob_x)**2 + abs(next_y - rob_y)**2)
+        dist_msk = dists > 10
         dists = dists[dist_msk]
         next_x = next_x[dist_msk]
         next_y = next_y[dist_msk]
 
-        min_index = np.argmin(dist_msk)
+        min_index = np.argmin(dists)
 
         msg_goal = PoseStamped()
         msg_goal.header.frame_id = 'map'
-        msg_goal.pose.position.x = x[min_index]
-        msg_goal.pose.position.y = y[min_index]
+        msg_goal.pose.position.x = float(x[min_index])
+        msg_goal.pose.position.y = float(y[min_index])
         msg_goal.pose.position.z = 0.0
 
-        self.goal_pose_pub.publish(msg_goal)
+        if self.give_goal == True:
+
+            self.goal_pose_pub.publish(msg_goal)
+            self.give_goal = False
+            self.give_path = True
 
     def grid_to_map(self, grid_x, grid_y):
         #Take grid indices and converts to some x,y in that grid
        
-        x = (grid_x*3 - 440/2)/100 #Hard coded parameters right now 
-        y = (grid_y*3 - 260/2)/100
+        x = (grid_x*3 - 1400/2) #Hard coded parameters right now 
+        y = (grid_y*3 - 568/2)
 
         return x, y
-
-
 
 def main():
     rclpy.init()

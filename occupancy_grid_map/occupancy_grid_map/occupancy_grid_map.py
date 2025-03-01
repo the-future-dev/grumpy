@@ -20,10 +20,10 @@ class OccupancyGridMapNode(Node):
         super().__init__('occupancy_grid_map_node') 
 
         #Choose if Exploration or Collecttion, could be implemented with argument later
-        #self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -200],
-                                   #[-130, -130, 66, 66, 284, 284, 130, 130]])
-        self.workspace = np.array([[-220, 220, 220, -220],
-                                   [-130, -130, 130, 130]])
+        self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -200],
+                                   [-130, -130, 66, 66, 284, 284, 130, 130]])
+        #self.workspace = np.array([[-220, 220, 220, -220],
+                                  #[-130, -130, 130, 130]])
 
         self.polygon = Polygon(self.workspace.T)
         self.inflate_polygon = self.polygon.buffer(-30)
@@ -59,9 +59,7 @@ class OccupancyGridMapNode(Node):
         self.fill_outside_grid()
 
         #If collection, call function which maps a given file
-        self.given_objects_boxes()
-
-        self.seen_x, self.seen_y = self.rgbd_scope()
+        #self.given_objects_boxes()
 
         #Subscribe to both lidar scan
         self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
@@ -99,28 +97,11 @@ class OccupancyGridMapNode(Node):
         self.map_to_grid(object_map[1:, :], self.object)
         self.map_to_grid(box_map[1:, :], self.box)
 
-    def rgbd_scope(self):
-        #Function to set scope which will be determined as seen for exploration. 
-
-        N1 = 20
-        N2 = 20
-        start = np.zeros(N1)
-        x_edge = np.ones(N1)*1.5 #Change 1.5 to scope where rgbd can se
-        y_edge = np.linspace(-0.5, 0.5, N1)
-        
-        x_lines = np.linspace(start, x_edge, N2)
-        y_lines = np.linspace(start, y_edge, N2)
-
-        x_free = np.concatenate(x_lines)
-        y_free = np.concatenate(y_lines)
-
-        return x_free, y_free
-        
     #Lidar callback calculates detected object from laser scan, would implement to only run every xth time
     def lidar_cb(self, msg:LaserScan):
 
         self.counter += 1
-        if self.counter % 20 != 0: #Only use every Xth scan 
+        if self.counter % 5 != 0: #Only use every Xth scan 
             return
         
         #Get data from message
@@ -142,7 +123,10 @@ class OccupancyGridMapNode(Node):
         lidar_y = ranges * np.sin(angles)
 
         self.point_to_map(msg, lidar_x, lidar_y, self.obstacle)
-        self.point_to_map(msg, self.seen_x, self.seen_y, self.free)
+        
+        free_x, free_y = self.raytrace_float(lidar_x, lidar_y)
+        
+        self.point_to_map(msg, free_x, free_y, self.free)
 
     #Transform point from one message to map
     def point_to_map(self, msg, x_points, y_points, value):
@@ -200,6 +184,23 @@ class OccupancyGridMapNode(Node):
     
         self.grid[y_grid_points, x_grid_points] = value
 
+        # cmap = plt.cm.get_cmap('viridis', 5)
+        # grid_values = {
+        #     self.unknown: 'gray',
+        #     self.free: 'white',
+        #     self.obstacle: 'black',
+        #     self.object: 'blue',
+        #     self.box: 'red',
+        #     self.outside: 'lightgray'
+        # }
+
+        # plt.figure(figsize=(10, 10))
+        # plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
+        # cbar = plt.colorbar()
+        # cbar.set_ticks([0, 1, 2, 3, 4])
+        # plt.savefig('fantastic_map')
+        # plt.close()
+
         #Publish grid
         msg_grid = Int16MultiArray()
         msg_grid.data = self.grid.flatten().tolist()
@@ -242,18 +243,20 @@ class OccupancyGridMapNode(Node):
         return x_grid_points, y_grid_points
 
     #Creating a linspace between 
-    # def raytrace_float(self, lidar_x, lidar_y):
+    def raytrace_float(self, lidar_x, lidar_y):
 
-    #     start = np.zeros_like(lidar_x)
-    #     x_line = np.linspace(start, lidar_x, 50)
-    #     y_line = np.linspace(start, lidar_y, 50)
-    #     x_line = x_line[:-10]
-    #     y_line = y_line[:-10]
-        
-    #     x_free = np.concatenate(x_line)
-    #     y_free = np.concatenate(y_line)
+        start = np.zeros_like(lidar_x)
+        x_line = np.linspace(start, lidar_x, 50)
+        y_line = np.linspace(start, lidar_y, 50)
+    
+        x_free = np.concatenate(x_line)
+        y_free = np.concatenate(y_line)
 
-    #     return x_free, y_free
+        mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.3) & (y_free < 0.3)
+        x_free = x_free[mask_rgbd_scope]
+        y_free = y_free[mask_rgbd_scope]
+
+        return x_free, y_free
 
 def main():
     rclpy.init()
