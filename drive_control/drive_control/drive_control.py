@@ -27,7 +27,7 @@ class SampleDriveControlNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
-        self.create_publisher(Bool, )
+        self.create_publisher(Bool, 'drive/feedback', 1)
 
         #Create publisher to publish motor control
         self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
@@ -43,8 +43,6 @@ class SampleDriveControlNode(Node):
         msg_feedback = Bool()
         msg_feedback.data = result
         self.drive_feedback.publish(msg_feedback)
-
-        
 
     def set_drive_input(self, x, y):
 

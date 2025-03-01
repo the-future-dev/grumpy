@@ -37,7 +37,7 @@ class PlannerCollectionNode(Node):
         self.object = True #Use to choose if going to object or box
 
         self.path_sub = self.create_subscription(Path, 'path/Astar', self.path_cb, 1) #subscription of astar
-        self.drive_sub = self.create_subscription(Bool, '/drive/feedback', self.drive_cb, 1 ) #subscription to drive control
+        self.drive_sub = self.create_subscription(Bool, 'drive/feedback', self.drive_cb, 1 ) #subscription to drive control
     
 
     def filter_box_objects(self):
@@ -103,7 +103,6 @@ class PlannerCollectionNode(Node):
         if msg.data == True:
             self.get_logger().info(f'Time for Pickup')
             #Here when asking for Pickup and with success:
-
             self.object = False
             self.choose_next()
 
