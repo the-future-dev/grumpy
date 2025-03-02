@@ -20,13 +20,13 @@ class OccupancyGridMapNode(Node):
         super().__init__('occupancy_grid_map_node') 
 
         #Choose if Exploration or Collecttion, could be implemented with argument later
-        self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -200],
+        self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -220],
                                    [-130, -130, 66, 66, 284, 284, 130, 130]])
         #self.workspace = np.array([[-220, 220, 220, -220],
                                   #[-130, -130, 130, 130]])
 
         self.polygon = Polygon(self.workspace.T)
-        self.inflate_polygon = self.polygon.buffer(-30)
+        self.inflate_polygon = self.polygon.buffer(-25)
 
         #Initial data
         self.frame_id = 'map'
@@ -106,7 +106,7 @@ class OccupancyGridMapNode(Node):
         
         #Get data from message
         min_angle = msg.angle_min
-        lower_bound = msg.range_min
+        lower_bound = 0.4
         upper_bound = msg.range_max
         inc = msg.angle_increment
         ranges = np.array(msg.ranges)
@@ -246,13 +246,13 @@ class OccupancyGridMapNode(Node):
     def raytrace_float(self, lidar_x, lidar_y):
 
         start = np.zeros_like(lidar_x)
-        x_line = np.linspace(start, lidar_x, 50)
-        y_line = np.linspace(start, lidar_y, 50)
+        x_line = np.linspace(start, lidar_x, 1000)
+        y_line = np.linspace(start, lidar_y, 1000)
     
         x_free = np.concatenate(x_line)
         y_free = np.concatenate(y_line)
-
-        mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.3) & (y_free < 0.3)
+        
+        mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)
         x_free = x_free[mask_rgbd_scope]
         y_free = y_free[mask_rgbd_scope]
 

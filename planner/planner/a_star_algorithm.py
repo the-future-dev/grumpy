@@ -14,6 +14,7 @@ from geometry_msgs.msg import PoseStamped
 import heapq
 from builtin_interfaces.msg import Time
 from scipy.interpolate import interp1d
+import matplotlib.pyplot as plt
 
 class ANode:
     #Create a A-star Node for queueing
@@ -124,9 +125,18 @@ class AStarAlgorithmNode(Node):
         #Function whihc finally publish un simplified path
 
         if self.goal_pose_recieved == False or self.grid_recieved == False:
-            return
+           return
 
         result = self.solve_path_points()
+
+        cmap = plt.cm.get_cmap('viridis', 5)
+
+        plt.figure(figsize=(10, 10))
+        plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
+        cbar = plt.colorbar()
+        cbar.set_ticks([0, 1, 2, 3, 4])
+        plt.savefig('test_astar')
+        plt.close()
         
         if not result:
             msg_empty = Path()
@@ -151,6 +161,7 @@ class AStarAlgorithmNode(Node):
 
         #Take grid current pose
         grid_x, grid_y = self.current_pos()
+        print(self.grid[grid_y, grid_x])
 
         G = abs(self.grid_xg - grid_x)**2 + abs(self.grid_yg - grid_y)**2 
         node_curr = ANode(grid_x, grid_y, None, 0, G) #Initial node, current pose

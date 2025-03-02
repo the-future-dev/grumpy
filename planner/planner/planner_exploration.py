@@ -22,9 +22,14 @@ class PlannerExplorationNode(Node):
     def __init__(self):
         super().__init__('planner_exploration_node') 
 
+        self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -220],
+                                   [-130, -130, 66, 66, 284, 284, 130, 130]])
+        
+        self.n_corners = self.workspace.shape[1]
+        self.counter = 0
+
         self.grid = None
-        self.give_goal = True
-        self.give_path = False
+        self.first = True
     
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
@@ -44,25 +49,27 @@ class PlannerExplorationNode(Node):
             data = msg.data
             self.grid = np.array([data]).reshape(rows, columns)
 
-            self.choose_next()
+            if self.first == True:
+                self.first = False
+                self.choose_next()
 
     def path_cb(self, msg:Path):
+        print('path msg')
 
-        if self.give_path == True:
+        if not msg.poses:
+            self.get_logger().warning(f'No path, could alreday be close enough')
+            self.choose_next()
+            return 
 
-            if not msg.poses:
-                self.get_logger().warning(f'Couldnt find path')
-                return 
-    
-            self.path_pub.publish(msg)
-            self.give_path = False
+        self.path_pub.publish(msg)
+        
 
     def drive_cb(self, msg:Bool):
         #Callback for feedback from drive control if any issue, when implementing obstacle avoidance
 
         if msg.data == True:
             self.get_logger().info(f'Getting next point')
-            self.give_goal = True
+            self.choose_next()
 
         cmap = plt.cm.get_cmap('viridis', 5)
 
@@ -91,11 +98,46 @@ class PlannerExplorationNode(Node):
 
     def choose_next(self):
 
+        if self.counter < self.n_corners:
+            self.corner_goal()
+        else:
+            self.unknown_goal()
+
+        return
+
+    def corner_goal(self):
+
+        msg_goal = PoseStamped()
+        msg_goal.header.frame_id = 'map'
+
+        x_corner = self.workspace[0, self.counter]
+        y_corner = self.workspace[1, self.counter]
+
+        if x_corner < 0:
+            next_x = float(x_corner + 40)
+        else:
+            next_x = float(x_corner - 40)
+        if y_corner < 0:
+            next_y = float(y_corner + 40)
+        else:
+            next_y = float(y_corner - 40)
+    
+        msg_goal.pose.position.x = next_x
+        msg_goal.pose.position.y = next_y
+        msg_goal.pose.position.z = 0.0
+
+        print(msg_goal.pose.position.x)
+        self.goal_pose_pub.publish(msg_goal)
+        self.counter += 1
+        
+        return
+    
+    def unknown_goal(self):
+
+        msg_goal = PoseStamped()
+        msg_goal.header.frame_id = 'map'
+            
         rob_x, rob_y = self.current_pos()
-
-        if rob_x == None:
-            return
-
         indices_unkown = np.argwhere(self.grid == -1)
        
         if len(indices_unkown) == 0:
@@ -106,24 +148,19 @@ class PlannerExplorationNode(Node):
 
         next_x, next_y = self.grid_to_map(x, y)
         dists = np.sqrt(abs(next_x - rob_x)**2 + abs(next_y - rob_y)**2)
-        dist_msk = dists > 10
+        dist_msk = dists > 150
         dists = dists[dist_msk]
         next_x = next_x[dist_msk]
         next_y = next_y[dist_msk]
 
         min_index = np.argmin(dists)
 
-        msg_goal = PoseStamped()
-        msg_goal.header.frame_id = 'map'
-        msg_goal.pose.position.x = float(x[min_index])
-        msg_goal.pose.position.y = float(y[min_index])
+        msg_goal.pose.position.x = float(next_x[min_index])
+        msg_goal.pose.position.y = float(next_y[min_index])
         msg_goal.pose.position.z = 0.0
+        self.goal_pose_pub.publish(msg_goal)
 
-        if self.give_goal == True:
-
-            self.goal_pose_pub.publish(msg_goal)
-            self.give_goal = False
-            self.give_path = True
+        return
 
     def grid_to_map(self, grid_x, grid_y):
         #Take grid indices and converts to some x,y in that grid
