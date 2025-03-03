@@ -20,13 +20,13 @@ class OccupancyGridMapNode(Node):
         super().__init__('occupancy_grid_map_node') 
 
         #Choose if Exploration or Collecttion, could be implemented with argument later
-        #self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -200],
-                                   #[-130, -130, 66, 66, 284, 284, 130, 130]])
-        self.workspace = np.array([[-220, 220, 220, -220],
-                                   [-130, -130, 130, 130]])
+        self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -220],
+                                   [-130, -130, 66, 66, 284, 284, 130, 130]])
+        #self.workspace = np.array([[-220, 220, 220, -220],
+                                  #[-130, -130, 130, 130]])
 
         self.polygon = Polygon(self.workspace.T)
-        self.inflate_polygon = self.polygon.buffer(-30)
+        self.inflate_polygon = self.polygon.buffer(-25)
 
         #Initial data
         self.frame_id = 'map'
@@ -37,7 +37,6 @@ class OccupancyGridMapNode(Node):
         #Values for grid cells
         self.unknown = -1
         self.free = 0
-
         self.obstacle = 1
         self.object = 2
         self.box = 3
@@ -49,6 +48,10 @@ class OccupancyGridMapNode(Node):
         self.grid_ylength = int(self.map_ylength/self.resolution)
         self.grid = np.full((self.grid_ylength, self.grid_xlength), self.unknown, dtype=np.int16)
 
+        #Transfrom between lidar link and map
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
+
         #Create publisher fo grid
         self.grid_pub = self.create_publisher(Int16MultiArray, 'map/gridmap', 10)
 
@@ -56,17 +59,10 @@ class OccupancyGridMapNode(Node):
         self.fill_outside_grid()
 
         #If collection, call function which maps a given file
-        self.given_objects_boxes()
-
-        #Transfrom between lidar link and map
-        self.tf_buffer = Buffer()
-        self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
+        #self.given_objects_boxes()
 
         #Subscribe to both lidar scan
         self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
-
-        #Subsrciber to object mapping
-        #self.object_mapping = self.create_subscription(ObjectDetection1D, 'object_mapping/object_poses', self.rgbd_cb, 10)
 
     #Function which fills the space outside workspace as occupied, very slow now but have not succeded with other
     def fill_outside_grid(self):
@@ -86,9 +82,10 @@ class OccupancyGridMapNode(Node):
         return
     
     def given_objects_boxes(self):
+        #Function to set given objects from a map into grid map in collection
         
         B = 4
-        object_box_map = np.array([[1, 2, 3, B , 3],
+        object_box_map = np.array([[1, 2, 3, B, 3],
                                [-199, 206, 187, 16, -206],
                                [-116, -100, 118, 122, 107]])
         
@@ -99,17 +96,17 @@ class OccupancyGridMapNode(Node):
 
         self.map_to_grid(object_map[1:, :], self.object)
         self.map_to_grid(box_map[1:, :], self.box)
-        
+
     #Lidar callback calculates detected object from laser scan, would implement to only run every xth time
     def lidar_cb(self, msg:LaserScan):
 
         self.counter += 1
-        if self.counter % 10 != 0: #Only use every 10th scan 
+        if self.counter % 5 != 0: #Only use every Xth scan 
             return
         
         #Get data from message
         min_angle = msg.angle_min
-        lower_bound = msg.range_min
+        lower_bound = 0.4
         upper_bound = msg.range_max
         inc = msg.angle_increment
         ranges = np.array(msg.ranges)
@@ -126,9 +123,10 @@ class OccupancyGridMapNode(Node):
         lidar_y = ranges * np.sin(angles)
 
         self.point_to_map(msg, lidar_x, lidar_y, self.obstacle)
+        
         free_x, free_y = self.raytrace_float(lidar_x, lidar_y)
+        
         self.point_to_map(msg, free_x, free_y, self.free)
-    
 
     #Transform point from one message to map
     def point_to_map(self, msg, x_points, y_points, value):
@@ -186,6 +184,23 @@ class OccupancyGridMapNode(Node):
     
         self.grid[y_grid_points, x_grid_points] = value
 
+        # cmap = plt.cm.get_cmap('viridis', 5)
+        # grid_values = {
+        #     self.unknown: 'gray',
+        #     self.free: 'white',
+        #     self.obstacle: 'black',
+        #     self.object: 'blue',
+        #     self.box: 'red',
+        #     self.outside: 'lightgray'
+        # }
+
+        # plt.figure(figsize=(10, 10))
+        # plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
+        # cbar = plt.colorbar()
+        # cbar.set_ticks([0, 1, 2, 3, 4])
+        # plt.savefig('fantastic_map')
+        # plt.close()
+
         #Publish grid
         msg_grid = Int16MultiArray()
         msg_grid.data = self.grid.flatten().tolist()
@@ -219,6 +234,7 @@ class OccupancyGridMapNode(Node):
             mask_not_object = self.grid[y_grid_points, x_grid_points] != self.object
             x_grid_points = x_grid_points[mask_not_object]
             y_grid_points = y_grid_points[mask_not_object]
+            
         if value == self.free:
             mask_unknown = self.grid[y_grid_points, x_grid_points] == self.unknown
             x_grid_points = x_grid_points[mask_unknown]
@@ -226,17 +242,19 @@ class OccupancyGridMapNode(Node):
 
         return x_grid_points, y_grid_points
 
-    #Creating a linspace between lidar-link and point so that teh point in between can be marked as free
+    #Creating a linspace between 
     def raytrace_float(self, lidar_x, lidar_y):
 
         start = np.zeros_like(lidar_x)
-        x_line = np.linspace(start, lidar_x, 50)
-        y_line = np.linspace(start, lidar_y, 50)
-        x_line = x_line[:-10]
-        y_line = y_line[:-10]
-        
+        x_line = np.linspace(start, lidar_x, 1000)
+        y_line = np.linspace(start, lidar_y, 1000)
+    
         x_free = np.concatenate(x_line)
         y_free = np.concatenate(y_line)
+        
+        mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)
+        x_free = x_free[mask_rgbd_scope]
+        y_free = y_free[mask_rgbd_scope]
 
         return x_free, y_free
 

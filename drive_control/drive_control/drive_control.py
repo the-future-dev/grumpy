@@ -19,32 +19,37 @@ class SampleDriveControlNode(Node):
     def __init__(self):
         super().__init__('sample_drive_control_node')
 
-        self.vel_forward = 0.12
+        self.vel_forward = 0.15
         self.vel_rotate = 0.1
-        self.vel_small_rotate = 0.01
+        self.vel_small_rotate = 0.02
+        self.vel_arrived = 0.08
 
         #Create buffer to look for transform 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
-        # self.create_publisher(Bool, )
+        self.create_publisher(Bool, 'drive/feedback', 1)
 
         #Create publisher to publish motor control
         self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
         self.drive_feedback = self.create_publisher(Bool, '/drive/feedback', 1)
 
-        self.create_subscription(Path, 'path/nextgoal', self.path_cb, 1)
+        self.create_subscription(Path, 'path/next_goal', self.path_cb, 1)
 
     def path_cb(self, msg:Path):
 
         for pose in msg.poses:
-          result =   self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+          result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+          print(pose.pose.position.x, pose.pose.position.y)
+
+        msg_stop = DutyCycles()
+        msg_stop.duty_cycle_right = 0.0
+        msg_stop.duty_cycle_left = 0.0
+        self.motor_publisher.publish(msg_stop)
 
         msg_feedback = Bool()
         msg_feedback.data = result
         self.drive_feedback.publish(msg_feedback)
-
-        
 
     def set_drive_input(self, x, y):
 
@@ -77,10 +82,10 @@ class SampleDriveControlNode(Node):
             y = point_transform.point.y
         
             #If y is zero and x > 0 means perfect alignment otherwise turning
-            if x >= 0.0 and abs(y) < 0.02:
+            if x >= 0.0 and abs(y) < 0.05:
                 #Stop turning
-                msg.duty_cycle_right = 0.0
-                msg.duty_cycle_left = 0.0
+                msg.duty_cycle_right = self.vel_arrived
+                msg.duty_cycle_left = self.vel_arrived
                 self.motor_publisher.publish(msg)
                 break
             elif y >= 0.0:
@@ -111,19 +116,19 @@ class SampleDriveControlNode(Node):
             x = point_transform.point.x
             y = point_transform.point.y
 
-            if abs(x) < 0.02:
+            if abs(x) < 0.05:
                 #Stop driving
-                msg.duty_cycle_right = 0.0
-                msg.duty_cycle_left = 0.0
+                msg.duty_cycle_right = self.vel_arrived
+                msg.duty_cycle_left = self.vel_arrived
                 self.motor_publisher.publish(msg)
                 self.get_logger().info(f'SUCCESS, point reached')
                 return True
-            elif y > 0.02:
+            elif y > 0.05:
                 #Small turn left
                 msg.duty_cycle_right = self.vel_forward + self.vel_small_rotate
                 msg.duty_cycle_left = self.vel_forward - self.vel_small_rotate
                 self.motor_publisher.publish(msg)
-            elif y < 0.02:
+            elif y < 0.05:
                 #Small turn right
                 msg.duty_cycle_right = self.vel_forward - self.vel_small_rotate
                 msg.duty_cycle_left = self.vel_forward + self.vel_small_rotate
