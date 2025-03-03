@@ -67,7 +67,7 @@ class Detection(Node):
             package_share_directory = packages.get_package_share_directory('perception_pkg')
             model_path = os.path.join(package_share_directory, 'models', '04.pth')
             
-            self.DEVICE = "cpu"
+            self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
             self.classification_model = PointNetClassifier(PointNetEncoderXYZRGB(in_channels=6, out_channels=1024, use_layernorm=True), num_classes=len(ObjectEnum)).to(self.DEVICE)
             self.classification_model.load_state_dict(torch.load(model_path, map_location=self.DEVICE))
             self.get_logger().info(f"Classification model loaded in {self.DEVICE} completed")
@@ -75,7 +75,7 @@ class Detection(Node):
         except Exception as e:
             self.get_logger().error(f"Error loading model: {e}")
 
-        self.object_data_list = [] # TODO: remove debug
+        # self.object_data_list = [] # TODO: remove debug
 
     def cloud_callback(self, msg: PointCloud2):
         gen = pc2.read_points_numpy(msg, skip_nans=True) # Convert ROS -> NumPy        
@@ -89,7 +89,7 @@ class Detection(Node):
         #  - 2D disance less than 2 meters
         #  - z-axis height between [0.010, 0.2]
         distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 1.5
-        height_relevance = (points[:, 2] <= 0.2) & (points[:, 2] >= 0.010)
+        height_relevance = (points[:, 2] <= 0.15) & (points[:, 2] >= 0.010)
         
         relevant_mask = distance_relevance & height_relevance
         relevant_indices = np.where(relevant_mask)[0]
@@ -166,6 +166,11 @@ class Detection(Node):
                 self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{label}| {object_label}")
             else:
                 self.get_logger().info(f"Label {label} Neglecting potential cluster")
+            
+            del cluster_points
+            del cluster_rgb
+        
+        del gen
     
     def unpack_rgb(self, packed_colors):
         """
@@ -298,7 +303,9 @@ class Detection(Node):
         #  TODO: VOLUME BASED Pre-filtering
         cluster_tensor = torch.tensor(cluster, dtype=torch.float32).unsqueeze(0).to(self.DEVICE)
 
-        pred_values = self.classification_model(cluster_tensor)
+        with torch.no_grad():
+            pred_values = self.classification_model(cluster_tensor)
+        
         prediction = torch.argmax(pred_values, dim=1)
         pred_label = prediction.item()
 
@@ -307,7 +314,7 @@ class Detection(Node):
         return {
             'label': pred_label, 
             'centroid': centroid,
-        } 
+        }
 
 
     def save_object_data(self):
