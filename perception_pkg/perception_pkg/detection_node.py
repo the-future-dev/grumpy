@@ -70,8 +70,8 @@ class Detection(Node):
             self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
             self.classification_model = PointNetClassifier(PointNetEncoderXYZRGB(in_channels=6, out_channels=1024, use_layernorm=True), num_classes=len(ObjectEnum)).to(self.DEVICE)
             self.classification_model.load_state_dict(torch.load(model_path, map_location=self.DEVICE))
+            self.classification_model.eval()
             self.get_logger().info(f"Classification model loaded in {self.DEVICE} completed")
-
         except Exception as e:
             self.get_logger().error(f"Error loading model: {e}")
 

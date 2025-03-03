@@ -30,14 +30,16 @@ class PlannerCollectionNode(Node):
 
         B = 4
         self.positions = np.array([[1, 2, 3, B, 3],
-                             [-199, 206, 187, 161, -206],
-                             [-116, -100, 118, 122, 107]])
+                             [-199, 206, 187, -60, -206],
+                             [-116, -100, 118, -50, 107]])
         
         self.object_poses, self.box_poses = self.filter_box_objects()
         self.object = True #Use to choose if going to object or box
 
+        self.choose_next()
+
         self.path_sub = self.create_subscription(Path, 'path/Astar', self.path_cb, 1) #subscription of astar
-        self.drive_sub = self.create_subscription(Bool, '/drive/feedback', self.drive_cb, 1 ) #subscription to drive control
+        self.drive_sub = self.create_subscription(Bool, 'drive/feedback', self.drive_cb, 1 ) #subscription to drive control
     
 
     def filter_box_objects(self):
@@ -51,7 +53,7 @@ class PlannerCollectionNode(Node):
 
         #Get current pose
         tf_future = self.tf_buffer.wait_for_transform_async('map', 'base_link', self.get_clock().now())
-        rclpy.spin_until_future_complete(self, tf_future, timeout_sec=2)
+        rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 
         try:
             tf = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
@@ -71,11 +73,13 @@ class PlannerCollectionNode(Node):
             self.object_poses = np.delete(self.object_poses, low_ind)
         
         elif self.object == False:
+            print('box')
 
             dists = abs(self.box_poses[0,:] - rob_x)**2 + abs(self.box_poses[0,:] - rob_y)**2
             low_ind = np.argmin(dists)
             goal_pose = self.box_poses[:, low_ind]
-            self.box_poses = np.delete(self.box_poses, low_ind)
+
+            print(goal_pose)
 
         #Publisg goal point to A star
         pose_msg = PoseStamped()
@@ -91,11 +95,12 @@ class PlannerCollectionNode(Node):
         #Call backf for feedback from astar is the published message is None and publish path to drive control
         #Here poses should be minimized
 
-        if msg.poses == None:
-            self.get_logger().warning(f'Couldnt find path')
-            return 
-        
-        self.path_pub.publish(msg)
+        if not msg.poses:
+            self.get_logger().info(f'already close, start pickup')
+            self.object = False
+            self.choose_next()
+        else:
+            self.path_pub.publish(msg)
 
     def drive_cb(self, msg:Bool):
         #Callback for feedback from drive control if any issue, when implementing obstacle avoidance
@@ -103,7 +108,6 @@ class PlannerCollectionNode(Node):
         if msg.data == True:
             self.get_logger().info(f'Time for Pickup')
             #Here when asking for Pickup and with success:
-
             self.object = False
             self.choose_next()
 
