@@ -101,12 +101,12 @@ class OccupancyGridMapNode(Node):
     def lidar_cb(self, msg:LaserScan):
 
         self.counter += 1
-        if self.counter % 5 != 0: #Only use every Xth scan 
+        if self.counter % 10 != 0: #Only use every Xth scan 
             return
         
         #Get data from message
         min_angle = msg.angle_min
-        lower_bound = 0.4
+        lower_bound = 0.2
         upper_bound = msg.range_max
         inc = msg.angle_increment
         ranges = np.array(msg.ranges)

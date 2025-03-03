@@ -164,7 +164,7 @@ class ICP_node(Node):
         # Do ICP algorithm
         result_icp = registration_icp(source=pointcloud,
                         target=self.reference_cloud,
-                        max_correspondence_distance= 0.02,
+                        max_correspondence_distance= 0.1,
                         init=previous_transform, # The algorithm start with this and then tries to optimize for a better transform for map-odom
                         estimation_method=TransformationEstimationPointToPoint(),
                         criteria=ICPConvergenceCriteria(relative_fitness=1e-6, relative_rmse=1e-6, max_iteration=1000)

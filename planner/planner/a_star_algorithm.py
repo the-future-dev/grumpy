@@ -126,17 +126,17 @@ class AStarAlgorithmNode(Node):
 
         if self.goal_pose_recieved == False or self.grid_recieved == False:
            return
-
+        self.get_logger().info(f'INTO A_STAR')
         result = self.solve_path_points()
 
-        cmap = plt.cm.get_cmap('viridis', 5)
+        # cmap = plt.cm.get_cmap('viridis', 5)
 
-        plt.figure(figsize=(10, 10))
-        plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
-        cbar = plt.colorbar()
-        cbar.set_ticks([0, 1, 2, 3, 4])
-        plt.savefig('test_astar')
-        plt.close()
+        # plt.figure(figsize=(10, 10))
+        # plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
+        # cbar = plt.colorbar()
+        # cbar.set_ticks([0, 1, 2, 3, 4])
+        # plt.savefig('test_astar')
+        # plt.close()
         
         if not result:
             msg_empty = Path()
@@ -149,7 +149,11 @@ class AStarAlgorithmNode(Node):
                 msg_path.header.stamp = time
                 msg_path.poses = list_poses
 
+                self.get_logger().info(f'path will be published from astar')
                 self.path_pub.publish(msg_path)
+            else:
+                msg_empty = Path()
+                self.path_pub.publish(msg_empty)
 
         self.grid_recieved = False
         self.goal_pose_recieved = False
@@ -161,7 +165,7 @@ class AStarAlgorithmNode(Node):
 
         #Take grid current pose
         grid_x, grid_y = self.current_pos()
-        print(self.grid[grid_y, grid_x])
+        print(self.grid[self.grid_yg, self.grid_xg], self.grid[grid_y, grid_x])
 
         G = abs(self.grid_xg - grid_x)**2 + abs(self.grid_yg - grid_y)**2 
         node_curr = ANode(grid_x, grid_y, None, 0, G) #Initial node, current pose

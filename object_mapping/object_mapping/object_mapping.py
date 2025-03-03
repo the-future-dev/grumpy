@@ -34,7 +34,7 @@ class ObjectMapping(Node):
         self.object_list = []
 
         # Set margin for adding new object
-        self.margin = 0.1
+        self.margin = 0.5
 
         # Intialize map file
         self.filepath = 'object_map.txt'

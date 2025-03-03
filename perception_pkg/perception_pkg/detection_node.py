@@ -6,7 +6,7 @@ import rclpy
 from rclpy.node import Node
 import sensor_msgs_py.point_cloud2 as pc2
 
-from sensor_msgs.msg import PointCloud2, PointField
+from sensor_msgs.msg import PointCloud2
 from rclpy.node import Node
 
 from grumpy_interfaces.msg import ObjectDetection1D 
@@ -89,7 +89,7 @@ class Detection(Node):
         #  - 2D disance less than 2 meters
         #  - z-axis height between [0.010, 0.2]
         distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 1.5
-        height_relevance = (points[:, 2] <= 0.15) & (points[:, 2] >= 0.010)
+        height_relevance = (points[:, 2] <= 0.19) & (points[:, 2] >= 0.010)
         
         relevant_mask = distance_relevance & height_relevance
         relevant_indices = np.where(relevant_mask)[0]
@@ -109,10 +109,12 @@ class Detection(Node):
             return
         
         # Point Clustering #######################################################################
-        # eps = 0.02
-        # min_samples = 40
-        eps = 0.10
-        min_samples = 80
+        downsampled_points, downsampled_indices = self.voxel_grid_filter(points, leaf_size=0.01)
+        points = downsampled_points
+        colors_rgb = colors_rgb[downsampled_indices]
+        eps = 0.025
+        min_samples = 25
+        
         db = DBSCAN(eps=eps, min_samples=min_samples)
         labels = db.fit_predict(points)
         
@@ -155,23 +157,14 @@ class Detection(Node):
                     s.pose.position.z = z_obj
 
                     self._object_pose.publish(s)
-
-                packed_rgb = self.pack_rgb(cluster_rgb)
-                cluster_pc2 = np.concatenate([cluster_points, packed_rgb], axis=1)
-
+                cluster_pc2 = np.concatenate([cluster_points, self.pack_rgb(cluster_rgb)], axis=1) # TODO: remove debug
                 msgs_pub = pc2.create_cloud(msg.header, msg.fields, cluster_pc2) # TODO: remove debug
-                msgs_pub.header.frame_id = "base_link"
+                msgs_pub.header.frame_id = "base_link" # TODO: remove debug
                 self._pub.publish(msgs_pub) # TODO: remove debug
 
                 self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{label}| {object_label}")
             else:
                 self.get_logger().info(f"Label {label} Neglecting potential cluster")
-            
-            del cluster_points
-            del cluster_rgb
-        
-        del gen
-    
     def unpack_rgb(self, packed_colors):
         """
         Args:
@@ -297,6 +290,37 @@ class Detection(Node):
         non_ground_indices = np.where(~ground_mask)[0]
 
         return ground_indices, non_ground_indices
+
+    def voxel_grid_filter(self, points, leaf_size=0.05):
+        """Downsamples the point cloud using a voxel grid filter while keeping track of the original indices."""
+        # Create voxel grid by downsampling points to grid size
+        # Points are binned by floor division on leaf size.
+        grid_indices = np.floor(points[:, :3] / leaf_size).astype(int)
+        
+        # Create a dictionary to hold the points in each grid cell, with original indices as values
+        voxel_dict = {}
+        
+        for idx, grid_idx in enumerate(grid_indices):
+            grid_tuple = tuple(grid_idx)  # Make grid_idx a tuple for use as dictionary key
+            if grid_tuple not in voxel_dict:
+                voxel_dict[grid_tuple] = []
+            voxel_dict[grid_tuple].append(idx)  # Store the original point index
+        
+        # For each grid cell, compute the centroid and keep track of the original indices
+        downsampled_points = []
+        downsampled_indices = []
+
+        for voxel_indices in voxel_dict.values():
+            points_in_cell = points[voxel_indices]
+            centroid = np.mean(points_in_cell, axis=0)
+            downsampled_points.append(centroid)
+            downsampled_indices.append(voxel_indices[0])  # Keep the index of the first point in this voxel
+        
+        downsampled_points = np.array(downsampled_points)
+        downsampled_indices = np.array(downsampled_indices)
+
+        return downsampled_points, downsampled_indices
+
     
     def classify_object(self, cluster):
         """Classifies a point cloud cluster into an object type."""
@@ -310,6 +334,8 @@ class Detection(Node):
         pred_label = prediction.item()
 
         centroid = np.mean(cluster[:, :3], axis=0)
+
+        torch.cuda.empty_cache()
 
         return {
             'label': pred_label, 

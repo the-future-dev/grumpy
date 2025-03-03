@@ -15,6 +15,8 @@ from std_msgs.msg import Int16MultiArray
 from robp_interfaces.msg import DutyCycles
 import matplotlib.pyplot as plt
 from std_msgs.msg import Bool
+from robp_interfaces.msg import DutyCycles
+
 
 class PlannerExplorationNode(Node):
     
@@ -26,7 +28,7 @@ class PlannerExplorationNode(Node):
                                    [-130, -130, 66, 66, 284, 284, 130, 130]])
         
         self.n_corners = self.workspace.shape[1]
-        self.counter = 0
+        self.counter = 8
 
         self.grid = None
         self.first = True
@@ -36,6 +38,7 @@ class PlannerExplorationNode(Node):
 
         self.goal_pose_pub = self.create_publisher(PoseStamped, 'pose/goal_next', 1)
         self.path_pub = self.create_publisher(Path, 'path/next_goal', 1)
+        self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
 
         self.grid_sub = self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
         self.path_sub = self.create_subscription(Path, 'path/Astar', self.path_cb, 1)
@@ -142,13 +145,19 @@ class PlannerExplorationNode(Node):
        
         if len(indices_unkown) == 0:
             self.get_logger().info(f'exploration finished')
-       
+            msg_stop = DutyCycles()
+            msg_stop.duty_cycle_right = 0.0
+            msg_stop.duty_cycle_left = 0.0
+            self.motor_publisher.publish(msg_stop)
+            return
+
         x = indices_unkown[:, 1]
         y = indices_unkown[:, 0]
 
         next_x, next_y = self.grid_to_map(x, y)
+
         dists = np.sqrt(abs(next_x - rob_x)**2 + abs(next_y - rob_y)**2)
-        dist_msk = dists > 150
+        dist_msk = dists > 200
         dists = dists[dist_msk]
         next_x = next_x[dist_msk]
         next_y = next_y[dist_msk]
@@ -158,6 +167,7 @@ class PlannerExplorationNode(Node):
         msg_goal.pose.position.x = float(next_x[min_index])
         msg_goal.pose.position.y = float(next_y[min_index])
         msg_goal.pose.position.z = 0.0
+        
         self.goal_pose_pub.publish(msg_goal)
 
         return
