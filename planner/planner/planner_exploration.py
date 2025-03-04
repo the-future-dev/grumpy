@@ -16,6 +16,7 @@ from robp_interfaces.msg import DutyCycles
 import matplotlib.pyplot as plt
 from std_msgs.msg import Bool
 from robp_interfaces.msg import DutyCycles
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 
 
 class PlannerExplorationNode(Node):
@@ -23,12 +24,14 @@ class PlannerExplorationNode(Node):
     #Initialzie oppucancy grid node
     def __init__(self):
         super().__init__('planner_exploration_node') 
+        
+        qos_profile = QoSProfile(depth = 1, durability = QoSDurabilityPolicy.TRANSIENT_LOCAL)
 
         self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -220],
                                    [-130, -130, 66, 66, 284, 284, 130, 130]])
         
         self.n_corners = self.workspace.shape[1]
-        self.counter = 8
+        self.counter = 0
 
         self.grid = None
         self.first = True
@@ -41,7 +44,7 @@ class PlannerExplorationNode(Node):
         self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
 
         self.grid_sub = self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
-        self.path_sub = self.create_subscription(Path, 'path/Astar', self.path_cb, 1)
+        self.path_sub = self.create_subscription(Path, 'path/Astar', self.path_cb, qos_profile)
         self.drive_feedback_sub = self.create_subscription(Bool, 'drive/feedback', self.drive_cb, 1)
     
     def grid_cb(self, msg:Int16MultiArray):

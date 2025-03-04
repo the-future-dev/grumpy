@@ -77,7 +77,7 @@ class Detection(Node):
         except Exception as e:
             self.get_logger().error(f"Error loading model: {e}")
 
-        # self.object_data_list = [] # TODO: remove for inference only
+        self.object_data_list = [] # TODO: remove for inference only
 
     def cloud_callback(self, msg: PointCloud2):
         """From Point Cloud to Object Classification!
@@ -153,15 +153,14 @@ class Detection(Node):
                 continue
             
             # Neural Network Train: save data Locally ##########################################################################
-            # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
-            # self.object_data_list.append(cluster)
-            # data_save_path = "boxes"
-            # arrays_to_save = {}
-            # for i, item in enumerate(self.object_data_list):
-            #     arrays_to_save[f'cluster_{i}'] = item
-
-            # np.savez_compressed(data_save_path, **arrays_to_save)
-            # self.get_logger().info(f"Saved object data to {data_save_path}")
+            cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
+            self.object_data_list.append(cluster)
+            data_save_path = "milestone2"
+            arrays_to_save = {}
+            for i, item in enumerate(self.object_data_list):
+                arrays_to_save[f'cluster_{i}'] = item
+            np.savez_compressed(data_save_path, **arrays_to_save)
+            self.get_logger().info(f"Saved object data to {data_save_path}")
             
             # Neural Network Inference:
             object_cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)

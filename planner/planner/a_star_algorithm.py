@@ -15,6 +15,7 @@ import heapq
 from builtin_interfaces.msg import Time
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 
 class ANode:
     #Create a A-star Node for queueing
@@ -41,6 +42,8 @@ class AStarAlgorithmNode(Node):
 
     def __init__(self):
         super().__init__('a_star_algorithm_node')
+
+        qos_profile = QoSProfile(depth = 1, durability = QoSDurabilityPolicy.TRANSIENT_LOCAL)
 
         # Priotrity ques for A star algorithm
         self.Q = None
@@ -243,7 +246,8 @@ class AStarAlgorithmNode(Node):
         pose_list = []
         x_list = []
         y_list = []
-        time = Time() #Unsure why this tim object is the only working på not rclpy
+        # time = Time() #Unsure why this tim object is the only working på not rclpy
+        time = self.get_clock().now().to_msg()
 
         while node_curr.parent != None:
 
