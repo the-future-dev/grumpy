@@ -64,10 +64,12 @@ class Detection(Node):
 
         
         try:
+            # Neural Network Classificator load 
+            self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+            
             package_share_directory = packages.get_package_share_directory('perception_pkg')
             model_path = os.path.join(package_share_directory, 'models', '04.pth')
             
-            self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
             self.classification_model = PointNetClassifier(PointNetEncoderXYZRGB(in_channels=6, out_channels=1024, use_layernorm=True), num_classes=len(ObjectEnum)).to(self.DEVICE)
             self.classification_model.load_state_dict(torch.load(model_path, map_location=self.DEVICE))
             self.classification_model.eval()
@@ -75,20 +77,22 @@ class Detection(Node):
         except Exception as e:
             self.get_logger().error(f"Error loading model: {e}")
 
-        # self.object_data_list = [] # TODO: remove debug
+        # self.object_data_list = [] # TODO: remove for inference only
 
     def cloud_callback(self, msg: PointCloud2):
-        gen = pc2.read_points_numpy(msg, skip_nans=True) # Convert ROS -> NumPy        
+        """From Point Cloud to Object Classification!
+        """
+        gen = pc2.read_points_numpy(msg, skip_nans=True)
         points = np.asarray(gen[:, :3])
         colors_rgb = self.unpack_rgb(gen[:, 3])
 
-        # GROUND REMOVAL #######################################################################
+        # 1. GROUND REMOVAL #######################################################################
         points = self.fast_transform2(points) # points transformed to the robot's frame 
 
-        # Analyze relevant points
-        #  - 2D disance less than 2 meters
-        #  - z-axis height between [0.010, 0.2]
-        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 1.5
+        # Relevant points:
+        #  - distance: (x²+y²)  less than 1.5 meters
+        #  - height:   (z)      between [0.010, 0.2]
+        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 2.0
         height_relevance = (points[:, 2] <= 0.19) & (points[:, 2] >= 0.010)
         
         relevant_mask = distance_relevance & height_relevance
@@ -97,25 +101,34 @@ class Detection(Node):
         points = points[relevant_indices, :]
         colors_rgb = colors_rgb[relevant_indices, :]
 
-        # Ground filtering 
+        # Ground filtering: 
         # - slope based method
-        ground_inds, _ = self.slope_based_ground_filter(points[:, 0], points[:, 1], points[:, 2])
+        slope_threshold = 100
+        number_of_neighbors = 1
+        ground_inds, _ = self.slope_based_ground_filter(points[:, 0], points[:, 1], points[:, 2],
+                                                        SLOPE_THRESHOLD=slope_threshold, K=number_of_neighbors)
         non_ground_mask = ~np.isin(np.arange(len(points)), ground_inds, invert=False)
         gen = gen[non_ground_mask]
         points = points[non_ground_mask]
         colors_rgb = colors_rgb[non_ground_mask]
 
-        if points.size == 0: #No relevant points detected after filtering.
+        if points.size == 0:
             return
-        
-        # Point Clustering #######################################################################
-        downsampled_points, downsampled_indices = self.voxel_grid_filter(points, leaf_size=0.01)
+
+        # 2. Point Clustering #######################################################################
+        # Grid Filter (leaf size): 1 cm
+        # Grouping distance (eps): 2.5 cm
+        # Core Point min samples : 25
+        # Number of parallel jobs: 3
+        cluster_leaf_size= 0.01
+        cluster_eps = 0.025
+        cluster_min_samples = 25
+        downsampled_points, downsampled_indices = self.voxel_grid_filter(points, leaf_size=cluster_leaf_size)
         points = downsampled_points
         colors_rgb = colors_rgb[downsampled_indices]
-        eps = 0.025
-        min_samples = 25
         
-        db = DBSCAN(eps=eps, min_samples=min_samples)
+        db = DBSCAN(eps=cluster_eps, min_samples=cluster_min_samples)
+                    # n_jobs=cluster_n_jobs, algorithm=cluster_algorithm
         labels = db.fit_predict(points)
         
         for label in set(labels):
@@ -126,45 +139,61 @@ class Detection(Node):
             cluster_points = points[cluster_indices]
             cluster_rgb = colors_rgb[cluster_indices]
 
+            cluster_pc2 = np.concatenate([cluster_points, self.pack_rgb(cluster_rgb)], axis=1) # TODO: remove debug
+            msgs_pub = pc2.create_cloud(msg.header, msg.fields, cluster_pc2) # TODO: remove debug
+            msgs_pub.header.frame_id = "base_link" # TODO: remove debug
+            self._pub.publish(msgs_pub) # TODO: remove debug
+
             if cluster_points.size == 0:
                 continue
-            
+
+            # 3. Object Classification ################################################################
             if np.max(cluster_points[:, 2]) >= 0.17:
-                # self.get_logger().info(f"Cluster with label {label} is filtered out due to z > 19")
+                # Noise: it could be a table, a chair, ..., but not our Objects as they are at most 15cm high!
                 continue
             
-            # SAVE Locally ##########################################################################
+            # Neural Network Train: save data Locally ##########################################################################
             # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             # self.object_data_list.append(cluster)
-            # self.save_object_data()
+            # data_save_path = "boxes"
+            # arrays_to_save = {}
+            # for i, item in enumerate(self.object_data_list):
+            #     arrays_to_save[f'cluster_{i}'] = item
 
-            # Object Classification ################################################################
-            cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
-            object_data = self.classify_object(cluster)
+            # np.savez_compressed(data_save_path, **arrays_to_save)
+            # self.get_logger().info(f"Saved object data to {data_save_path}")
+            
+            # Neural Network Inference:
+            object_cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
+            cluster_tensor = torch.tensor(object_cluster, dtype=torch.float32).unsqueeze(0).to(self.DEVICE)
+            with torch.no_grad():
+                pred_values = self.classification_model(cluster_tensor)
+            del cluster_tensor
+            torch.cuda.empty_cache()
 
-            if object_data:
-                x_obj, y_obj, z_obj = object_data['centroid']
-                object_label = object_data['label']
-                object_label_enum = ObjectEnum(object_label)
-                if object_label_enum != ObjectEnum.NOISE:
+            prediction = torch.argmax(pred_values, dim=1)
+            object_label = prediction.item()
+            object_label_enum = ObjectEnum(object_label)
+            x_obj, y_obj, z_obj = np.mean(object_cluster[:, :3], axis=0)
+            
+            if object_label_enum != ObjectEnum.NOISE:
+                s = ObjectDetection1D()
+                s.header.stamp = msg.header.stamp
+                s.header.frame_id = "base_link"                    
+                s.label.data = 'B' if object_label_enum == ObjectEnum.BOX else f'{object_label}'
+                s.pose.position.x = x_obj
+                s.pose.position.y = y_obj
+                s.pose.position.z = z_obj
+                self._object_pose.publish(s)
 
-                    s = ObjectDetection1D()
-                    s.header.stamp = msg.header.stamp
-                    s.header.frame_id = "base_link"                    
-                    s.label.data = 'B' if object_label_enum == ObjectEnum.BOX else f'{object_label}'
-                    s.pose.position.x = x_obj
-                    s.pose.position.y = y_obj
-                    s.pose.position.z = z_obj
-
-                    self._object_pose.publish(s)
+                # Object Pubblication
                 cluster_pc2 = np.concatenate([cluster_points, self.pack_rgb(cluster_rgb)], axis=1) # TODO: remove debug
                 msgs_pub = pc2.create_cloud(msg.header, msg.fields, cluster_pc2) # TODO: remove debug
                 msgs_pub.header.frame_id = "base_link" # TODO: remove debug
                 self._pub.publish(msgs_pub) # TODO: remove debug
 
-                self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{label}| {object_label}")
-            else:
-                self.get_logger().info(f"Label {label} Neglecting potential cluster")
+                self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{label}| {object_label_enum}")
+
     def unpack_rgb(self, packed_colors):
         """
         Args:
@@ -248,7 +277,7 @@ class Detection(Node):
         transformed_points = np.dot(points, R.T) + translation
         return transformed_points
 
-    def slope_based_ground_filter(self, x, y, z):
+    def slope_based_ground_filter(self, x, y, z, SLOPE_THRESHOLD, K):
         """
         Filters ground points from LiDAR data using a slope-based method.
 
@@ -259,9 +288,6 @@ class Detection(Node):
             ground_indices: Indices of points classified as ground.
             non_ground_indices: Indices of points classified as non-ground.
         """
-        SLOPE_THRESHOLD = 100
-        K = 1
-
         num_points = len(x)
         ground_indices = []
         non_ground_indices = []
@@ -320,40 +346,6 @@ class Detection(Node):
         downsampled_indices = np.array(downsampled_indices)
 
         return downsampled_points, downsampled_indices
-
-    
-    def classify_object(self, cluster):
-        """Classifies a point cloud cluster into an object type."""
-        #  TODO: VOLUME BASED Pre-filtering
-        cluster_tensor = torch.tensor(cluster, dtype=torch.float32).unsqueeze(0).to(self.DEVICE)
-
-        with torch.no_grad():
-            pred_values = self.classification_model(cluster_tensor)
-        
-        prediction = torch.argmax(pred_values, dim=1)
-        pred_label = prediction.item()
-
-        centroid = np.mean(cluster[:, :3], axis=0)
-
-        torch.cuda.empty_cache()
-
-        return {
-            'label': pred_label, 
-            'centroid': centroid,
-        }
-
-
-    def save_object_data(self):
-        """
-        Saves cluster data to a .npz file.
-        """
-        data_save_path = "data_BOX"
-        arrays_to_save = {}
-        for i, item in enumerate(self.object_data_list):
-            arrays_to_save[f'cluster_{i}'] = item
-
-        np.savez_compressed(data_save_path, **arrays_to_save)
-        self.get_logger().info(f"Saved object data to {data_save_path}")
 
     def place_object_frame(self, point, frame_id, stamp, object_name):
         """Take points that correspond to an object and place a frame for it in RViz"""
