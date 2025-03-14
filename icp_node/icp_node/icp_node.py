@@ -133,8 +133,7 @@ class ICP_node(Node):
             t = self.tf_buffer.lookup_transform(to_frame_rel,from_frame_rel,time)
 
         except TransformException as ex:
-            self.get_logger().info(
-                f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
+            self.get_logger().info(f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
             return
 
 
@@ -177,6 +176,8 @@ class ICP_node(Node):
        
         if overlap < 0.3 or rmse > 0.1:
             self.get_logger().info(f'Not good enough conditions, fitness: {overlap}, rmse: {rmse}')
+            self.t.header.stamp = msg.header.stamp
+            self._tf_broadcaster.sendTransform(self.t)
             return
 
         # reset counter since an update is going to be processed

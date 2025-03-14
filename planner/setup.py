@@ -1,8 +1,6 @@
 from setuptools import find_packages, setup
-import os
-from glob import glob
 
-package_name = 'perception_pkg'
+package_name = 'planner'
 
 setup(
     name=package_name,
@@ -11,23 +9,20 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
-        
-        (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))),
         ('share/' + package_name, ['package.xml']),
-
-        (os.path.join('share', package_name, 'models'),
-         glob(os.path.join('weights', '04.pth'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='group-5',
-    maintainer_email='andre.ritossa@gmail.com',
+    maintainer='robot',
+    maintainer_email='nhoog@kth.se',
     description='TODO: Package description',
-    license='TODO: License declaration',
+    license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            f'detection_node = {package_name}.detection_node:main'
+            'planner_exploration = planner.planner_exploration:main',
+            'planner_collection = planner.planner_collection:main',
+            'a_star_algorithm = planner.a_star_algorithm:main'
         ],
     },
 )
