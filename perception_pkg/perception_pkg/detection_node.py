@@ -90,9 +90,9 @@ class Detection(Node):
         points = self.fast_transform2(points) # points transformed to the robot's frame 
 
         # Relevant points:
-        #  - distance: (x²+y²)  less than 1.5 meters
+        #  - distance: (x²+y²)  less than 3 meters
         #  - height:   (z)      between [0.010, 0.2]
-        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 2.0
+        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 3.0
         height_relevance = (points[:, 2] <= 0.19) & (points[:, 2] >= 0.010)
         
         relevant_mask = distance_relevance & height_relevance
@@ -148,14 +148,14 @@ class Detection(Node):
                 continue
 
             # 3. Object Classification ################################################################
-            if np.max(cluster_points[:, 2]) >= 0.17:
+            if np.max(cluster_points[:, 2]) >= 0.155:
                 # Noise: it could be a table, a chair, ..., but not our Objects as they are at most 15cm high!
                 continue
             
             # Neural Network Train: save data Locally ##########################################################################
             cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             self.object_data_list.append(cluster)
-            data_save_path = "milestone2"
+            data_save_path = "milestone3_"
             arrays_to_save = {}
             for i, item in enumerate(self.object_data_list):
                 arrays_to_save[f'cluster_{i}'] = item
