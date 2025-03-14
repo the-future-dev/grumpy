@@ -77,8 +77,8 @@ class Detection(Node):
         except Exception as e:
             self.get_logger().error(f"Error loading model: {e}")
 
-        self.object_data_list = [] # TODO: remove for inference only
-
+        # self.object_data_list = [] # TODO: remove for inference only
+ 
     def cloud_callback(self, msg: PointCloud2):
         """From Point Cloud to Object Classification!
         """
@@ -90,10 +90,10 @@ class Detection(Node):
         points = self.fast_transform2(points) # points transformed to the robot's frame 
 
         # Relevant points:
-        #  - distance: (x²+y²)  less than 3 meters
-        #  - height:   (z)      between [0.010, 0.2]
-        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 3.0
-        height_relevance = (points[:, 2] <= 0.19) & (points[:, 2] >= 0.010)
+        #  - distance: (x²+y²)  less than 2.0 meters
+        #  - height:   (z)      between [0.010, 0.13]
+        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 2.0
+        height_relevance = (points[:, 2] <= 0.13) & (points[:, 2] >= 0.010)
         
         relevant_mask = distance_relevance & height_relevance
         relevant_indices = np.where(relevant_mask)[0]
@@ -122,7 +122,7 @@ class Detection(Node):
         # Number of parallel jobs: 3
         cluster_leaf_size= 0.01
         cluster_eps = 0.025
-        cluster_min_samples = 25
+        cluster_min_samples = 15
         downsampled_points, downsampled_indices = self.voxel_grid_filter(points, leaf_size=cluster_leaf_size)
         points = downsampled_points
         colors_rgb = colors_rgb[downsampled_indices]
@@ -148,19 +148,19 @@ class Detection(Node):
                 continue
 
             # 3. Object Classification ################################################################
-            if np.max(cluster_points[:, 2]) >= 0.155:
-                # Noise: it could be a table, a chair, ..., but not our Objects as they are at most 15cm high!
+            if np.max(cluster_points[:, 2]) >= 0.117:
+                # Noise: it could be a table, a chair, ..., but not our Objects as they are at most 10cm high!
                 continue
             
             # Neural Network Train: save data Locally ##########################################################################
-            cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
-            self.object_data_list.append(cluster)
-            data_save_path = "milestone3_"
-            arrays_to_save = {}
-            for i, item in enumerate(self.object_data_list):
-                arrays_to_save[f'cluster_{i}'] = item
-            np.savez_compressed(data_save_path, **arrays_to_save)
-            self.get_logger().info(f"Saved object data to {data_save_path}")
+            # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
+            # self.object_data_list.append(cluster)
+            # data_save_path = "/home/group5/dd2419_ws/src/perception_pkg/trials/object_data/milestone3_noise"
+            # arrays_to_save = {}
+            # for i, item in enumerate(self.object_data_list):
+            #     arrays_to_save[f'cluster_{i}'] = item
+            # np.savez_compressed(data_save_path, **arrays_to_save)
+            # self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
             
             # Neural Network Inference:
             object_cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
