@@ -17,6 +17,7 @@ import tf2_geometry_msgs
 import open3d
 from open3d.pipelines.registration import registration_icp, TransformationEstimationPointToPoint, ICPConvergenceCriteria
 import numpy as np
+import math
 
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 
@@ -24,15 +25,10 @@ class ICP_node(Node):
     def __init__(self):
         super().__init__('icp_node')
 
-        self.subscription = self.create_subscription(
-            LaserScan,
-            '/scan',
-            self.lidar_callback,
-            10)
-        self.subscription  # prevent unused variable warning
+        self.create_subscription(LaserScan,'/scan',self.lidar_callback,10)
 
-        # Initalize publisher to publish pose after update step of EKF
-        self.pose_with_cov_pub = self.create_subscription(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', self.localization_pose_cb, 10)
+        # Initalize subscriber pose from update step of EKF
+        self.create_subscription(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', self.localization_pose_cb, 10)
 
         # Initialize the transform buffer
         self.tf_buffer = Buffer()
@@ -43,11 +39,14 @@ class ICP_node(Node):
         # Initialize the transform broadcaster
         self._tf_broadcaster = TransformBroadcaster(self)
 
+        # initalize calls to transform laserscan to pointcloud
         self.proj = LaserProjection()
 
+        # initalize threshold distance to filter out points close to the robot
+        self.threshold_distance = 0.5
+
         # Initalize reference cloud
-        self.reference_cloud = PointCloud2()
-        self.get_reference = True
+        self.reference_clouds = []
 
         # intialize attribute for transform
         self.t = None
@@ -63,32 +62,30 @@ class ICP_node(Node):
         # Store the path here
         self._path = Path()
 
-        self.first_reference_cloud = True
         self.reference_counter = 0
         self.num_scans_for_reference = 10
 
 
-
-    def extract_points_from_pointcloud(self, pointcloud: PointCloud2):
-        """
-        Method fro extracting points from pointcloud and filter out points
-        """ 
-        points = np.asarray([
-            (p[0], p[1], p[2]) for p in read_points(pointcloud, field_names=("x", "y", "z"), skip_nans=True)
-        ], dtype=np.float32)
-
-
     def create_open3d_pointcloud(self, transformed_cloud:PointCloud2):
         """
-        Method for creating open3d pointscloud from PointCloud2.
+        Method for creating open3d pointscloud from PointCloud2 and filtering out points.
         """
-        points = np.asarray([
-                (p[0], p[1], p[2]) for p in read_points(transformed_cloud, field_names=("x", "y", "z"), skip_nans=True)
-            ], dtype=np.float32)
+        points = read_points(transformed_cloud, field_names=("x", "y", "z"), skip_nans=True) # is it possible to skip z in some way?
+        
+        distance = np.hypot(points[:, 0], points[:, 1])
+        
+        mask = np.where(distance > self.threshold_distance)
+        points = points[mask]
+
+        # np.asarray([
+        #         [p[0], p[1], p[2]] for p in read_points(transformed_cloud, field_names=("x", "y", "z"), skip_nans=True)
+        #     ], dtype=np.float32)
 
 
         # Create Open3D PointCloud
         cloud = open3d.geometry.PointCloud()
+        # cloud.points = open3d.utility.Vector2dVector(points)
+
         cloud.points = open3d.utility.Vector3dVector(points)
 
         return cloud
@@ -149,13 +146,31 @@ class ICP_node(Node):
         # Transform to open3d format
         pointcloud = self.create_open3d_pointcloud(cloud_odom)
 
-        # set reference cloud if it is first scan
+        # set reference scan at origin if the list of reference scan is empty
+        if len(self.reference_clouds) == 0:
+            # x and y position odom-frame_id (lidar_link)
+            x = t.transform.translation.x 
+            y = t.transform.translation.y
+            pos = (x,y)
+
+            # append position of robot for the pointcloud and the pointcloud transformed to odom frame
+            self.reference_clouds.append((pos, pointcloud))
+
+            # set reference cloud
+            reference_cloud = pointcloud
         
-        if self.get_reference:
-            self.reference_cloud = pointcloud
-            self.get_reference = False
+        # if there is one or more reference scans in the list compare which one is closest and use that as reference cloud when doing ICP algorithm
+        else:
+            min_distance = np.inf
+            for pos_cloud, pointcloud in self.reference_clouds:
+                x = t.transform.translation.x 
+                y = t.transform.translation.y
+                distance = math.hypot(x-pos_cloud[0], y-pos_cloud[1])
 
+                if distance < min_distance:
+                    reference_cloud = pointcloud
 
+        # if this it the first transform set the initial guess to be an indentity matrix, otherwise use the old transform as guess
         if self.t_mat_old is None:
             previous_transform = np.identity(4)
         else:
@@ -163,7 +178,7 @@ class ICP_node(Node):
 
         # Do ICP algorithm
         result_icp = registration_icp(source=pointcloud,
-                        target=self.reference_cloud,
+                        target=reference_cloud,
                         max_correspondence_distance= 0.02,
                         init=previous_transform, # The algorithm start with this and then tries to optimize for a better transform for map-odom
                         estimation_method=TransformationEstimationPointToPoint(),
@@ -183,7 +198,7 @@ class ICP_node(Node):
         # reset counter since an update is going to be processed
         self.counter = self.N
 
-        # copy result from icp, has to copy to be able to write to it
+        # copy result from icp, have to copy to be able to write to it
         transform_matrix = result_icp.transformation.copy()
 
         # Make sure that we are only operating in the xy-plane
