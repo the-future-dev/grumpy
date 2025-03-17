@@ -14,6 +14,7 @@ class ServoThetaControlNode(Node):
         self.x_origin_servo5 = -0.00450
         self.y_origin_servo5 = -0.04750
         self.z_origin_servo5 =  0.12915
+        self.theta_servo5    =  60
 
         # Constants in the robot arm:
         # Links:
@@ -24,10 +25,10 @@ class ServoThetaControlNode(Node):
         # From joint of servo 3 to joint of servo 2 + from joint servo 2 to griping point
         self.l3 = 0.05071 + 0.11260
 
-        # Origin of servo 4 in rhoz-plane
+        # Origin of servo 4 in rho+z-plane
+        self.z_origin_servo4   = self.z_origin_servo5 + self.l1 * np.sin(np.deg2rad(90) - np.deg2rad(self.theta_servo5))
+        self.rho_origin_servo4 = self.l1 * np.cos(np.deg2rad(90) - np.deg2rad(self.theta_servo5))
          
-
-
         # Sets angles of the servos for different tasks, as well as time for the arm to move into these positions:
         # Arm pointing straight up, used for reset and driving around
         self.initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]
@@ -92,7 +93,7 @@ class ServoThetaControlNode(Node):
         # The hypotenuse (rho) from the position of servo 5 to the object position in the xy-plane
         rho = np.sqrt(np.power(x - self.x_origin_servo5, 2) + np.power(y - self.y_origin_servo5, 2))
 
-
+        
 
         self.servo_angle_publisher.publish(msg)
 
