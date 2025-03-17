@@ -12,6 +12,7 @@ from sensor_msgs_py.point_cloud2 import read_points
 from geometry_msgs.msg import TransformStamped, PoseWithCovarianceStamped, PoseStamped, Vector3Stamped
 from laser_geometry import LaserProjection
 from nav_msgs.msg import Path
+from std_msgs.msg import Bool
 import tf2_geometry_msgs
 
 import open3d
@@ -25,10 +26,14 @@ class ICP_node(Node):
     def __init__(self):
         super().__init__('icp_node')
 
+        # Subscribe to lidar
         self.create_subscription(LaserScan,'/scan',self.lidar_callback,10)
 
-        # Initalize subscriber pose from update step of EKF
+        # Initialize subscriber pose from update step of EKF
         self.create_subscription(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', self.localization_pose_cb, 10)
+
+        # Initialize subscriber to brain
+        self.create_subscription(Bool, '/brain/get_new_reference_scan', self.get_new_ref_scan_cb, 10)
 
         # Initialize the transform buffer
         self.tf_buffer = Buffer()
@@ -39,21 +44,24 @@ class ICP_node(Node):
         # Initialize the transform broadcaster
         self._tf_broadcaster = TransformBroadcaster(self)
 
-        # initalize calls to transform laserscan to pointcloud
+        # initialize calls to transform laserscan to pointcloud
         self.proj = LaserProjection()
 
-        # initalize threshold distance to filter out points close to the robot
+        # initialize threshold distance to filter out points close to the robot
         self.threshold_distance = 0.5
 
-        # Initalize reference cloud
+        # Initialize reference cloud
         self.reference_clouds = []
+
+        # Initialize bool to handle getting new_reference_scan
+        self.new_reference_scan = True
 
         # intialize attribute for transform
         self.t = None
         self.t_mat_old = None
         self.outlier_margin = 0.5
 
-        # Initalize counter
+        # Initialize counter
         self.counter = 0
         self.N = 10
 
@@ -62,30 +70,27 @@ class ICP_node(Node):
         # Store the path here
         self._path = Path()
 
-        self.reference_counter = 0
-        self.num_scans_for_reference = 10
-
 
     def create_open3d_pointcloud(self, transformed_cloud:PointCloud2):
         """
         Method for creating open3d pointscloud from PointCloud2 and filtering out points.
         """
-        points = read_points(transformed_cloud, field_names=("x", "y", "z"), skip_nans=True) # is it possible to skip z in some way?
-        
+        points = np.asarray([[p[0], p[1], p[2]] for p in read_points(transformed_cloud, field_names=("x", "y", "z"), skip_nans=True)], dtype=np.float64)
+
+        # points = read_points(transformed_cloud, field_names=("x", "y", "z"), skip_nans=True, reshape_organized_cloud=True) Can it be optmized to not use for-loop
+
         distance = np.hypot(points[:, 0], points[:, 1])
+        distance = distance.reshape(-1, 1)
+
+        # self.get_logger().info(f'Num of points before filter: {points.shape[0]}')
         
-        mask = np.where(distance > self.threshold_distance)
-        points = points[mask]
+        mask,_ = np.where(distance > self.threshold_distance)
+        points = points[mask, :]
 
-        # np.asarray([
-        #         [p[0], p[1], p[2]] for p in read_points(transformed_cloud, field_names=("x", "y", "z"), skip_nans=True)
-        #     ], dtype=np.float32)
+        # self.get_logger().info(f'Num of points after filter: {points.shape[0]}')
 
-
-        # Create Open3D PointCloud
+        # Create Open3D PointCloud with points
         cloud = open3d.geometry.PointCloud()
-        # cloud.points = open3d.utility.Vector2dVector(points)
-
         cloud.points = open3d.utility.Vector3dVector(points)
 
         return cloud
@@ -140,14 +145,16 @@ class ICP_node(Node):
         # Transform point cloud to odom
         cloud_odom = do_transform_cloud(cloud, t)
 
+        
         # # Transform point cloud to map
         # transformed_cloud = do_transform_cloud(cloud_odom, self.t)
 
         # Transform to open3d format
         pointcloud = self.create_open3d_pointcloud(cloud_odom)
 
-        # set reference scan at origin if the list of reference scan is empty
-        if len(self.reference_clouds) == 0:
+        # get new reference scan if bool is true, this is the case in the origin and when set by the brain
+        if self.new_reference_scan:
+            self.new_reference_scan = False
             # x and y position odom-frame_id (lidar_link)
             x = t.transform.translation.x 
             y = t.transform.translation.y
@@ -157,18 +164,20 @@ class ICP_node(Node):
             self.reference_clouds.append((pos, pointcloud))
 
             # set reference cloud
-            reference_cloud = pointcloud
+            self.ref_cloud = pointcloud
         
-        # if there is one or more reference scans in the list compare which one is closest and use that as reference cloud when doing ICP algorithm
-        else:
+        # if there is two or more reference scans in the list compare which one is closest and use that as reference cloud when doing ICP algorithm
+        if len(self.reference_clouds) >= 2:
+            # self.get_logger().info('reference clouds list longer than 0')
             min_distance = np.inf
-            for pos_cloud, pointcloud in self.reference_clouds:
+            for pos_cloud, cloud in self.reference_clouds:
                 x = t.transform.translation.x 
                 y = t.transform.translation.y
                 distance = math.hypot(x-pos_cloud[0], y-pos_cloud[1])
 
                 if distance < min_distance:
-                    reference_cloud = pointcloud
+                    # self.get_logger().info('setting new reference cloud')
+                    self.ref_cloud = cloud
 
         # if this it the first transform set the initial guess to be an indentity matrix, otherwise use the old transform as guess
         if self.t_mat_old is None:
@@ -178,8 +187,8 @@ class ICP_node(Node):
 
         # Do ICP algorithm
         result_icp = registration_icp(source=pointcloud,
-                        target=reference_cloud,
-                        max_correspondence_distance= 0.02,
+                        target=self.ref_cloud,
+                        max_correspondence_distance= 0.10,
                         init=previous_transform, # The algorithm start with this and then tries to optimize for a better transform for map-odom
                         estimation_method=TransformationEstimationPointToPoint(),
                         criteria=ICPConvergenceCriteria(relative_fitness=1e-6, relative_rmse=1e-6, max_iteration=1000)
@@ -188,9 +197,10 @@ class ICP_node(Node):
         # Checking overlap and inlier rmse to make sure transform is good to use
         overlap = result_icp.fitness 
         rmse = result_icp.inlier_rmse
-       
+        self.get_logger().info(f'fitness: {overlap}, rmse: {rmse}')
+
         if overlap < 0.3 or rmse > 0.1:
-            self.get_logger().info(f'Not good enough conditions, fitness: {overlap}, rmse: {rmse}')
+            # self.get_logger().info(f'Not good enough conditions, fitness: {overlap}, rmse: {rmse}')
             self.t.header.stamp = msg.header.stamp
             self._tf_broadcaster.sendTransform(self.t)
             return
@@ -206,6 +216,17 @@ class ICP_node(Node):
         # no rotations around x or y axises
         transform_matrix[:3, 2] = [0.0, 0.0, 1.0] 
         transform_matrix[2, :3] = [0.0, 0.0, 1.0]
+
+        # Compare with previous translation in transform so that the new transform will not move robot too much
+        comp_transforms = np.array([[self.t.transform.translation.x - transform_matrix[0, 3]], 
+                                    [self.t.transform.translation.y - transform_matrix[1, 3]]])
+
+        if np.linalg.norm(comp_transforms) > 0.2:
+            self.get_logger().info(f'The norm was too high: {np.linalg.norm(comp_transforms) }')
+            self.t.header.stamp = msg.header.stamp
+            self._tf_broadcaster.sendTransform(self.t)
+            return 
+
 
         self.t_mat_old = transform_matrix
 
@@ -227,6 +248,12 @@ class ICP_node(Node):
         self.t.transform.rotation.w = quat[3]
 
         self._tf_broadcaster.sendTransform(self.t)
+
+    def get_new_ref_scan_cb(self, msg:Bool):
+        """
+        Callback to set the bool variable get
+        """
+        self.new_reference_scan = msg.data
 
 
     def localization_pose_cb(self, msg: PoseWithCovarianceStamped):
