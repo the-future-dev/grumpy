@@ -16,7 +16,6 @@ from robp_interfaces.msg import DutyCycles
 import matplotlib.pyplot as plt
 from std_msgs.msg import Bool
 from robp_interfaces.msg import DutyCycles
-from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 
 
 class PlannerExplorationNode(Node):
@@ -24,8 +23,6 @@ class PlannerExplorationNode(Node):
     #Initialzie oppucancy grid node
     def __init__(self):
         super().__init__('planner_exploration_node') 
-        
-        qos_profile = QoSProfile(depth = 1, durability = QoSDurabilityPolicy.TRANSIENT_LOCAL)
 
         self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -220],
                                    [-130, -130, 66, 66, 284, 284, 130, 130]])
@@ -35,6 +32,11 @@ class PlannerExplorationNode(Node):
 
         self.grid = None
         self.first = True
+        self.path_interupted = False
+
+        self.map_ylength = 0
+        self.map_xlength = 0
+        self.resolution = 0
     
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
@@ -44,7 +46,6 @@ class PlannerExplorationNode(Node):
         self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
 
         self.grid_sub = self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
-        self.path_sub = self.create_subscription(Path, 'path/Astar', self.path_cb, qos_profile)
         self.drive_feedback_sub = self.create_subscription(Bool, 'drive/feedback', self.drive_cb, 1)
     
     def grid_cb(self, msg:Int16MultiArray):
@@ -55,38 +56,39 @@ class PlannerExplorationNode(Node):
             data = msg.data
             self.grid = np.array([data]).reshape(rows, columns)
 
+            self.map_ylength = msg.layout.dim[0].stride
+            self.map_xlength = msg.layout.dim[1].stride
+            self.resolution = msg.layout.dim[2].size
+
             if self.first == True:
                 self.first = False
                 self.choose_next()
 
     def path_cb(self, msg:Path):
-        print('path msg')
+        #Call back function from a-star to publish path to publish to drive control. 
 
         if not msg.poses:
-            self.get_logger().warning(f'No path, could alreday be close enough')
+            self.get_logger().warning(f'No path found')
             self.choose_next()
             return 
 
         self.path_pub.publish(msg)
         
-
     def drive_cb(self, msg:Bool):
         #Callback for feedback from drive control if any issue, when implementing obstacle avoidance
 
         if msg.data == True:
             self.get_logger().info(f'Getting next point')
+            if self.path_interupted == True: #This is to now if new point or same point for the corner exploration
+                self.counter -= 1
+                self.path_interupted = False
             self.choose_next()
-
-        cmap = plt.cm.get_cmap('viridis', 5)
-
-        plt.figure(figsize=(10, 10))
-        plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
-        cbar = plt.colorbar()
-        cbar.set_ticks([0, 1, 2, 3, 4])
-        plt.savefig('test')
-        plt.close()
+        else:
+            self.get_logger().warning(f'Path interrupted, going to free zone')
+            self.path_interupted = True
 
     def current_pos(self):
+        #Giving current position of the robot
 
         tf_future = self.tf_buffer.wait_for_transform_async('map', 'base_link', self.get_clock().now())
         rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
@@ -103,6 +105,8 @@ class PlannerExplorationNode(Node):
         return rob_x, rob_y
 
     def choose_next(self):
+        #First part of exploration is the go to the corners of the wokrspace
+        #Thereafter the robot goes to unkown grid cells in map
 
         if self.counter < self.n_corners:
             self.corner_goal()
@@ -112,6 +116,7 @@ class PlannerExplorationNode(Node):
         return
 
     def corner_goal(self):
+        #Incrementing through all corners of workspace and publishing it to a-star
 
         msg_goal = PoseStamped()
         msg_goal.header.frame_id = 'map'
@@ -139,6 +144,7 @@ class PlannerExplorationNode(Node):
         return
     
     def unknown_goal(self):
+        #Taking the closets grid cell with a thershold to go explore to next
 
         msg_goal = PoseStamped()
         msg_goal.header.frame_id = 'map'
@@ -178,8 +184,8 @@ class PlannerExplorationNode(Node):
     def grid_to_map(self, grid_x, grid_y):
         #Take grid indices and converts to some x,y in that grid
        
-        x = (grid_x*3 - 1400/2) #Hard coded parameters right now 
-        y = (grid_y*3 - 568/2)
+        x = (grid_x*self.resolution - self.map_xlength/2) #Hard coded parameters right now 
+        y = (grid_y*self.resolution - self.map_ylength/2)
 
         return x, y
 

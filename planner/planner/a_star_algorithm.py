@@ -15,7 +15,6 @@ import heapq
 from builtin_interfaces.msg import Time
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
-from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 
 class ANode:
     #Create a A-star Node for queueing
@@ -43,8 +42,6 @@ class AStarAlgorithmNode(Node):
     def __init__(self):
         super().__init__('a_star_algorithm_node')
 
-        qos_profile = QoSProfile(depth = 1, durability = QoSDurabilityPolicy.TRANSIENT_LOCAL)
-
         # Priotrity ques for A star algorithm
         self.Q = None
         self.grid = None
@@ -53,6 +50,9 @@ class AStarAlgorithmNode(Node):
         self.grid_yg = 0
         self.grid_recieved = False
         self.goal_pose_recieved = False
+        self.map_xlength = 0
+        self.map_ylength = 0
+        self.resolution = 0
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
@@ -80,18 +80,24 @@ class AStarAlgorithmNode(Node):
         #Return array from message of grid
 
         if self.grid_recieved == False:
+
             rows = msg.layout.dim[0].size
             columns = msg.layout.dim[1].size
             data = msg.data
             self.grid = np.array([data]).reshape(rows, columns)
+
+            self.map_ylength = msg.layout.dim[0].stride
+            self.map_xlength = msg.layout.dim[1].stride
+            self.resolution = msg.layout.dim[2].size
+
             self.grid_recieved = True
             self.publish_path()
         
     def map_to_grid(self, x, y):
         #Take map coordinates and convert to grid
          
-        grid_x = np.floor((x + 1400/2)/3)
-        grid_y = np.floor((y + 568/2)/3)
+        grid_x = np.floor((x + self.map_xlength/2)/self.resolution)
+        grid_y = np.floor((y + self.map_ylength/2)/self.resolution)
 
         grid_x = grid_x.astype(int)
         grid_y = grid_y.astype(int)
@@ -101,8 +107,8 @@ class AStarAlgorithmNode(Node):
     def grid_to_map(self, grid_x, grid_y):
         #Take grid indices and converts to some x,y in that grid
        
-        x = (grid_x*3 - 1400/2)/100 #Hard coded parameters right now 
-        y = (grid_y*3 - 568/2)/100
+        x = (grid_x*self.resolution - self.map_xlength/2)/100 #Hard coded parameters right now 
+        y = (grid_y*self.resolution - self.map_ylength/2)/100
 
         return x, y
     

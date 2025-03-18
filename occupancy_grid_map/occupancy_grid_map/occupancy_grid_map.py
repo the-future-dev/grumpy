@@ -206,11 +206,16 @@ class OccupancyGridMapNode(Node):
         msg_grid.data = self.grid.flatten().tolist()
         dim1 = MultiArrayDimension()
         dim2 = MultiArrayDimension()
+        dim3 = MultiArrayDimension()
         dim1.label = 'rows'
         dim2.label = 'columns'
+        dim3.label = 'resolution'
         dim1.size = self.grid.shape[0]
+        dim1.stride = self.map_ylength
         dim2.size = self.grid.shape[1]
-        msg_grid.layout.dim = [dim1, dim2]
+        dim1.stride = self.map_xlength
+        dim3.size = self.resolution
+        msg_grid.layout.dim = [dim1, dim2, dim3]
 
         self.grid_pub.publish(msg_grid)
     
@@ -246,13 +251,15 @@ class OccupancyGridMapNode(Node):
     def raytrace_float(self, lidar_x, lidar_y):
 
         start = np.zeros_like(lidar_x)
-        x_line = np.linspace(start, lidar_x, 1000)
-        y_line = np.linspace(start, lidar_y, 1000)
+        x_line = np.linspace(start, lidar_x, 10000)
+        y_line = np.linspace(start, lidar_y, 10000)
     
         x_free = np.concatenate(x_line)
         y_free = np.concatenate(y_line)
+
+        mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.7) & (x_free > abs(y_free))  #Cone shape
+        #mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)  #Box shape
         
-        mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)
         x_free = x_free[mask_rgbd_scope]
         y_free = y_free[mask_rgbd_scope]
 
