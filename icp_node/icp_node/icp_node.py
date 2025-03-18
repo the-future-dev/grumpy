@@ -8,7 +8,7 @@ from tf_transformations import quaternion_from_matrix, quaternion_matrix
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from sensor_msgs.msg import LaserScan, PointCloud2
-from sensor_msgs_py.point_cloud2 import read_points
+from sensor_msgs_py.point_cloud2 import read_points, read_points_numpy
 from geometry_msgs.msg import TransformStamped, PoseWithCovarianceStamped, PoseStamped, Vector3Stamped
 from laser_geometry import LaserProjection
 from nav_msgs.msg import Path
@@ -48,7 +48,7 @@ class ICP_node(Node):
         self.proj = LaserProjection()
 
         # initialize threshold distance to filter out points close to the robot
-        self.threshold_distance = 0.5
+        self.threshold_distance = 0.35
 
         # Initialize reference cloud
         self.reference_clouds = []
@@ -75,9 +75,7 @@ class ICP_node(Node):
         """
         Method for creating open3d pointscloud from PointCloud2 and filtering out points.
         """
-        points = np.asarray([[p[0], p[1], p[2]] for p in read_points(transformed_cloud, field_names=("x", "y", "z"), skip_nans=True)], dtype=np.float64)
-
-        # points = read_points(transformed_cloud, field_names=("x", "y", "z"), skip_nans=True, reshape_organized_cloud=True) Can it be optmized to not use for-loop
+        points = read_points_numpy(transformed_cloud, field_names=("x", "y", "z"), skip_nans=True, reshape_organized_cloud=True)
 
         distance = np.hypot(points[:, 0], points[:, 1])
         distance = distance.reshape(-1, 1)

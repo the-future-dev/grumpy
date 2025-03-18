@@ -42,6 +42,11 @@ def generate_launch_description():
     #     output='screen'
     # )
 
+    workspace_perimeter = Node(
+        package='object_mapping',
+        executable='workspace_init',
+        output = 'screen'
+    )
 
 
     # Static Transforms
@@ -65,5 +70,6 @@ def generate_launch_description():
         icp,
         localization,
         static_tf_base_lidar,
+        workspace_perimeter
         # static_tf_base_imu
     ])

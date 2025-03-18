@@ -5,7 +5,7 @@ import math
 import numpy as np
 
 import rclpy
-from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSHistoryPolicy
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSHistoryPolicy, QoSReliabilityPolicy
 from rclpy.node import Node
 
 import rclpy.time
@@ -19,6 +19,8 @@ from robp_interfaces.msg import Encoders
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
 from grumpy_interfaces.msg import ObjectDetection1D
+import pandas as pd
+import os
 
 import tf2_geometry_msgs
 
@@ -31,7 +33,7 @@ class WorkspaceInit(Node):
 
     def __init__(self):
         super().__init__('workspace_init')
-        qos_profile = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,history=QoSHistoryPolicy.KEEP_LAST)
+        qos_profile = QoSProfile(depth=1, reliability=QoSReliabilityPolicy.RELIABLE, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,history=QoSHistoryPolicy.KEEP_LAST)
 
         # Initialize publisher to publish the workspace perimeter
         self.perimeter_pub = self.create_publisher(Path, '/workspace_init/perimeter', qos_profile)
@@ -44,15 +46,29 @@ class WorkspaceInit(Node):
         """
         Method that publishes the perimeter of the workspace
         """
+        # assumes you are running from DD2419_ws
+        # file_path = 'src/workspace_2.tsv'
 
-        ws_points = np.array([[-220, -130], [220, -130], [450, 66], [700, 66], [700, 284], [546, 284], [546, 130], [-220, 130]], dtype=float)
+        # more dynamic way to do it
+        # Get the absolute path of the current script
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # Go three levels up and into src where the workspace file is located
+        file_path = os.path.abspath(os.path.join(current_dir, '../../../src/workspace_2.tsv'))
+
+        # make sure file path includes correct placement of the workspace file
+        assert 'dd2419_ws/src/workspace_2.tsv' in file_path
+
+        # read file
+        df = pd.read_csv(file_path, sep = '\t')
+
+        ws_points = df.values
         ws_points = ws_points/100
 
         path = Path()
         path.header.stamp = self.get_clock().now().to_msg() # to have a time
         path.header.frame_id = 'map'
         first = True
-        
         
         for x,y in ws_points:
             if first:
