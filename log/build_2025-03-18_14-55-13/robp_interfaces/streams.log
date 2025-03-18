@@ -1,0 +1,33 @@
+[0.079s] Invoking command in '/home/robot/dd2419_ws/src/build/robp_interfaces': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/robot/dd2419_ws/install/robp_launch:/home/robot/dd2419_ws/install/odometry:/home/robot/dd2419_ws/install/lidar:/home/robot/dd2419_ws/install/keyboard_control:/home/robot/dd2419_ws/install/robp_boot_camp_launch:/home/robot/dd2419_ws/install/learning_tf2_py:/home/robot/dd2419_ws/install/display_markers:/home/robot/dd2419_ws/install/detection:/home/robot/dd2419_ws/install/arm_servos_pubs_subs:/home/robot/dd2419_ws/install/arm_manipulation:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake /home/robot/dd2419_ws/src/robp_robot/robp_interfaces -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/robot/dd2419_ws/src/install/robp_interfaces
+[1.630s] -- The C compiler identification is GNU 13.3.0
+[1.630s] -- The CXX compiler identification is GNU 13.3.0
+[1.631s] -- Detecting C compiler ABI info
+[1.631s] -- Detecting C compiler ABI info - done
+[1.631s] -- Check for working C compiler: /usr/bin/cc - skipped
+[1.631s] -- Detecting C compile features
+[1.632s] -- Detecting C compile features - done
+[1.632s] -- Detecting CXX compiler ABI info
+[1.632s] -- Detecting CXX compiler ABI info - done
+[1.632s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[1.632s] -- Detecting CXX compile features
+[1.632s] -- Detecting CXX compile features - done
+[1.633s] -- Found ament_cmake: 2.5.3 (/opt/ros/jazzy/share/ament_cmake/cmake)
+[1.633s] -- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter 
+[1.633s] -- Override CMake install command with custom implementation using symlinks instead of copying resources
+[1.633s] -- Found rosidl_default_generators: 1.6.0 (/opt/ros/jazzy/share/rosidl_default_generators/cmake)
+[1.633s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[1.633s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[1.633s] -- Found rosidl_adapter: 4.6.5 (/opt/ros/jazzy/share/rosidl_adapter/cmake)
+[1.634s] -- Found std_msgs: 5.3.5 (/opt/ros/jazzy/share/std_msgs/cmake)
+[2.098s] -- Found ament_cmake_ros: 0.12.0 (/opt/ros/jazzy/share/ament_cmake_ros/cmake)
+[2.655s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[3.382s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[3.389s] -- Found python_cmake_module: 0.11.1 (/opt/ros/jazzy/share/python_cmake_module/cmake)
+[3.544s] -- Found PythonExtra: /usr/bin/python3  
+[4.017s] -- Found Python3: /usr/bin/python3 (found version "3.12.3") found components: Interpreter Development NumPy Development.Module Development.Embed 
+[4.095s] -- Found ament_lint_auto: 0.17.1 (/opt/ros/jazzy/share/ament_lint_auto/cmake)
+[4.155s] -- Added test 'lint_cmake' to check CMake code style
+[4.157s] -- Added test 'xmllint' to check XML markup files
+[4.163s] -- Configuring done (4.1s)
+[4.198s] -- Generating done (0.0s)
+[4.209s] -- Build files have been written to: /home/robot/dd2419_ws/src/build/robp_interfaces
