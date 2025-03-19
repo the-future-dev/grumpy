@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'pick_service = arm_srvs.pick_service:main'
+            'pick_service = arm_srvs.pick_service:main',
             'drop_service = arm_srvs.drop_service:main'
         ],
     },
