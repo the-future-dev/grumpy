@@ -91,22 +91,26 @@ class PickService(Node):
                 case "Start":  # Make sure the arm is in the initial position
                     thetas = self.initial_thetas
                     step = "GetPosition"  # Move to the next step
+                    self._logger.info('Start')
 
                 case "GetPosition":  # Get the position of the object from the request
                     assert request.pose is Pose, self._logger.error('request was not type Pose')  # Assert that the request has the correct type
                     x, y, z = self.extract_object_position(request.pose)  # Get the position of the object from the request
                     thetas = [-1, -1, -1, -1, -1, -1]  # Do not move the arm
                     step = "RotateBase"  # Move to the next step
+                    self._logger.info('GetPosition')
 
                 case "RotateBase":  # Move servo 6/base to the correct angle
                     # Calculate the change of the angle for servo 6, then new angle of servo 6, round and convert to int
                     theta_servo6 = round(self.initial_thetas[5] + self.get_delta_theta_6(x, y) * 100)
                     thetas = [-1, -1, -1, -1, -1, theta_servo6]  # Only servo 6 is moved
                     step = "PickOrigin"  # Move to the next step
+                    self._logger.info('RotateBase')
 
                 case "PickOrigin":  # Move the arm to the position from were the inverse kinematics are calculated
                     thetas = [-1, -1, -1, -1, round(self.theta_servo5 * 100), -1]  # Set the angle for servo 5 for inverse kinematics
                     step = "InverseKinematics"  # Move to the next step
+                    self._logger.info('PickOrigin')
 
                 case "InverseKinematics":  # Move the arm to the grasp position calculated by the inverse kinematics
                     delta_theta_servo3, delta_theta_servo4 = self.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
@@ -114,17 +118,20 @@ class PickService(Node):
                     theta_servo4 = round(self.initial_thetas[3] - delta_theta_servo4 * 100)  # New angle of servo 4, round and convert to int
                     thetas = [-1, -1, theta_servo3, theta_servo4, -1, -1]  # Only servo 3 and 4 are moved
                     step = "GraspObject"  # Move to the next step
+                    self._logger.info('Inverse Kinematics')
                 
                 case "GraspObject":  # Grasp the object
                     thetas = [11000, -1, -1, -1, -1, -1]  # Close the gripper
                     times = [3000, 2000, 2000, 2000, 2000, 2000]  # Set the times to slowly close the gripper
                     step = "DrivePosition"  # Move to the next step
+                    self._logger.info('GraspObject')
 
                 case "DrivePosition":  # Finish the pick up sequence by going back to the initial position, but not for the gripper
                     thetas = self.initial_thetas.copy()  # Copy the initial thetas
                     thetas[0] = -1  # Make sure the gripper does not move
                     times = [2000, 2000, 2000, 2000, 2000, 2000]  # Set times to give the arm more time to move
                     step = "Success"  # End the FSM
+                    self._logger.info('DrivePosition')
             
             self.check_angles_and_times(thetas, times)  # Assert that the angles and times are in the correct format
             
@@ -227,10 +234,10 @@ class PickService(Node):
         assert (6000 <= angles[4] <= 18000) or (angles[4] == -1), self._logger.error('servo 5 was not within the interval [6000, 18000] or -1')
         assert (0 <= angles[5] <= 20000) or (angles[5] == -1), self._logger.error('servo 6 was not within the interval [0, 20000] or -1')
 
-        self.get_logger.info('Checked the angles and times')
+        self._logger.info('Checked the angles and times')
         
     
-    def publish_angles(self, angles, times=[1000, 1000, 1000, 1000, 1000, 1000]):
+    def publish_angles(self, angles, times):
         """
         Args:
             angles: List, required, the angles for each servo to be set to
@@ -243,14 +250,14 @@ class PickService(Node):
 
         # Initializes the message with required informaiton
         msg = Int16MultiArray()
-        msg.layout.dim[0] = {'label':'', 'size': 0, 'stride': 0}
-        msg.layout.data_offset = 0
+        # msg.layout.dim[0] = {'label':'', 'size': 0, 'stride': 0}
+        # msg.layout.data_offset = 0
 
         msg.data = angles + times  # Concatenates the angles and times
 
         self.servo_angle_publisher.publish(msg)
 
-        time.sleep(np.max(times) + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
+        time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
 
 def main(args=None):
     rclpy.init()
