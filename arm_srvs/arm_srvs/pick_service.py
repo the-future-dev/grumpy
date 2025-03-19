@@ -115,11 +115,18 @@ class PickService(Node):
                     self.publish_angles(thetas)
                 
                 case "GraspObject": # Grasp the object
-                    thetas = [-1, -1, -1, -1, -1, -1]
-                    self.publish_angles(thetas)
+                    thetas = [11000, -1, -1, -1, -1, -1]
+                    self.publish_angles(thetas, times=[3000, 2000, 2000, 2000, 2000, 2000])
                     step = "Finish"
-                    
 
+                case "Finish": # Finish the pick up sequence by going back to the initial position, but not for the gripper
+                    initial_thetas = self.initial_thetas.copy()
+                    initial_thetas[0] = -1
+                    self.publish_angles(initial_thetas, times=[2000, 2000, 2000, 2000, 2000, 2000])
+                    step = "Success"
+                    
+        response.success = True if step == "Success" else False
+        
         return response
 
 
