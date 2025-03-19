@@ -107,13 +107,17 @@ class PickService(Node):
                     self.publish_angles(thetas)
                     step = "InverseKinematics"
 
-                case "InverseKinematics": # Calculate the inverse kinematics of servo 3 and 4
+                case "InverseKinematics": # Move the arm to the grasp position calculated by the inverse kinematics
                     delta_theta_servo3, delta_theta_servo4 = self.inverse_kinematics(x, y, z)
                     theta_servo3 = self.initial_thetas[2] + delta_theta_servo3 * 100
                     theta_servo4 = self.initial_thetas[3] + delta_theta_servo4 * 100
                     thetas = [-1, -1, theta_servo3, theta_servo4, -1, -1]
                     self.publish_angles(thetas)
-                    step = "Success"
+                
+                case "GraspObject": # Grasp the object
+                    thetas = [-1, -1, -1, -1, -1, -1]
+                    self.publish_angles(thetas)
+                    step = "Finish"
                     
 
         return response
