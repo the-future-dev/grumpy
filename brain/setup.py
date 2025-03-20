@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'object_mapping'
+package_name = 'brain'
 
 setup(
     name=package_name,
@@ -14,14 +14,14 @@ setup(
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='robot',
-    maintainer_email='robot@todo.todo',
+    maintainer_email='malte.sundgren@gmail.com',
     description='TODO: Package description',
     license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'object_mapping = object_mapping.object_mapping:main',
-            'workspace_init = object_mapping.workspace_init:main'
+            'brain_collection = brain.brain_collection:main',
+            'brain_exploration = brain.brain_exploration:main'
         ],
     },
 )
