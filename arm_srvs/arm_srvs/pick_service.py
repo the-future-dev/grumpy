@@ -119,7 +119,7 @@ class PickService(Node):
                     step = "GraspObject"  # Move to the next step
                 
                 case "GraspObject":  # Grasp the object
-                    thetas = [10000, -1, -1, -1, -1, -1]  # Close the gripper
+                    thetas = [10500, -1, -1, -1, -1, -1]  # Close the gripper
                     times = [3000, 2000, 2000, 2000, 2000, 2000]  # Set the times to slowly close the gripper
                     step = "DrivePosition"  # Move to the next step
 
