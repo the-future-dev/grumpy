@@ -35,9 +35,9 @@ def generate_launch_description():
         output='screen'
     )
 
-    drive_control = Node(
+    drive_path = Node(
         package='drive_control',
-        executable='drive_control',
+        executable='drive_2',
         output='screen'
     )
 
@@ -54,12 +54,12 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        drive_control,
+        drive_path,
         occupancy_grid_map,
         planner,
         a_star,
         localization,
         icp_node,
-        perception,
-        object_mapping
+        #perception,
+        #object_mapping
     ])

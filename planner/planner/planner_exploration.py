@@ -34,9 +34,9 @@ class PlannerExplorationNode(Node):
         self.first = True
         self.path_interupted = False
 
-        self.map_ylength = 0
-        self.map_xlength = 0
-        self.resolution = 0
+        self.map_ylength = 568
+        self.map_xlength = 1400
+        self.resolution = 3
     
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
@@ -46,6 +46,7 @@ class PlannerExplorationNode(Node):
         self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
 
         self.grid_sub = self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
+        self.path_sub = self.create_subscription(Path, 'path/Astar', self.path_cb, 1)
         self.drive_feedback_sub = self.create_subscription(Bool, 'drive/feedback', self.drive_cb, 1)
     
     def grid_cb(self, msg:Int16MultiArray):
@@ -56,17 +57,13 @@ class PlannerExplorationNode(Node):
             data = msg.data
             self.grid = np.array([data]).reshape(rows, columns)
 
-            self.map_ylength = msg.layout.dim[0].stride
-            self.map_xlength = msg.layout.dim[1].stride
-            self.resolution = msg.layout.dim[2].size
-
             if self.first == True:
                 self.first = False
                 self.choose_next()
 
     def path_cb(self, msg:Path):
         #Call back function from a-star to publish path to publish to drive control. 
-
+        print('path msg gotten')
         if not msg.poses:
             self.get_logger().warning(f'No path found')
             self.choose_next()
@@ -125,13 +122,13 @@ class PlannerExplorationNode(Node):
         y_corner = self.workspace[1, self.counter]
 
         if x_corner < 0:
-            next_x = float(x_corner + 40)
+            next_x = float(x_corner + 30)
         else:
-            next_x = float(x_corner - 40)
+            next_x = float(x_corner - 30)
         if y_corner < 0:
-            next_y = float(y_corner + 40)
+            next_y = float(y_corner + 30)
         else:
-            next_y = float(y_corner - 40)
+            next_y = float(y_corner - 30)
     
         msg_goal.pose.position.x = next_x
         msg_goal.pose.position.y = next_y

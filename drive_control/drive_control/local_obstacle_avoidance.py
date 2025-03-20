@@ -13,6 +13,7 @@ from geometry_msgs.msg import PointStamped
 from std_msgs.msg import Bool
 from std_msgs.msg import Int16MultiArray
 from nav_msgs.msg import Path
+from geometry_msgs.msg import PoseStamped
 
 class LocalObstacleAvoidanceNode(Node):
 
@@ -21,9 +22,9 @@ class LocalObstacleAvoidanceNode(Node):
 
         #Use grid to do local obstacle avoidance
         self.grid = None
-        self.map_xlength = 0
-        self.map_ylength = 0
-        self.resolution = 0
+        self.map_xlength = 1400 #1400 exporation, 440 collection
+        self.map_ylength = 568  #568 exploration, 260 collection
+        self.resolution = 3
         self.adjust = False 
 
         self.tf_buffer = Buffer()
@@ -44,10 +45,6 @@ class LocalObstacleAvoidanceNode(Node):
         data = msg.data
         self.grid = np.array([data]).reshape(rows, columns)
 
-        self.map_ylength = msg.layout.dim[0].stride
-        self.map_xlength = msg.layout.dim[1].stride
-        self.resolution = msg.layout.dim[2].size
-
         if self.adjust == False: #This checks if we want to do local avoidance or not
             self.local_obstacle_avoidance()
 
@@ -59,6 +56,7 @@ class LocalObstacleAvoidanceNode(Node):
 
         rob_x, rob_y = self.get_current_pos()
         grid_x, grid_y = self.map_to_grid(rob_x, rob_y)
+        print(self.grid[grid_y, grid_x])
 
         occupied_zone = self.grid[grid_y, grid_x] > 0
 
@@ -66,6 +64,7 @@ class LocalObstacleAvoidanceNode(Node):
             msg_occupied.data = True
             self.adjust = True
             self.occupied_zone_pub.publish(msg_occupied)
+            self.get_logger().warning(f'In occupied zone, moving to free')
             self.adjust_robot(rob_x, rob_y)
         else:
             msg_occupied.data = False
@@ -91,12 +90,19 @@ class LocalObstacleAvoidanceNode(Node):
         msg_occupied = Bool()
         msg_occupied.data = False
         self.occupied_zone_pub.publish(msg_occupied)
+        
+        pose = PoseStamped()
+        pose.pose.position.x = free_x[min_dist_index]/100
+        pose.pose.position.y = free_y[min_dist_index]/100
+        pose_list = [pose]
+
         msg_drive = Path()
         msg_drive.header.frame_id = 'map'
         msg_drive.header.stamp = self.get_clock().now().to_msg()
-        msg_drive.poses[0].pose.position.x = free_x[min_dist_index]/100
-        msg_drive.poses[0].pose.position.y = free_y[min_dist_index]/100
+        msg_drive.poses = pose_list
+
         self.drive_point_pub.publish(msg_drive)
+        self.adjust = False
 
     def get_current_pos(self):
         #Getting current pose of robot. 

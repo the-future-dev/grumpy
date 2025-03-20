@@ -55,6 +55,7 @@ class DrivePathNode(Node):
           result = self.set_drive_input(pose.pose.position.x, pose.pose.position.y, x_offset, y_offset)
           #If return false, means no more execution in path, break loop
           if result == False:
+              self.get_logger().info(f'stopping car in occupied zone')
               break
           
         msg_feedback.data = result

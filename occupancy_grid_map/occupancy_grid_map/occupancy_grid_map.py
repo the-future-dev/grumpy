@@ -161,12 +161,12 @@ class OccupancyGridMapNode(Node):
         self.grid[y_grid_points, x_grid_points] = value
 
         if value != self.free:
-            self.inflate(x_grid_points, y_grid_points, value)
+            self.inflate_grid(x_grid_points, y_grid_points, value)
 
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
 
-        inflate_size = int(25/self.resolution)
+        inflate_size = int(3/self.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
         
         new_grid = np.zeros_like(self.grid)
@@ -180,18 +180,25 @@ class OccupancyGridMapNode(Node):
         #Publish grid
         msg_grid = Int16MultiArray()
         msg_grid.data = self.grid.flatten().tolist()
+        
         dim1 = MultiArrayDimension()
         dim2 = MultiArrayDimension()
-        dim3 = MultiArrayDimension()
+        
         dim1.label = 'rows'
         dim2.label = 'columns'
-        dim3.label = 'resolution'
+
         dim1.size = self.grid.shape[0]
-        dim1.stride = self.map_ylength
         dim2.size = self.grid.shape[1]
-        dim1.stride = self.map_xlength
-        dim3.size = self.resolution
-        msg_grid.layout.dim = [dim1, dim2, dim3]
+
+        msg_grid.layout.dim = [dim1, dim2]
+
+        cmap = plt.cm.get_cmap('viridis', 5)
+        plt.figure(figsize=(10, 10))
+        plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
+        cbar = plt.colorbar()
+        cbar.set_ticks([0, 1, 2, 3, 4])
+        plt.savefig('fantastic_map')
+        plt.close()
 
         self.grid_pub.publish(msg_grid)
     
@@ -257,8 +264,7 @@ if __name__ == '__main__':
 #     self.unknown: 'gray',
 #     self.free: 'white',
 #     self.obstacle: 'black',
-#     self.object: 'blue',
-#     self.box: 'red',
+#     self.object_box: 'blue',
 #     self.outside: 'lightgray'
 # }
 
