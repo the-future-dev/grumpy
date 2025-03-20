@@ -69,7 +69,7 @@ class DropService(Node):
 
     #     assert current_servo_angles is list
 
-    #     self.get_logger.info('Got the angles of the servos')
+    #     self._logger.info('Got the angles of the servos')
 
     
     def drop_sequence(self, request, response):
@@ -85,8 +85,10 @@ class DropService(Node):
 
         step = "Start"
         x, y, z = 0, 0, 0
+        end_strings = ["Success", "Failure"]
 
-        while step != "Success" or step != "Failure":
+        while step not in end_strings:
+            self._logger.info(f'{step}')
             times = self.times
             match step:
                 case "Start":  # Make sure the arm is in the initial position but does not drop the object
@@ -95,7 +97,7 @@ class DropService(Node):
                     step = "GetPosition"  # Move to the next step
 
                 case "GetPosition":  # Get the position of the box from the request
-                    assert request.pose is Pose, self._logger.error('request was not type Pose')  # Assert that the request has the correct type
+                    assert isinstance(request.pose, Pose), self._logger.error(f'request was not type Pose')  # Assert that the request has the correct type
                     x, y, z = self.extract_object_position(request.pose)  # Get the position of the box from the request
                     thetas = [-1, -1, -1, -1, -1, -1]  # Do not move the arm
                     step = "DropAngles"  # Move to the next step
@@ -105,7 +107,7 @@ class DropService(Node):
                     step = "DropObject"  # Move to the next step
 
                 case "DropObject":  # Drops the object
-                    thetas[0] = [1000, -1, -1, -1, -1, -1]  # Only move and open the gripper
+                    thetas = [1000, -1, -1, -1, -1, -1]  # Only move and open the gripper
                     step = "DrivePosition"  # Move to the next step
 
                 case "DrivePosition":  # Finish the drop sequence by going back to the initial position
@@ -115,7 +117,8 @@ class DropService(Node):
             self.check_angles_and_times(thetas, times)  # Assert that the angles and times are in the correct format
             
             self.publish_angles(thetas, times)  # Publish the angles to the arm
-                    
+        
+        self._logger.info(f'{step}')
         response.success = True if step == "Success" else False
         
         return response
@@ -135,11 +138,12 @@ class DropService(Node):
 
         x, y, z = pose.position.x, pose.position.y, pose.position.z
 
-        assert x is float, self._logger.error('x was not type float')
-        assert y is float, self._logger.error('y was not type float')
-        assert z is float, self._logger.error('z was not type float')
+        assert isinstance(x, float), self._logger.error('x was not type float')
+        assert isinstance(x, float), self._logger.error('y was not type float')
+        assert isinstance(x, float), self._logger.error('z was not type float')
 
-        self.get_logger.info('Got the position of the object')
+
+        self._logger.info('Got the position of the object')
 
         return x, y, z
 
@@ -155,22 +159,24 @@ class DropService(Node):
             Raises error if the angles and times are not in the correct format, length or interval
         """
 
+        assert isinstance(angles, list), self._logger.error('angles is not of type list')
+        assert isinstance(times, list), self._logger.error('times is not of type list')
         assert len(angles) == 6, self._logger.error('angles was not of length 6')
         assert len(times) == 6, self._logger.error('times was not of length 6')
         assert all(isinstance(angle, int) for angle in angles), self._logger.error('angles was not of type int')
         assert all(isinstance(time, int) for time in times), self._logger.error('times was not of type int')
         assert all(1000 <= time <= 5000 for time in times), self._logger.error('times was not within the interval [1000, 5000]')
-        assert (0 <= angles[0] <= 11000) or (angles[0] == -1), self._logger.error('servo 1 was not within the interval [0, 11000] or -1')
-        assert (0 <= angles[1] <= 24000) or (angles[1] == -1), self._logger.error('servo 2 was not within the interval [0, 24000] or -1')
-        assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), self._logger.error('servo 3 was not within the interval [2500, 21000] or -1')
-        assert (3000 <= angles[3] <= 21500) or (angles[3] == -1), self._logger.error('servo 4 was not within the interval [3000, 21500] or -1')
-        assert (6000 <= angles[4] <= 18000) or (angles[4] == -1), self._logger.error('servo 5 was not within the interval [6000, 18000] or -1')
-        assert (0 <= angles[5] <= 20000) or (angles[5] == -1), self._logger.error('servo 6 was not within the interval [0, 20000] or -1')
+        assert (0 <= angles[0] <= 11000) or (angles[0] == -1), self._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
+        assert (0 <= angles[1] <= 24000) or (angles[1] == -1), self._logger.error(f'servo 2 was not within the interval [0, 24000] or -1, got {angles[1]}')
+        assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), self._logger.error(f'servo 3 was not within the interval [2500, 21000] or -1, got {angles[2]}')
+        assert (3000 <= angles[3] <= 21500) or (angles[3] == -1), self._logger.error(f'servo 4 was not within the interval [3000, 21500] or -1, got {angles[3]}')
+        assert (6000 <= angles[4] <= 18000) or (angles[4] == -1), self._logger.error(f'servo 5 was not within the interval [6000, 18000] or -1, got {angles[4]}')
+        assert (0 <= angles[5] <= 20000) or (angles[5] == -1), self._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
 
-        self.get_logger.info('Checked the angles and times')
+        self._logger.info('Checked the angles and times')
 
     
-    def publish_angles(self, angles, times=[1000, 1000, 1000, 1000, 1000, 1000]):
+    def publish_angles(self, angles, times):
         """
         Args:
             angles: List, required, the angles for each servo to be set to
@@ -183,14 +189,14 @@ class DropService(Node):
 
         # Initializes the message with required informaiton
         msg = Int16MultiArray()
-        msg.layout.dim[0] = {'label':'', 'size': 0, 'stride': 0}
-        msg.layout.data_offset = 0
+        # msg.layout.dim[0] = {'label':'', 'size': 0, 'stride': 0}
+        # msg.layout.data_offset = 0
 
         msg.data = angles + times  # Concatenates the angles and times
 
         self.servo_angle_publisher.publish(msg)
 
-        time.sleep(np.max(times) + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
+        time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
 
 def main(args=None):
     rclpy.init()
