@@ -20,7 +20,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'drive_control = drive_control.drive_control:main'
+            'drive_path = drive_control.drive_path:main',
+            'local_obstacle_avoidance = drive_control.local_obstacle_avoidance:main',
+            'drive_2 = drive_control.drive_2:main'
         ],
     },
 )
