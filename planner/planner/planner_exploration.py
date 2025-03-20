@@ -29,11 +29,7 @@ class PlannerExplorationNode(Node):
         
         self.n_corners = self.workspace.shape[1]
         self.counter = 0
-
         self.grid = None
-        self.first = True
-        self.path_interupted = False
-
         self.map_ylength = 568
         self.map_xlength = 1400
         self.resolution = 3
@@ -41,65 +37,24 @@ class PlannerExplorationNode(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
-        self.goal_pose_pub = self.create_publisher(PoseStamped, 'pose/goal_next', 1)
-        self.path_pub = self.create_publisher(Path, 'path/next_goal', 1)
-        self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
+        self.goal_pose_pub = self.create_publisher(PoseStamped, 'planner_ex/next_goal', 1)
+        self.corner_pub = self.create_publisher(Bool, 'planner_ex/corner_ex_done', 1)
+        self.no_unknown_pub = self.create_publisher(Bool, 'planner_ex/no_unknown_left', 1)
 
-        self.grid_sub = self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
-        self.path_sub = self.create_subscription(Path, 'path/Astar', self.path_cb, 1)
-        self.drive_feedback_sub = self.create_subscription(Bool, 'drive/feedback', self.drive_cb, 1)
+        self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
+        self.create_subscription(Bool, 'planner_ex/find_goal', self.find_goal_cb, 1)
     
     def grid_cb(self, msg:Int16MultiArray):
-
-            #Return array from message of grid
-            rows = msg.layout.dim[0].size
-            columns = msg.layout.dim[1].size
-            data = msg.data
-            self.grid = np.array([data]).reshape(rows, columns)
-
-            if self.first == True:
-                self.first = False
-                self.choose_next()
-
-    def path_cb(self, msg:Path):
-        #Call back function from a-star to publish path to publish to drive control. 
-        print('path msg gotten')
-        if not msg.poses:
-            self.get_logger().warning(f'No path found')
-            self.choose_next()
-            return 
-
-        self.path_pub.publish(msg)
-        
-    def drive_cb(self, msg:Bool):
-        #Callback for feedback from drive control if any issue, when implementing obstacle avoidance
+        #Return array from message of grid
+        rows = msg.layout.dim[0].size
+        columns = msg.layout.dim[1].size
+        data = msg.data
+        self.grid = np.array([data]).reshape(rows, columns)
+    
+    def find_goal_cb(self, msg:Bool):
 
         if msg.data == True:
-            self.get_logger().info(f'Getting next point')
-            if self.path_interupted == True: #This is to now if new point or same point for the corner exploration
-                self.counter -= 1
-                self.path_interupted = False
             self.choose_next()
-        else:
-            self.get_logger().warning(f'Path interrupted, going to free zone')
-            self.path_interupted = True
-
-    def current_pos(self):
-        #Giving current position of the robot
-
-        tf_future = self.tf_buffer.wait_for_transform_async('map', 'base_link', self.get_clock().now())
-        rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
-
-        try:
-            tf = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
-        except TransformException as ex:
-             self.get_logger().info(f'Could not transform{ex}')
-             return None, None
-        
-        rob_x = tf.transform.translation.x
-        rob_y = tf.transform.translation.y
-
-        return rob_x, rob_y
 
     def choose_next(self):
         #First part of exploration is the go to the corners of the wokrspace
@@ -109,7 +64,6 @@ class PlannerExplorationNode(Node):
             self.corner_goal()
         else:
             self.unknown_goal()
-
         return
 
     def corner_goal(self):
@@ -117,6 +71,9 @@ class PlannerExplorationNode(Node):
 
         msg_goal = PoseStamped()
         msg_goal.header.frame_id = 'map'
+
+        msg_corner_done = Bool()
+        msg_corner_done.data = False
 
         x_corner = self.workspace[0, self.counter]
         y_corner = self.workspace[1, self.counter]
@@ -134,8 +91,8 @@ class PlannerExplorationNode(Node):
         msg_goal.pose.position.y = next_y
         msg_goal.pose.position.z = 0.0
 
-        print(msg_goal.pose.position.x)
         self.goal_pose_pub.publish(msg_goal)
+        self.corner_pub.publish(msg_corner_done)
         self.counter += 1
         
         return
@@ -145,16 +102,18 @@ class PlannerExplorationNode(Node):
 
         msg_goal = PoseStamped()
         msg_goal.header.frame_id = 'map'
+
+        msg_corner_done = Bool()
+        msg_corner_done.data = True
             
         rob_x, rob_y = self.current_pos()
         indices_unkown = np.argwhere(self.grid == -1)
        
         if len(indices_unkown) == 0:
             self.get_logger().info(f'exploration finished')
-            msg_stop = DutyCycles()
-            msg_stop.duty_cycle_right = 0.0
-            msg_stop.duty_cycle_left = 0.0
-            self.motor_publisher.publish(msg_stop)
+            msg_done = Bool()
+            msg_done.data = True 
+            self.no_unknown_pub.publish(msg_done)
             return
 
         x = indices_unkown[:, 1]
@@ -175,8 +134,26 @@ class PlannerExplorationNode(Node):
         msg_goal.pose.position.z = 0.0
         
         self.goal_pose_pub.publish(msg_goal)
+        self.corner_pub.publish(msg_corner_done)
 
         return
+    
+    def current_pos(self):
+        #Giving current position of the robot
+
+        tf_future = self.tf_buffer.wait_for_transform_async('map', 'base_link', self.get_clock().now())
+        rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+
+        try:
+            tf = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        except TransformException as ex:
+             self.get_logger().info(f'Could not transform{ex}')
+             return None, None
+        
+        rob_x = tf.transform.translation.x
+        rob_y = tf.transform.translation.y
+
+        return rob_x, rob_y
 
     def grid_to_map(self, grid_x, grid_y):
         #Take grid indices and converts to some x,y in that grid

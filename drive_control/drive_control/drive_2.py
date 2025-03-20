@@ -25,23 +25,27 @@ class SampleDriveControlNode(Node):
 
         # stop variable
         self.stop = False
+        self.drive_to_free = False
 
         #Create buffer to look for transform 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
         #Create publisher to publish motor control
-        self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
-        self.drive_feedback = self.create_publisher(Bool, '/drive/feedback', 1)
+        self.motor_publisher = self.create_publisher(DutyCycles, 'motor/duty_cycles', 10)
+        self.drive_feedback = self.create_publisher(Bool, 'drive/feedback', 1)
 
-        self.create_subscription(Path, 'path/next_goal', self.path_cb, 1)
-        self.create_subscription(Bool, 'map/occupied_zone', self.stop_cb, 1)
+        self.create_subscription(Path, 'drive/path', self.path_cb, 1)
+        self.create_subscription(Bool, 'drive/stop', self.stop_cb, 1)
+        self.create_subscription(Path, 'avoidance/drive_to_free', self.drive_free_cb, 1)
 
     def path_cb(self, msg:Path):
+        #Call back that iterates in poses and drives to them, can maybe implement offset if it is needed
+
+        self.drive_to_free = False
 
         for pose in msg.poses:
           result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
-          print(pose.pose.position.x, pose.pose.position.y)
           if result == False:
               break
 
@@ -55,8 +59,22 @@ class SampleDriveControlNode(Node):
         self.drive_feedback.publish(msg_feedback)
     
     def stop_cb(self, msg:Bool):
-
+        #Callback that sets stop variable to True if stop
         self.stop = msg.data
+
+    def drive_free_cb(self, msg:Path):
+        
+        self.drive_to_free = True 
+        self.stop = False
+        
+        for pose in msg.poses:
+            self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+
+        self.drive_to_free = False
+        msg_stop = DutyCycles()
+        msg_stop.duty_cycle_left = 0.0
+        msg_stop.duty_cycle_right = 0.0
+        self.motor_publisher.publish(msg_stop)
 
     def set_drive_input(self, x, y):
 
@@ -69,12 +87,10 @@ class SampleDriveControlNode(Node):
         sample_point.point.y = y
         sample_point.point.z = 0.0
 
-        #print(sample_point.point.x, sample_point.point.y)
-
         #While loop that rotates robot until aligned   
         while True:
 
-            if self.stop == True:
+            if self.stop == True and self.drive_to_free == False:
                 return False
 
             tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'odom', self.get_clock().now())
@@ -112,7 +128,7 @@ class SampleDriveControlNode(Node):
         #While loop that drives forward until reaching point
         while True:
 
-            if self.stop == True:
+            if self.stop == True and self.drive_to_free == False:
                 return False
             
             tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'odom', self.get_clock().now())

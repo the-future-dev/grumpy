@@ -166,12 +166,15 @@ class OccupancyGridMapNode(Node):
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
 
-        inflate_size = int(3/self.resolution)
+        inflate_size = int(10/self.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
         
         new_grid = np.zeros_like(self.grid)
         new_grid[y_grid_points, x_grid_points] = 1
         new_grid = binary_dilation(new_grid, structure=inflate_matrix)*value
+
+        mask_zeros = new_grid == 0
+        new_grid[mask_zeros] = -1
 
         self.grid = np.maximum(self.grid, new_grid)
 
