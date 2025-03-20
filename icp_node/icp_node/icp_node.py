@@ -33,7 +33,10 @@ class ICP_node(Node):
         self.create_subscription(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', self.localization_pose_cb, 10)
 
         # Initialize subscriber to brain
-        self.create_subscription(Bool, '/brain/get_new_reference_scan', self.get_new_ref_scan_cb, 10)
+        self.create_subscription(Bool, '/icp_node/get_new_reference_scan', self.get_new_ref_scan_cb, 1)
+
+        # Initialize publiher to brain
+        self.have_scan_pub = self.create_publisher(Bool, '/icp_node/have_scan', 1)
 
         # Initialize the transform buffer
         self.tf_buffer = Buffer()
@@ -64,6 +67,7 @@ class ICP_node(Node):
         # Initialize counter
         self.counter = 0
         self.N = 10
+
 
         # Initialize the path publisher
         self._path_pub = self.create_publisher(Path, 'path', 10)
@@ -161,6 +165,11 @@ class ICP_node(Node):
             # append position of robot for the pointcloud and the pointcloud transformed to odom frame
             self.reference_clouds.append((pos, pointcloud))
 
+            # publish message that new scan is added to brain
+            bool_msg = Bool()
+            bool_msg.data = True
+            self.have_scan_pub.publish(bool_msg)
+
             # set reference cloud
             self.ref_cloud = pointcloud
         
@@ -195,7 +204,7 @@ class ICP_node(Node):
         # Checking overlap and inlier rmse to make sure transform is good to use
         overlap = result_icp.fitness 
         rmse = result_icp.inlier_rmse
-        self.get_logger().info(f'fitness: {overlap}, rmse: {rmse}')
+        # self.get_logger().info(f'fitness: {overlap}, rmse: {rmse}')
 
         if overlap < 0.3 or rmse > 0.1:
             # self.get_logger().info(f'Not good enough conditions, fitness: {overlap}, rmse: {rmse}')
@@ -220,7 +229,7 @@ class ICP_node(Node):
                                     [self.t.transform.translation.y - transform_matrix[1, 3]]])
 
         if np.linalg.norm(comp_transforms) > 0.2:
-            self.get_logger().info(f'The norm was too high: {np.linalg.norm(comp_transforms) }')
+            # self.get_logger().info(f'The norm was too high: {np.linalg.norm(comp_transforms)}')
             self.t.header.stamp = msg.header.stamp
             self._tf_broadcaster.sendTransform(self.t)
             return 

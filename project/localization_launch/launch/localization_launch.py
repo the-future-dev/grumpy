@@ -49,6 +49,12 @@ def generate_launch_description():
     )
 
 
+    brain_exploration = Node(
+        package='brain',
+        executable='brain_exploration',
+        output = 'screen'
+    )
+
     # Static Transforms
     static_tf_base_lidar = Node(
         package='tf2_ros',
@@ -67,6 +73,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         # rviz_node,
+        brain_exploration,
         icp,
         localization,
         static_tf_base_lidar,
