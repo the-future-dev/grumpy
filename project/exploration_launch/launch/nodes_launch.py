@@ -7,6 +7,12 @@ import os
 
 def generate_launch_description():
     # Start nodes
+    brain_exploration = Node(
+        package='brain',
+        executable='brain_exploration',
+        output='screen'
+    )
+
     localization = Node(
         package='localization',
         executable='localization',
@@ -21,6 +27,12 @@ def generate_launch_description():
         package='occupancy_grid_map',
         executable='occupancy_grid_map',
         output='screen'
+    )
+
+    local_obstacle_avoidance = Node(
+        package='drive_control',
+        executable='local_obstacle_avoidance',
+        output = 'screen'
     )
 
     planner = Node(
@@ -54,12 +66,14 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        brain_exploration,
         drive_path,
         occupancy_grid_map,
+        local_obstacle_avoidance,
         planner,
         a_star,
         localization,
         icp_node,
-        #perception,
-        #object_mapping
+        # perception,
+        # object_mapping
     ])

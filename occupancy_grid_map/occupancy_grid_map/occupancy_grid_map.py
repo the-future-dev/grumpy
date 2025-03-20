@@ -85,7 +85,7 @@ class OccupancyGridMapNode(Node):
         
         #Get data from message
         min_angle = msg.angle_min
-        lower_bound = 0.2
+        lower_bound = 0.35
         upper_bound = msg.range_max
         inc = msg.angle_increment
         ranges = np.array(msg.ranges)
@@ -166,7 +166,7 @@ class OccupancyGridMapNode(Node):
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
 
-        inflate_size = int(10/self.resolution)
+        inflate_size = int(6/self.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
         
         new_grid = np.zeros_like(self.grid)
@@ -238,7 +238,7 @@ class OccupancyGridMapNode(Node):
         x_free = np.concatenate(x_line)
         y_free = np.concatenate(y_line)
 
-        mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.7) & (x_free > abs(y_free))  #Cone shape
+        mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.5) & (x_free > abs(y_free))  #Cone shape
         #mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)  #Box shape
         
         x_free = x_free[mask_rgbd_scope]

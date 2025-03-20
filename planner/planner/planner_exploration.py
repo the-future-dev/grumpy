@@ -69,6 +69,8 @@ class PlannerExplorationNode(Node):
     def corner_goal(self):
         #Incrementing through all corners of workspace and publishing it to a-star
 
+        self.get_logger().info(f'Corner nr {self.counter}')
+
         msg_goal = PoseStamped()
         msg_goal.header.frame_id = 'map'
 
@@ -93,6 +95,8 @@ class PlannerExplorationNode(Node):
 
         self.goal_pose_pub.publish(msg_goal)
         self.corner_pub.publish(msg_corner_done)
+        self.get_logger().info('Publihsing from planner to brain')
+
         self.counter += 1
         
         return

@@ -45,7 +45,7 @@ class LocalObstacleAvoidanceNode(Node):
 
         self.local_obstacle_avoidance()
     
-    def adjust_cb(self):
+    def adjust_cb(self,msg:Bool):
         #Function which is called when in occipied positiona and find nearest free point to drive to 
 
         free_indices = np.argwhere(self.grid == 0)
@@ -88,7 +88,6 @@ class LocalObstacleAvoidanceNode(Node):
         if free_zone == False:
             msg_free.data = False
             self.free_zone_pub.publish(msg_free)
-            self.get_logger().warning(f'In occupied zone, stop motor and move to free')
         else:
             msg_free.data = True
             self.free_zone_pub.publish(msg_free) 

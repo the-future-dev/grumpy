@@ -91,6 +91,7 @@ class SampleDriveControlNode(Node):
         while True:
 
             if self.stop == True and self.drive_to_free == False:
+                self.get_logger().info(f'Stopping, in occupied zone')
                 return False
 
             tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'odom', self.get_clock().now())
