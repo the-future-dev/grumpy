@@ -19,39 +19,31 @@ class PickService(Node):
         self.z_origin_servo5 =  0.12915
         self.theta_servo5    =  60
 
-        # Constants in the robot arm:
-        # Links:
-        # From joint of servo 5 to joint of servo 4:
-        self.l1 = 0.10048
-        # From joint of servo 4 to joint of servo 3:
-        self.l2 = 0.094714
-        # From joint of servo 3 to joint of servo 2 + from joint servo 2 to griping point
-        self.l3 = 0.05071 + 0.11260
+        # Constants in the robot arm links:
+        self.l1 = 0.10048  # From joint of servo 5 to joint of servo 4:
+        self.l2 = 0.094714  # From joint of servo 4 to joint of servo 3:
+        self.l3 = 0.05071 + 0.11260  # From joint of servo 3 to joint of servo 2 + from joint servo 2 to griping point
 
         # Origin of servo 4 in rho+z-plane
         self.z_origin_servo4   = self.z_origin_servo5 + self.l1 * np.sin(np.deg2rad(90) - np.deg2rad(self.theta_servo5))
         self.rho_origin_servo4 = self.l1 * np.cos(np.deg2rad(90) - np.deg2rad(self.theta_servo5))
          
         # Sets angles of the servos for different tasks, as well as time for the arm to move into these positions:
-        # Arm pointing straight up, used for reset and driving around
-        self.initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]
-        # Angles when the arm camera has a view over the entire pick-up area
-        self.view_thetas = [-1, -1, 3000, 17500, 9000, -1]
-        # Angles from which the inverse kinematics are calculated for picking up objects
-        self.pre_grasp_thetas = [-1, -1, 3000, 14500, 6000, -1]
+        self.initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around
+        self.view_thetas = [-1, -1, 3000, 17500, 9000, -1]  # Angles when the arm camera has a view over the entire pick-up area
 
-        # Standard angle movement times to all positions
-        self.times = [1000, 1000, 1000, 1000, 1000, 1000]
+        self.times = [1000, 1000, 1000, 1000, 1000, 1000]  # Standard angle movement times to all positions
 
-        # Keeps track of the angles of the servos published under /servo_pos_publisher
-        self.current_angles = self.initial_thetas
-
+        self.current_angles = self.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
+        
+        # Create the pick service
         self.srv = self.create_service(
             PickAndDropObject, 
             'pick_object', 
             self.pick_up_sequence
         )
 
+        # Create the publisher and subscriber for the angles of the servos
         self.servo_angle_publisher = self.create_publisher(
             Int16MultiArray,
             '/multi_servo_cmd_sub',
