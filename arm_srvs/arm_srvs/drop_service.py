@@ -45,6 +45,9 @@ class DropService(Node):
         # Standard angle movement times to all positions
         self.times = [1000, 1000, 1000, 1000, 1000, 1000]
 
+        # Keeps track of the angles of the servos published under /servo_pos_publisher
+        self.current_angles = self.initial_thetas
+
         self.srv = self.create_service(
             PickAndDropObject, 
             'drop_object', 
@@ -57,19 +60,12 @@ class DropService(Node):
             1
         )
         
-        # self.servo_subscriber = self.create_subscription(
-        #     Int16MultiArray,
-        #     '/servo_pos_publisher',
-        #     self.servo_callback,
-        #     1
-        # )
-        
-    # def servo_callback(self, msg:Int16MultiArray):
-    #     current_servo_angles = msg.data
-
-    #     assert current_servo_angles is list
-
-    #     self._logger.info('Got the angles of the servos')
+        self.servo_subscriber = self.create_subscription(
+            Int16MultiArray,
+            '/servo_pos_publisher',
+            self.current_servos,
+            1
+        )
 
     
     def drop_sequence(self, request, response):
@@ -94,34 +90,55 @@ class DropService(Node):
                 case "Start":  # Make sure the arm is in the initial position but does not drop the object
                     thetas = self.initial_thetas.copy()  # Copy the initial thetas
                     thetas[0] = -1  # Make sure the gripper does not move
-                    step = "GetPosition"  # Move to the next step
+                    next_step = "GetPosition"  # Move to the next step
 
                 case "GetPosition":  # Get the position of the box from the request
                     assert isinstance(request.pose, Pose), self._logger.error(f'request was not type Pose')  # Assert that the request has the correct type
                     x, y, z = self.extract_object_position(request.pose)  # Get the position of the box from the request
                     thetas = [-1, -1, -1, -1, -1, -1]  # Do not move the arm
-                    step = "DropAngles"  # Move to the next step
+                    next_step = "RotateBase"  # Move to the next step
+
+                case "RotateBase":  # Move servo 6/base to the correct angle
+                    # Calculate the change of the angle for servo 6, then new angle of servo 6, round and convert to int
+                    theta_servo6 = round(self.initial_thetas[5] + self.get_delta_theta_6(x, y) * 100)
+                    thetas = [-1, -1, -1, -1, -1, theta_servo6]  # Only servo 6 is moved
+                    next_step = "DropAngles"  # Move to the next step
 
                 case "DropAngles":  # Sets the angles for the arm to drop the object
                     thetas = self.drop_thetas
-                    step = "DropObject"  # Move to the next step
+                    next_step = "DropObject"  # Move to the next step
 
                 case "DropObject":  # Drops the object
                     thetas = [1000, -1, -1, -1, -1, -1]  # Only move and open the gripper
-                    step = "DrivePosition"  # Move to the next step
+                    next_step = "DrivePosition"  # Move to the next step
 
                 case "DrivePosition":  # Finish the drop sequence by going back to the initial position
                     thetas = self.initial_thetas
-                    step = "Success"  # End the FSM
+                    next_step = "Success"  # End the FSM
             
             self.check_angles_and_times(thetas, times)  # Assert that the angles and times are in the correct format
             
-            self.publish_angles(thetas, times)  # Publish the angles to the arm
+            if self.publish_angles(thetas, times):  # Publish the angles to the arm and check if the arm has moved to the correct angles
+                step = next_step
+            else:
+                step = "Failure"
         
         self._logger.info(f'{step}')
         response.success = True if step == "Success" else False
         
         return response
+
+
+    def current_servos(self, msg:Int16MultiArray):
+                current_angles = msg.data
+
+                assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
+                assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
+                assert all(isinstance(current_angles, int) for angle in current_angles), self._logger.error('angles was not of type int')
+
+                self.get_logger.info('Got the angles of the servos')
+
+                self.current_angles = current_angles
 
 
     def extract_object_position(self, pose:Pose):
@@ -146,6 +163,24 @@ class DropService(Node):
         self._logger.info('Got the position of the object')
 
         return x, y, z
+    
+
+    def get_delta_theta_6(self, x, y):
+        """
+        Args:
+            x: Float, required, x-position of the object in base_link frame
+            y: Float, required, y-position of the object in base_link frame
+        Returns:
+            delta_theta_6: Float, degrees that servo 6 has to rotate from its position
+        Other functions:
+
+        """
+
+        x_dist = x - self.x_origin_servo5
+        y_dist = y - self.y_origin_servo5
+
+        # Calculate the angle for servo 6 in radians and convert to degrees
+        return np.rad2deg(np.arctan2(y_dist, x_dist))
 
 
     def check_angles_and_times(self, angles, times):
@@ -197,6 +232,8 @@ class DropService(Node):
         self.servo_angle_publisher.publish(msg)
 
         time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
+
+        return self.current_angles == angles  # Checks if the arm has moved to the correct angles
 
 def main(args=None):
     rclpy.init()
