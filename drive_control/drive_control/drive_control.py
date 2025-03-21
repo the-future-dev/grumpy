@@ -39,7 +39,7 @@ class SampleDriveControlNode(Node):
     def path_cb(self, msg:Path):
 
         for pose in msg.poses:
-          result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+          result = self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
           print(pose.pose.position.x, pose.pose.position.y)
 
         msg_stop = DutyCycles()
