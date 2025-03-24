@@ -8,10 +8,10 @@ from geometry_msgs.msg import Pose
 import numpy as np
 import time
 
-class DropService(Node):
+class ArmCameraService(Node):
 
     def __init__(self):
-        super().__init__('drop_srv')
+        super().__init__('arm_camera_srv')
 
         # Origin of servo 5 in base_link frame:
         self.x_origin_servo5 = -0.00450
@@ -40,8 +40,8 @@ class DropService(Node):
         # Create the drop service
         self.srv = self.create_service(
             ArmCameraDetection, 
-            'drop_object', 
-            self.drop_sequence
+            'arm_camera', 
+            self.camera_sequence
         )
 
         # Create the publisher and subscriber for the angles of the servos
@@ -59,7 +59,7 @@ class DropService(Node):
         )
 
     
-    def drop_sequence(self, request, response):
+    def camera_sequence(self, request, response):
         """
         Args:
             request: Pose, required, the position and orientation of the box
@@ -228,14 +228,14 @@ class DropService(Node):
 
 def main(args=None):
     rclpy.init()
-    dropServie = DropService()
+    armCameraServie = ArmCameraService()
 
     try:
-        rclpy.spin(dropServie)
+        rclpy.spin(armCameraServie)
     except KeyboardInterrupt:
         pass
 
-    dropServie.destroy_node()
+    armCameraServie.destroy_node()
 
     rclpy.shutdown()
 

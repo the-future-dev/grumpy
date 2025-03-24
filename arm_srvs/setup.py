@@ -22,7 +22,7 @@ setup(
         'console_scripts': [
             'pick_service = arm_srvs.pick_service:main',
             'drop_service = arm_srvs.drop_service:main',
-            'camera_service = arm_srvs.camera_service:main',
+            'camera_service = arm_srvs.arm_camera_service:main',
             'positioning_service = arm_srvs.positioning_service:main'
         ],
     },
