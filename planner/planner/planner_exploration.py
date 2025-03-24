@@ -15,6 +15,8 @@ from std_msgs.msg import Int16MultiArray
 from robp_interfaces.msg import DutyCycles
 import matplotlib.pyplot as plt
 from std_msgs.msg import Bool
+from robp_interfaces.msg import DutyCycles
+
 
 class PlannerExplorationNode(Node):
     
@@ -27,60 +29,121 @@ class PlannerExplorationNode(Node):
         
         self.n_corners = self.workspace.shape[1]
         self.counter = 0
-
         self.grid = None
-        self.first = True
+        self.map_ylength = 568
+        self.map_xlength = 1400
+        self.resolution = 3
     
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
-        self.goal_pose_pub = self.create_publisher(PoseStamped, 'pose/goal_next', 1)
-        self.path_pub = self.create_publisher(Path, 'path/next_goal', 1)
+        self.goal_pose_pub = self.create_publisher(PoseStamped, 'planner_ex/next_goal', 1)
+        self.corner_pub = self.create_publisher(Bool, 'planner_ex/corner_ex_done', 1)
+        self.no_unknown_pub = self.create_publisher(Bool, 'planner_ex/no_unknown_left', 1)
 
-        self.grid_sub = self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
-        self.path_sub = self.create_subscription(Path, 'path/Astar', self.path_cb, 1)
-        self.drive_feedback_sub = self.create_subscription(Bool, 'drive/feedback', self.drive_cb, 1)
+        self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
+        self.create_subscription(Bool, 'planner_ex/find_goal', self.find_goal_cb, 1)
     
     def grid_cb(self, msg:Int16MultiArray):
-
-            #Return array from message of grid
-            rows = msg.layout.dim[0].size
-            columns = msg.layout.dim[1].size
-            data = msg.data
-            self.grid = np.array([data]).reshape(rows, columns)
-
-            if self.first == True:
-                self.first = False
-                self.choose_next()
-
-    def path_cb(self, msg:Path):
-        print('path msg')
-
-        if not msg.poses:
-            self.get_logger().warning(f'No path, could alreday be close enough')
-            self.choose_next()
-            return 
-
-        self.path_pub.publish(msg)
-        
-
-    def drive_cb(self, msg:Bool):
-        #Callback for feedback from drive control if any issue, when implementing obstacle avoidance
+        #Return array from message of grid
+        rows = msg.layout.dim[0].size
+        columns = msg.layout.dim[1].size
+        data = msg.data
+        self.grid = np.array([data]).reshape(rows, columns)
+    
+    def find_goal_cb(self, msg:Bool):
 
         if msg.data == True:
-            self.get_logger().info(f'Getting next point')
             self.choose_next()
 
-        cmap = plt.cm.get_cmap('viridis', 5)
+    def choose_next(self):
+        #First part of exploration is the go to the corners of the wokrspace
+        #Thereafter the robot goes to unkown grid cells in map
 
-        plt.figure(figsize=(10, 10))
-        plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
-        cbar = plt.colorbar()
-        cbar.set_ticks([0, 1, 2, 3, 4])
-        plt.savefig('test')
-        plt.close()
+        if self.counter < self.n_corners:
+            self.corner_goal()
+        else:
+            self.unknown_goal()
+        return
 
+    def corner_goal(self):
+        #Incrementing through all corners of workspace and publishing it to a-star
+
+        self.get_logger().info(f'Corner nr {self.counter}')
+
+        msg_goal = PoseStamped()
+        msg_goal.header.frame_id = 'map'
+
+        msg_corner_done = Bool()
+        msg_corner_done.data = False
+
+        x_corner = self.workspace[0, self.counter]
+        y_corner = self.workspace[1, self.counter]
+
+        if x_corner < 0:
+            next_x = float(x_corner + 30)
+        else:
+            next_x = float(x_corner - 30)
+        if y_corner < 0:
+            next_y = float(y_corner + 30)
+        else:
+            next_y = float(y_corner - 30)
+    
+        msg_goal.pose.position.x = next_x
+        msg_goal.pose.position.y = next_y
+        msg_goal.pose.position.z = 0.0
+
+        self.goal_pose_pub.publish(msg_goal)
+        self.corner_pub.publish(msg_corner_done)
+        self.get_logger().info('Publihsing from planner to brain')
+
+        self.counter += 1
+        
+        return
+    
+    def unknown_goal(self):
+        #Taking the closets grid cell with a thershold to go explore to next
+
+        msg_goal = PoseStamped()
+        msg_goal.header.frame_id = 'map'
+
+        msg_corner_done = Bool()
+        msg_corner_done.data = True
+            
+        rob_x, rob_y = self.current_pos()
+        indices_unkown = np.argwhere(self.grid == -1)
+       
+        if len(indices_unkown) == 0:
+            self.get_logger().info(f'exploration finished')
+            msg_done = Bool()
+            msg_done.data = True 
+            self.no_unknown_pub.publish(msg_done)
+            return
+
+        x = indices_unkown[:, 1]
+        y = indices_unkown[:, 0]
+
+        next_x, next_y = self.grid_to_map(x, y)
+
+        dists = np.sqrt(abs(next_x - rob_x)**2 + abs(next_y - rob_y)**2)
+        dist_msk = dists > 200
+        dists = dists[dist_msk]
+        next_x = next_x[dist_msk]
+        next_y = next_y[dist_msk]
+
+        min_index = np.argmin(dists)
+
+        msg_goal.pose.position.x = float(next_x[min_index])
+        msg_goal.pose.position.y = float(next_y[min_index])
+        msg_goal.pose.position.z = 0.0
+        
+        self.goal_pose_pub.publish(msg_goal)
+        self.corner_pub.publish(msg_corner_done)
+
+        return
+    
     def current_pos(self):
+        #Giving current position of the robot
 
         tf_future = self.tf_buffer.wait_for_transform_async('map', 'base_link', self.get_clock().now())
         rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
@@ -96,77 +159,11 @@ class PlannerExplorationNode(Node):
 
         return rob_x, rob_y
 
-    def choose_next(self):
-
-        if self.counter < self.n_corners:
-            self.corner_goal()
-        else:
-            self.unknown_goal()
-
-        return
-
-    def corner_goal(self):
-
-        msg_goal = PoseStamped()
-        msg_goal.header.frame_id = 'map'
-
-        x_corner = self.workspace[0, self.counter]
-        y_corner = self.workspace[1, self.counter]
-
-        if x_corner < 0:
-            next_x = float(x_corner + 40)
-        else:
-            next_x = float(x_corner - 40)
-        if y_corner < 0:
-            next_y = float(y_corner + 40)
-        else:
-            next_y = float(y_corner - 40)
-    
-        msg_goal.pose.position.x = next_x
-        msg_goal.pose.position.y = next_y
-        msg_goal.pose.position.z = 0.0
-
-        print(msg_goal.pose.position.x)
-        self.goal_pose_pub.publish(msg_goal)
-        self.counter += 1
-        
-        return
-    
-    def unknown_goal(self):
-
-        msg_goal = PoseStamped()
-        msg_goal.header.frame_id = 'map'
-            
-        rob_x, rob_y = self.current_pos()
-        indices_unkown = np.argwhere(self.grid == -1)
-       
-        if len(indices_unkown) == 0:
-            self.get_logger().info(f'exploration finished')
-       
-        x = indices_unkown[:, 1]
-        y = indices_unkown[:, 0]
-
-        next_x, next_y = self.grid_to_map(x, y)
-        dists = np.sqrt(abs(next_x - rob_x)**2 + abs(next_y - rob_y)**2)
-        dist_msk = dists > 150
-        dists = dists[dist_msk]
-        next_x = next_x[dist_msk]
-        next_y = next_y[dist_msk]
-
-        min_index = np.argmin(dists)
-
-        msg_goal.pose.position.x = float(next_x[min_index])
-        msg_goal.pose.position.y = float(next_y[min_index])
-        msg_goal.pose.position.z = 0.0
-        self.goal_pose_pub.publish(msg_goal)
-
-        return
-
     def grid_to_map(self, grid_x, grid_y):
         #Take grid indices and converts to some x,y in that grid
        
-        x = (grid_x*3 - 1400/2) #Hard coded parameters right now 
-        y = (grid_y*3 - 568/2)
+        x = (grid_x*self.resolution - self.map_xlength/2) #Hard coded parameters right now 
+        y = (grid_y*self.resolution - self.map_ylength/2)
 
         return x, y
 

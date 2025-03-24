@@ -34,7 +34,8 @@ class ObjectMapping(Node):
         self.object_list = []
 
         # Set margin for adding new object
-        self.margin = 0.1
+        self.margin_object = 0.1
+        self.margin_box = 0.3
 
         # Intialize map file
         self.filepath = 'object_map.txt'
@@ -111,10 +112,13 @@ class ObjectMapping(Node):
             # Go over current objects to not add duplicates
             duplicate = False
             for obj in self.object_list:
-                _,x_obj,y_obj,_ = obj
-
-                if math.hypot(x-x_obj, y-y_obj) < self.margin:
+                label,x_obj,y_obj,_ = obj
+                self.get_logger().info(f'label: {label}')
+                distance = math.hypot(x-x_obj, y-y_obj)
+                # if (distance < self.margin_object and 'B' not in label) or (distance < self.margin_box and 'B' in label):
+                if distance < 0.1: 
                     duplicate = True
+
 
                 
             if not duplicate:

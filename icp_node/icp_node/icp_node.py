@@ -68,7 +68,6 @@ class ICP_node(Node):
         self.counter = 0
         self.N = 10
 
-
         # Initialize the path publisher
         self._path_pub = self.create_publisher(Path, 'path', 10)
         # Store the path here
@@ -175,7 +174,7 @@ class ICP_node(Node):
         
         # if there is two or more reference scans in the list compare which one is closest and use that as reference cloud when doing ICP algorithm
         if len(self.reference_clouds) >= 2:
-            # self.get_logger().info('reference clouds list longer than 0')
+            # self.get_logger().info('Have more than one reference clouds')
             min_distance = np.inf
             for pos_cloud, cloud in self.reference_clouds:
                 x = t.transform.translation.x 

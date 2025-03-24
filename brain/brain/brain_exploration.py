@@ -466,7 +466,7 @@ class BrainCollection(Node):
         self.path = None
         
         # intialize publishers
-        self.send_goal_pub = self.create_publisher(PoseStamped, 'AStar/next_goal', 1)
+        self.send_goal_pub = self.create_publisher(PoseStamped, 'Astar/next_goal', 1)
         self.find_goal_pub = self.create_publisher(Bool, 'planner_ex/find_goal', 1)
         self.stop_robot_pub = self.create_publisher(Bool, 'drive/stop', 1)
         self.drive_to_free_pub = self.create_publisher(Bool, 'avoidance/drive_to_free', 1)
@@ -486,24 +486,6 @@ class BrainCollection(Node):
         callback that sets the condition if the path is free
         """
         self.free_path = msg.data
-
-    def icp_got_ref_scan_cb(self, msg:Bool):
-        """
-        callback that sets the condition variable for having another icp reference scan
-        """
-        self.icp_ref_scan_set = msg.data
-
-    def icp_at_ref_scan_point_cb(self, msg:Bool):
-        """
-        callback that sets the condition variable for when the robot is in the calculated ref scan point
-        """
-        self.at_ref_scan_point = msg.data
-
-    def no_objects_left_cb(self, msg:Bool):
-        """
-        callback that returns the boolean from the topic that says if there are no objects left to collect
-        """    
-        self.no_objects_left = msg.data
     
     def set_path_cb(self, msg:Path):
         """
@@ -556,7 +538,7 @@ class BrainCollection(Node):
         py_trees_ros.utilities.Subscribers(
             node=self,
             subscriber_details =    [    
-                                    ('Path', '/AStar/path', Path, False, self.set_path_cb),
+                                    ('Path', '/Astar/path', Path, False, self.set_path_cb),
                                     ('Goal', '/planner_ex/next_goal', PoseStamped, False, self.set_goal_cb),
                                     ('CornerExplorationDone', '/planner_ex/corner_ex_done', Bool, False, self.corner_ex_done_cb),
                                     ('NoUnkownSpaceLeft', '/planner_ex/no_unknown_left', Bool, False, self.no_unknown_left_cb),
@@ -608,7 +590,7 @@ class BrainCollection(Node):
         root.add_children([LocalObstacleAvoidance(self), exploration_until_no_unknown_space])
 
         # return ros-wrapping of py_trees behaviour tree
-        return py_trees_ros.trees.BehaviourTree(root=root, unicode_tree_debug=True)
+        return py_trees_ros.trees.BehaviourTree(root=root, unicode_tree_debug=False)
 
 
 
