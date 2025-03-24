@@ -152,6 +152,7 @@ class GetPath(py_trees.behaviour.Behaviour):
         super(GetPath, self).__init__('GetPath')
         self.node = node
         self.get_goal = True
+        self.get_path = True
 
     def update(self):
         """
@@ -341,17 +342,16 @@ class TurnRobot(py_trees.behaviour.Behaviour):
     def __init__(self, node:Node):
         super(TurnRobot, self).__init__('TurnRobot')
         self.node = node
-        self.have_turned = False
     
     def update(self):
         """
         Method that will be executed when behaviour is ticked
         """
-        if self.have_turned:
+        if self.node.have_turned:
             return py_trees.common.Status.SUCCESS
         else:
             self.node.get_logger().info('Turning Robot') # TODO implement logic to turn robot 
-            self.have_turned = True
+            self.node.have_turned = True
             return py_trees.common.Status.RUNNING
 
 class DriveToGoal(py_trees.behaviour.Behaviour):
