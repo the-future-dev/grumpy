@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/robot/dd2419_ws/install/usb_cam/include/**",
+        "/home/robot/dd2419_ws/install/robp_interfaces/include/**",
+        "/opt/ros/jazzy/include/**",
+        "/home/robot/dd2419_ws/src/robp_robot/robp_phidgets/include/**",
+        "/home/robot/dd2419_ws/src/robp_robot/usb_cam/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}
