@@ -13,6 +13,45 @@ from geometry_msgs.msg import PoseStamped
 
 
 # Behaviours
+class LocalObstacleAvoidance(py_trees.behaviour.Behaviour):
+    """
+    Behaviour that handles local obstacle avoidance
+    """
+    def __init__(self, node:Node):
+        super(LocalObstacleAvoidance, self).__init__('LocalObstacleAvoidance')
+        self.node = node
+
+    def update(self):
+        """
+        Method that will be exectued when behaviour is ticked
+        """    
+        if self.node.free_path:
+            self.stop_robot = True
+            self.drive_free = True
+            return py_trees.common.Status.SUCCESS
+        else:
+            self.node.get_logger().info('In occupied space')
+            # only publish so that action is performed once and to do drive free stop robot has to have been performed
+            if self.stop_robot:
+                self.node.get_logger().info('Stopping robot')
+                self.stop_robot = False
+                msg = Bool()
+                msg.data = True
+                self.node.stop_robot_pub.publish(msg)
+                self.node.have_goal = False
+                self.node.have_path = False
+            else:
+                if self.drive_free:
+                    self.node.get_logger().info('Driving to free space')
+                    self.drive_free = False
+                    msg = Bool()
+                    msg.data = True
+                    self.node.drive_to_free_pub.publish(msg)
+
+            self.node.get_logger().info('Not yet in free space')
+            return py_trees.common.Status.RUNNING
+
+
 class PathIsFree(py_trees.behaviour.Behaviour):
     """
     behaviour to check if path is free
@@ -31,39 +70,43 @@ class PathIsFree(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.FAILURE
 
 
-class GotIcpRefScan(py_trees.behaviour.Behaviour):
+class StopRobot(py_trees.behaviour.Behaviour):
     """
-    behaviour to check if we got another icp reference scan
-    """
-    def __init__(self, node:Node):
-        super(GotIcpRefScan, self).__init__('GotIcpRefScan')
-        self.node = node
-
-    def update(self):
-        """
-        Method that will be exectued when behaviour is ticked
-        """
-        if self.node.icp_ref_scan_set:
-            return py_trees.common.Status.SUCCESS
-        else:
-            return py_trees.common.Status.FAILURE
-
-class AtRefScanPoint(py_trees.behaviour.Behaviour):
-    """
-    behaviour to check if icp ref scan point
+    Behvaiour that stops robot
     """
     def __init__(self, node:Node):
-        super(AtRefScanPoint, self).__init__('AtRefScanPoint')
+        super(StopRobot, self).__init__('StopRobot')
         self.node = node
-
+    
     def update(self):
         """
-        Method that will be exectued when behaviour is ticked
+        Method that will be executed when behaviour is ticked
         """
-        if self.node.at_ref_scan_point:
-            return py_trees.common.Status.SUCCESS
-        else:
-            return py_trees.common.Status.FAILURE
+        msg = Bool()
+        msg.data = True
+        self.node.stop_robot_pub.publish(msg)
+        self.node.have_goal = False
+        self.node.have_path = False
+        return py_trees.common.Status.SUCCESS
+
+
+class DriveFree(py_trees.behaviour.Behaviour):
+    """
+    Behaviour that sends message to avoidance node to drive to free space
+    """
+    def __init__(self, node:Node):
+        super(DriveFree, self).__init__('DriveFree')
+        self.node = node
+    
+    def update(self):
+        """
+        Method that will be executed when behaviour is ticked
+        """
+        msg = Bool()
+        msg.data = True
+        self.node.drive_to_free_pub.publish(msg)
+
+        return py_trees.common.Status.RUNNING
 
 
 class NoObjectLeft(py_trees.behaviour.Behaviour):
@@ -99,6 +142,54 @@ class FindGoal(py_trees.behaviour.Behaviour):
         msg.data = True
         self.node.find_goal_pub.publish(msg)
         return py_trees.common.Status.RUNNING
+
+
+class GetPath(py_trees.behaviour.Behaviour):
+    """
+    Bahaviour that finds path using A* algorithm, if there is no goal it begins with getting a goal from the planner 
+    """
+    def __init__(self, node:Node):
+        super(GetPath, self).__init__('GetPath')
+        self.node = node
+        self.get_goal = True
+
+    def update(self):
+        """
+        Method that will be exectued when behaviour is ticked
+        """
+        if self.node.have_path:
+            # if we have a path we want to get path next time we go into this part of the behaviour
+            self.get_path = True
+            self.node.get_logger().info('We have a path to pass on to DriveToGoal')
+            return py_trees.common.Status.SUCCESS
+
+        else:
+            if self.node.have_goal:
+                # if we have a goal we want to get goal next time we go into this part of the behaviour
+                self.get_goal = True
+                
+                # if we have a goal send it to A* but only do it once
+                if self.get_path:
+                    self.get_path = False
+                    self.node.get_logger().info('Publishing goal to A*')
+                    self.node.send_goal_pub.publish(self.node.goal)
+                else:
+                    self.node.get_logger().info('Waiting for path from A*')    
+            else:
+                # only publish to get goal once
+                if self.get_goal:
+                    self.get_goal = False
+
+                    self.node.get_logger().info('Publishing Bool to planner to get goal')
+                    msg = Bool()
+                    msg.data = True
+                    self.node.find_goal_pub.publish(msg)
+
+                else:
+                    self.node.get_logger().info('Waiting for goal from planner')
+
+
+            return py_trees.common.Status.RUNNING
 
 
 class FindPath(py_trees.behaviour.Behaviour):
@@ -154,43 +245,7 @@ class NoUnknownSpaceLeft(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.FAILURE
 
 
-class StopRobot(py_trees.behaviour.Behaviour):
-    """
-    Behvaiour that stops robot
-    """
-    def __init__(self, node:Node):
-        super(StopRobot, self).__init__('StopRobot')
-        self.node = node
-    
-    def update(self):
-        """
-        Method that will be executed when behaviour is ticked
-        """
-        msg = Bool()
-        msg.data = True
-        self.node.stop_robot_pub.publish(msg)
-        self.node.have_goal = False
-        self.node.have_path = False
-        return py_trees.common.Status.SUCCESS
 
-
-class DriveFree(py_trees.behaviour.Behaviour):
-    """
-    Behaviour that sends message to avoidance node to drive to free space
-    """
-    def __init__(self, node:Node):
-        super(DriveFree, self).__init__('DriveFree')
-        self.node = node
-    
-    def update(self):
-        """
-        Method that will be executed when behaviour is ticked
-        """
-        msg = Bool()
-        msg.data = True
-        self.node.drive_to_free_pub.publish(msg)
-
-        return py_trees.common.Status.RUNNING
 
 class HavePath(py_trees.behaviour.Behaviour):
     """
@@ -226,6 +281,79 @@ class HaveGoal(py_trees.behaviour.Behaviour):
         else:
             return py_trees.common.Status.FAILURE
 
+# class DriveToGoal(py_trees.behaviour.Behaviour):
+#     """
+#     Behaviour that sends path message to drive control
+#     """
+#     def __init__(self, node:Node):
+#         super(DriveToGoal, self).__init__('DriveToGoal')
+#         self.node = node
+    
+#     def update(self):
+#         """
+#         Method that will be executed when behaviour is ticked
+#         """
+#         if self.node.at_goal:
+#             return py_trees.common.Status.SUCCESS
+#         else:
+#             self.node.drive_to_goal_pub.publish(self.node.path)
+#             return py_trees.common.Status.RUNNING
+
+
+
+
+
+class GetIcpScan(py_trees.behaviour.Behaviour):
+    """
+    Behaviour that gets ICP scan if we do not have a scan for the current corner position, does nothing when exploring unknown space
+    """
+    def __init__(self, node:Node):
+        super(GetIcpScan, self).__init__('GetIcpScan')
+        self.node = node
+        self.take_ref_scan = True
+
+    def update(self):
+        """
+        Method that will be executed when behaviour is ticked
+        """
+        if self.node.have_scan:
+            self.take_ref_scan = True
+            return py_trees.common.Status.SUCCESS
+        else:
+            self.node.get_logger().info('Do not have reference scan')
+            # take reference scan for ICP, but only publish once
+            if self.take_ref_scan:
+                self.take_ref_scan = False
+                self.node.get_logger().info('Publishing Bool to ICP node so that it takes ref scan')
+                msg = Bool()
+                msg.data = True
+                self.node.take_ref_scan_pub.publish(msg)
+            else:
+                self.node.get_logger().info('Waiting for ICP to take ref scan')
+
+
+            return py_trees.common.Status.RUNNING
+
+class TurnRobot(py_trees.behaviour.Behaviour):
+    """
+    
+    """
+    def __init__(self, node:Node):
+        super(TurnRobot, self).__init__('TurnRobot')
+        self.node = node
+        self.have_turned = False
+    
+    def update(self):
+        """
+        Method that will be executed when behaviour is ticked
+        """
+        if self.have_turned:
+            return py_trees.common.Status.SUCCESS
+        else:
+            self.node.get_logger().info('Turning Robot') # TODO implement logic to turn robot 
+            self.have_turned = True
+            return py_trees.common.Status.RUNNING
+
 class DriveToGoal(py_trees.behaviour.Behaviour):
     """
     Behaviour that sends path message to drive control
@@ -233,15 +361,23 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
     def __init__(self, node:Node):
         super(DriveToGoal, self).__init__('DriveToGoal')
         self.node = node
+        self.publish_path = True
     
     def update(self):
         """
         Method that will be executed when behaviour is ticked
         """
         if self.node.at_goal:
+            self.publish_path = True
             return py_trees.common.Status.SUCCESS
         else:
-            self.node.drive_to_goal_pub.publish(self.node.path)
+            if self.publish_path:
+                self.publish_path = False
+                self.node.get_logger().info('Publishing path to drive_control')
+                self.node.drive_to_goal_pub.publish(self.node.path)
+            else:
+                self.node.get_logger().info('Waiting for drive_control to finish')
+
             return py_trees.common.Status.RUNNING
 
 class HaveScan(py_trees.behaviour.Behaviour):
@@ -432,38 +568,44 @@ class BrainCollection(Node):
         # Building tree
         # memory=False means that conditions are ticked each iteration, otherwise the tree returns to the behaviour that returned running last
 
-        # branch - obstacle avoidance
-        drive_to_free = py_trees.composites.Sequence(name='DriveToFree', memory=False)
-        drive_to_free.add_children([StopRobot(self), DriveFree(self)])
+        # # branch - obstacle avoidance
+        # drive_to_free = py_trees.composites.Sequence(name='DriveToFree', memory=False)
+        # drive_to_free.add_children([StopRobot(self), DriveFree(self)])
 
-        obstacle_avoidance = py_trees.composites.Selector(name="ObstacleAvoidance", memory=False)         
-        obstacle_avoidance.add_children([PathIsFree(self), drive_to_free]) 
+        # obstacle_avoidance = py_trees.composites.Selector(name="ObstacleAvoidance", memory=False)         
+        # obstacle_avoidance.add_children([PathIsFree(self), drive_to_free]) 
 
-        # branch - exploration
-        icp_scan = py_trees.composites.Selector(name='GetIcpScan', memory=False)
-        icp_scan.add_children([HaveScan(self), TakeRefScan(self)])
+        # # branch - exploration
+        # icp_scan = py_trees.composites.Selector(name='GetIcpScan', memory=False)
+        # icp_scan.add_children([HaveScan(self), TakeRefScan(self)])
 
-        turn = py_trees.composites.Selector(name='TurnRobot', memory=False)
-        turn.add_children([HaveTurned(self), Turn(self)])
+        # turn = py_trees.composites.Selector(name='TurnRobot', memory=False)
+        # turn.add_children([HaveTurned(self), Turn(self)])
 
-        get_goal = py_trees.composites.Selector(name='GetGoal', memory=False)
-        get_goal.add_children([HaveGoal(self), FindGoal(self)])
+        # get_goal = py_trees.composites.Selector(name='GetGoal', memory=False)
+        # get_goal.add_children([HaveGoal(self), FindGoal(self)])
 
-        find_path = py_trees.composites.Sequence(name='FindPath', memory=False)
-        find_path.add_children([get_goal, FindPath(self)])
+        # find_path = py_trees.composites.Sequence(name='FindPath', memory=False)
+        # find_path.add_children([get_goal, FindPath(self)])
 
-        get_path = py_trees.composites.Selector(name='GetPath', memory=False)
-        get_path.add_children([HavePath(self), find_path])
+        # get_path = py_trees.composites.Selector(name='GetPath', memory=False)
+        # get_path.add_children([HavePath(self), find_path])
+
+        # exploration = py_trees.composites.Sequence(name='Exploration', memory=False)
+        # exploration.add_children([icp_scan, turn, get_path, DriveToGoal(self), SetSelf(self)])
+
+        # exploration_until_no_unknown_space =  py_trees.composites.Selector(name="ExploreUntilNoUnknownSpace", memory=False)
+        # exploration_until_no_unknown_space.add_children([NoUnknownSpaceLeft(self), exploration])
 
         exploration = py_trees.composites.Sequence(name='Exploration', memory=False)
-        exploration.add_children([icp_scan, turn, get_path, DriveToGoal(self), SetSelf(self)])
+        exploration.add_children([GetIcpScan(self), TurnRobot(self), GetPath(self), DriveToGoal(self), SetSelf(self)])
 
         exploration_until_no_unknown_space =  py_trees.composites.Selector(name="ExploreUntilNoUnknownSpace", memory=False)
         exploration_until_no_unknown_space.add_children([NoUnknownSpaceLeft(self), exploration])
 
         # Main sequence
         root = py_trees.composites.Sequence(name='ExplorationRoot', memory=False)
-        root.add_children([obstacle_avoidance, exploration_until_no_unknown_space])
+        root.add_children([LocalObstacleAvoidance(self), exploration_until_no_unknown_space])
 
         # return ros-wrapping of py_trees behaviour tree
         return py_trees_ros.trees.BehaviourTree(root=root, unicode_tree_debug=True)
