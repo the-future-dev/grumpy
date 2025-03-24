@@ -93,7 +93,7 @@ class Detection(Node):
         #  - distance: (x²+y²)  less than 2.0 meters
         #  - height:   (z)      between [0.010, 0.13]
         distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 2.0
-        height_relevance = (points[:, 2] <= 0.13) & (points[:, 2] >= 0.010)
+        height_relevance = (points[:, 2] <= 0.13) & (points[:, 2] >= 0.000)
         
         relevant_mask = distance_relevance & height_relevance
         relevant_indices = np.where(relevant_mask)[0]
@@ -120,9 +120,9 @@ class Detection(Node):
         # Grouping distance (eps): 2.5 cm
         # Core Point min samples : 25
         # Number of parallel jobs: 3
-        cluster_leaf_size= 0.01
+        cluster_leaf_size= 0.003
         cluster_eps = 0.025
-        cluster_min_samples = 15
+        cluster_min_samples = 75
         downsampled_points, downsampled_indices = self.voxel_grid_filter(points, leaf_size=cluster_leaf_size)
         points = downsampled_points
         colors_rgb = colors_rgb[downsampled_indices]
@@ -138,11 +138,6 @@ class Detection(Node):
             cluster_indices = np.where(labels == label)[0]
             cluster_points = points[cluster_indices]
             cluster_rgb = colors_rgb[cluster_indices]
-
-            cluster_pc2 = np.concatenate([cluster_points, self.pack_rgb(cluster_rgb)], axis=1) # TODO: remove debug
-            msgs_pub = pc2.create_cloud(msg.header, msg.fields, cluster_pc2) # TODO: remove debug
-            msgs_pub.header.frame_id = "base_link" # TODO: remove debug
-            self._pub.publish(msgs_pub) # TODO: remove debug
 
             if cluster_points.size == 0:
                 continue
@@ -165,6 +160,8 @@ class Detection(Node):
             # Neural Network Inference:
             object_cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             cluster_tensor = torch.tensor(object_cluster, dtype=torch.float32).unsqueeze(0).to(self.DEVICE)
+            print(f"Detection on the run: cluster length {len(object_cluster)}")
+
             with torch.no_grad():
                 pred_values = self.classification_model(cluster_tensor)
             del cluster_tensor
@@ -191,7 +188,7 @@ class Detection(Node):
                 msgs_pub.header.frame_id = "base_link" # TODO: remove debug
                 self._pub.publish(msgs_pub) # TODO: remove debug
 
-                self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{label}| {object_label_enum}")
+                self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"")
 
     def unpack_rgb(self, packed_colors):
         """
