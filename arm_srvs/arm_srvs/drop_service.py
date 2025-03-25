@@ -30,8 +30,7 @@ class DropService(Node):
          
         # Sets angles of the servos for different tasks, as well as time for the arm to move into these positions:
         self.initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around
-        self.view_thetas = [-1, -1, 3000, 17500, 9000, -1]  # Angles when the arm camera has a view over the entire pick-up area
-        self.drop_thetas = [-1 , -1, 3000, 14500, 9000, -1]  # Angles for droping objects into the bins
+        self.drop_thetas    = [-1 , -1, 3000, 14500, 9000, -1]  # Angles for droping objects into the bins
 
         self.times = [1000, 1000, 1000, 1000, 1000, 1000]  # Standard angle movement times to all positions
 
@@ -40,7 +39,7 @@ class DropService(Node):
         # Create the drop service
         self.srv = self.create_service(
             PickAndDropObject, 
-            'drop_object', 
+            '/arm_srvs/drop_object', 
             self.drop_sequence
         )
 
@@ -121,13 +120,20 @@ class DropService(Node):
 
 
     def current_servos(self, msg:Int16MultiArray):
+        """
+        Args:
+            msg: Int16MultiArray, required, the angles of the servos
+        Returns:
+
+        Other functions:
+            Listens to what the angles of the servos currently are and sets a self variable to these angles
+        """
+
         current_angles = msg.data
 
         assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
         assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
         assert all(isinstance(current_angles, int) for angle in current_angles), self._logger.error('angles was not of type int')
-
-        self.get_logger.info('Got the angles of the servos')
 
         self.current_angles = current_angles
 

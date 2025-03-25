@@ -1,4 +1,5 @@
 from grumpy_interfaces.srv import PositionRobot
+from grumpy_interfaces.msg import ObjectDetection1D
 
 import rclpy
 import rclpy.logging
@@ -14,10 +15,16 @@ class PositioningService(Node):
     def __init__(self):
         super().__init__('positioning_srv')
 
+        # Set speeds for the robot to move
+        self.vel_forward = 0.1
+        self.vel_rotate = 0.05
+        self.vel_small_rotate = 0.01
+        self.vel_arrived = 0.08
+
         # Create the drop service
         self.srv = self.create_service(
             PositionRobot, 
-            'position_robot', 
+            '/arm_srvs/position_robot', 
             self.positioning_sequence
         )
 
@@ -29,9 +36,9 @@ class PositioningService(Node):
         )
         
         self.servo_subscriber = self.create_subscription(
-            Int16MultiArray,
-            '/servo_pos_publisher',
-            self.current_servos,
+            ObjectDetection1D,
+            '/perception/object_poses',
+            self.get_object_pose,
             1
         )
 
@@ -97,16 +104,23 @@ class PositioningService(Node):
         return response
 
 
-    def current_servos(self, msg:Int16MultiArray):
-        current_angles = msg.data
+    def get_object_pose(self, msg:ObjectDetection1D):
+        """
+        Args:
+            msg: ObjectDetection1D, required, x, y and z coordinates of the object in base_link
+        Returns:
 
-        assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
-        assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
-        assert all(isinstance(current_angles, int) for angle in current_angles), self._logger.error('angles was not of type int')
+        Other functions:
+            Updates the poisition of the object while the robot is alinging itself
+        """
 
-        self.get_logger.info('Got the angles of the servos')
+        pose = msg.pose
 
-        self.current_angles = current_angles
+        assert isinstance(pose.position.x, float), self._logger.error('x was not type float')
+        assert isinstance(pose.position.y, float), self._logger.error('y was not type float')
+        assert isinstance(pose.position.z, float), self._logger.error('z was not type float')
+
+        self.object_pose = pose
 
 
     def extract_object_position(self, pose:Pose):
@@ -201,7 +215,7 @@ class PositioningService(Node):
 
         time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
 
-        return self.current_angles == angles  # Checks if the arm has moved to the correct angles
+        return self.object_pose == angles  # Checks if the arm has moved to the correct angles
 
 def main(args=None):
     rclpy.init()

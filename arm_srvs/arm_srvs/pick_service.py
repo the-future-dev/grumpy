@@ -30,7 +30,6 @@ class PickService(Node):
          
         # Sets angles of the servos for different tasks, as well as time for the arm to move into these positions:
         self.initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around
-        self.view_thetas = [-1, -1, 3000, 17500, 9000, -1]  # Angles when the arm camera has a view over the entire pick-up area
 
         self.times = [1000, 1000, 1000, 1000, 1000, 1000]  # Standard angle movement times to all positions
 
@@ -39,7 +38,7 @@ class PickService(Node):
         # Create the pick service
         self.srv = self.create_service(
             PickAndDropObject, 
-            'pick_object', 
+            '/arm_srvs/pick_object', 
             self.pick_up_sequence
         )
 
@@ -130,15 +129,22 @@ class PickService(Node):
     
 
     def current_servos(self, msg:Int16MultiArray):
-            current_angles = msg.data
+        """
+        Args:
+            msg: Int16MultiArray, required, the angles of the servos
+        Returns:
 
-            assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
-            assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
-            assert all(isinstance(current_angles, int) for angle in current_angles), self._logger.error('angles was not of type int')
+        Other functions:
+            Listens to what the angles of the servos currently are and sets a self variable to these angles
+        """
 
-            self.get_logger.info('Got the angles of the servos')
+        current_angles = msg.data
 
-            self.current_angles = current_angles
+        assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
+        assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
+        assert all(isinstance(current_angles, int) for angle in current_angles), self._logger.error('angles was not of type int')
+
+        self.current_angles = current_angles
 
 
     def extract_object_position(self, pose:Pose):
