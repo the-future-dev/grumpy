@@ -39,7 +39,7 @@ class ArmCameraService(Node):
         # Create the drop service
         self.srv = self.create_service(
             ArmCameraDetection, 
-            '/arm_srvs/arm_camera', 
+            '/arm_services/arm_camera', 
             self.camera_sequence
         )
 
@@ -63,7 +63,7 @@ class ArmCameraService(Node):
         Args:
             request: Pose, required, the position and orientation of the box
         Returns:
-            response: Bool, if the drop was successful or not
+            response: bool, if the drop was successful or not
         Other functions:
             Controlls the pick up sequence
             Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
@@ -136,9 +136,9 @@ class ArmCameraService(Node):
         Args:
             msg: Pose, required, the position and orientation of the object
         Returns:
-            x: Float, x-position of the object in base_link frame
-            y: Float, y-position of the object in base_link frame
-            z: Float, z-position of the object in base_link frame
+            x: float, x-position of the object in base_link frame
+            y: float, y-position of the object in base_link frame
+            z: float, z-position of the object in base_link frame
         Other functions:
 
         """
@@ -158,10 +158,10 @@ class ArmCameraService(Node):
     def get_delta_theta_6(self, x, y):
         """
         Args:
-            x: Float, required, x-position of the object in base_link frame
-            y: Float, required, y-position of the object in base_link frame
+            x: float, required, x-position of the object in base_link frame
+            y: float, required, y-position of the object in base_link frame
         Returns:
-            delta_theta_6: Float, degrees that servo 6 has to rotate from its position
+            delta_theta_6: float, degrees that servo 6 has to rotate from its position
         Other functions:
 
         """

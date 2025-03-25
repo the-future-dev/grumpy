@@ -38,7 +38,7 @@ class PickService(Node):
         # Create the pick service
         self.srv = self.create_service(
             PickAndDropObject, 
-            '/arm_srvs/pick_object', 
+            '/arm_services/pick_object', 
             self.pick_up_sequence
         )
 
@@ -62,7 +62,7 @@ class PickService(Node):
         Args:
             request: Pose, required, the position and orientation of the object
         Returns:
-            response: Bool, if the pick up was successful or not
+            response: bool, if the pick up was successful or not
         Other functions:
             Controlls the pick up sequence
             Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
@@ -152,9 +152,9 @@ class PickService(Node):
         Args:
             msg: Pose, required, the position and orientation of the object
         Returns:
-            x: Float, x-position of the object in base_link frame
-            y: Float, y-position of the object in base_link frame
-            z: Float, z-position of the object in base_link frame
+            x: float, x-position of the object in base_link frame
+            y: float, y-position of the object in base_link frame
+            z: float, z-position of the object in base_link frame
         Other functions:
 
         """
@@ -173,10 +173,10 @@ class PickService(Node):
     def get_delta_theta_6(self, x, y):
         """
         Args:
-            x: Float, required, x-position of the object in base_link frame
-            y: Float, required, y-position of the object in base_link frame
+            x: float, required, x-position of the object in base_link frame
+            y: float, required, y-position of the object in base_link frame
         Returns:
-            delta_theta_6: Float, degrees that servo 6 has to rotate from its position
+            delta_theta_6: float, degrees that servo 6 has to rotate from its position
         Other functions:
 
         """
@@ -191,12 +191,12 @@ class PickService(Node):
     def inverse_kinematics(self, x, y, z):
         """
         Args:
-            x: Float, required, x-position of the object in base_link frame
-            y: Float, required, y-position of the object in base_link frame
-            z: Float, required, z-position of the object in base_link frame
+            x: float, required, x-position of the object in base_link frame
+            y: float, required, y-position of the object in base_link frame
+            z: float, required, z-position of the object in base_link frame
         Returns:
-            delta_theta_3: Float, degrees that servo 3 has to rotate from its position
-            delta_theta_4: Float, degrees that servo 4 has to rotate from its position
+            delta_theta_3: float, degrees that servo 3 has to rotate from its position
+            delta_theta_4: float, degrees that servo 4 has to rotate from its position
         Other functions:
 
         """

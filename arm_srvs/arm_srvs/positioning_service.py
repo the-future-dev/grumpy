@@ -21,20 +21,25 @@ class PositioningService(Node):
         self.vel_small_rotate = 0.01
         self.vel_arrived = 0.08
 
-        # Create the drop service
+        # Goal object position and label:
+        self.object_pose = Pose()
+        self.object_label = ""
+
+        # Create the positioning service
         self.srv = self.create_service(
             PositionRobot, 
-            '/arm_srvs/position_robot', 
+            '/arm_services/position_robot', 
             self.positioning_sequence
         )
 
-        # Create the publisher and subscriber for the angles of the servos
+        # Create the publisher to the wheel motors
         self.motor_publisher = self.create_publisher(
             DutyCycles,
             '/motor/duty_cycles', 
             10
         )
         
+        # Create the subscriber to the object detection
         self.servo_subscriber = self.create_subscription(
             ObjectDetection1D,
             '/perception/object_poses',
@@ -46,37 +51,27 @@ class PositioningService(Node):
     def positioning_sequence(self, request, response):
         """
         Args:
-            request: Pose, required, the position and orientation of the box
+            request.pose:  Pose, required, the position and orientation of the goal object
+            request.label: String, required, the label of the goal object
         Returns:
-            response: Bool, if the drop was successful or not
+            response: bool, if the positioning was successful or not
         Other functions:
-            Controlls the pick up sequence
-            Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
+            Controlls the positioning sequence
+            Calls the publishing function which publishes the velocities to the wheel motors for each step in the sequence
         """
 
         step = "Start"
-        x, y, z = 0, 0, 0
         end_strings = ["Success", "Failure"]
 
         while step not in end_strings:
             self._logger.info(f'{step}')
-            times = self.times
             match step:
-                case "Start":  # Make sure the arm is in the initial position but does not drop the object
-                    thetas = self.initial_thetas.copy()  # Copy the initial thetas
-                    thetas[0] = -1  # Make sure the gripper does not move
-                    next_step = "GetPosition"  # Move to the next step
+                case "Start":  # Ask if we see an/the goal object
+                    # self.check_object(request.label, request.pose)  # Check if the object is the correct one
+                    next_step = "RotateRobot"  # Move to the next step
 
-                case "GetPosition":  # Get the position of the box from the request
-                    assert isinstance(request.pose, Pose), self._logger.error(f'request was not type Pose')  # Assert that the request has the correct type
-                    x, y, z = self.extract_object_position(request.pose)  # Get the position of the box from the request
-                    thetas = [-1, -1, -1, -1, -1, -1]  # Do not move the arm
-                    next_step = "RotateBase"  # Move to the next step
-
-                case "RotateBase":  # Move servo 6/base to the correct angle
-                    # Calculate the change of the angle for servo 6, then new angle of servo 6, round and convert to int
-                    theta_servo6 = round(self.initial_thetas[5] + self.get_delta_theta_6(x, y) * 100)
-                    thetas = [-1, -1, -1, -1, -1, theta_servo6]  # Only servo 6 is moved
+                case "RotateRobot":  # Rotate the robot until it points towards the goal object
+                    self.rotate_robot(request.pose.position.x, request.pose.position.y)  # Rotate the robot
                     next_step = "DropAngles"  # Move to the next step
 
                 case "DropAngles":  # Sets the angles for the arm to drop the object
@@ -115,12 +110,15 @@ class PositioningService(Node):
         """
 
         pose = msg.pose
+        label = msg.label
 
         assert isinstance(pose.position.x, float), self._logger.error('x was not type float')
         assert isinstance(pose.position.y, float), self._logger.error('y was not type float')
         assert isinstance(pose.position.z, float), self._logger.error('z was not type float')
+        assert isinstance(label, str), self._logger.error('label was not type str')
 
         self.object_pose = pose
+        self.object_label = label
 
 
     def extract_object_position(self, pose:Pose):
@@ -128,9 +126,9 @@ class PositioningService(Node):
         Args:
             msg: Pose, required, the position and orientation of the object
         Returns:
-            x: Float, x-position of the object in base_link frame
-            y: Float, y-position of the object in base_link frame
-            z: Float, z-position of the object in base_link frame
+            x: float, x-position of the object in base_link frame
+            y: float, y-position of the object in base_link frame
+            z: float, z-position of the object in base_link frame
         Other functions:
 
         """
@@ -147,13 +145,35 @@ class PositioningService(Node):
         return x, y, z
     
 
+    def check_object(self, label, pose):
+        """
+        Args:
+            label: String, required, the class of the requested goal object
+            pose: Pose, required, the position and orientation of the requested goal object
+        Returns:
+            goal_object: bool, if the object is the requested goal object
+        Other functions:
+
+        """
+
+        assert isinstance(label, str), self._logger.error('label was not type str')
+        assert isinstance(pose, Pose), self._logger.error('pose was not type Pose')
+
+        goal_object = (label == self.object_label and
+                       np.isclose(self.object_pose.position.x, pose.position.x, atol=0.10) and
+                       np.isclose(self.object_pose.position.y, pose.position.y, atol=0.10) and
+                       np.isclose(self.object_pose.position.z, pose.position.z, atol=0.10)
+                       )
+
+        return goal_object
+
     def get_delta_theta_6(self, x, y):
         """
         Args:
-            x: Float, required, x-position of the object in base_link frame
-            y: Float, required, y-position of the object in base_link frame
+            x: float, required, x-position of the object in base_link frame
+            y: float, required, y-position of the object in base_link frame
         Returns:
-            delta_theta_6: Float, degrees that servo 6 has to rotate from its position
+            delta_theta_6: float, degrees that servo 6 has to rotate from its position
         Other functions:
 
         """
