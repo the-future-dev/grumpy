@@ -31,7 +31,7 @@ import os
 import ament_index_python.packages as packages
 
 import torch
-from perception_pkg.classification_model import PointNetEncoderXYZRGB, PointNetClassifier
+from perception_pkg.classification_model import DGCNNClassifier
 
 from enum import Enum
 
@@ -61,18 +61,21 @@ class Detection(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = TransformBroadcaster(self)
 
-        self.get_logger().info(f"Ros2 initialization completed")
-
         try:
             # Neural Network Classificator load 
             self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
             package_share_directory = packages.get_package_share_directory('perception_pkg')
-            model_path = os.path.join(package_share_directory, 'models', '04.pth')
+            model_path = os.path.join(package_share_directory, 'models', '05.pth')
 
-            self.classification_model = PointNetClassifier(PointNetEncoderXYZRGB(in_channels=6, out_channels=1024, use_layernorm=True), num_classes=len(ObjectEnum)).to(self.DEVICE)
-            self.classification_model.load_state_dict(torch.load(model_path, map_location=self.DEVICE))
+            self.classification_model = DGCNNClassifier(
+                input_dims=6,  # XYZ + RGB
+                emb_dims=512,
+                num_classes=len(ObjectEnum)
+            ).to(self.DEVICE)
+            self.classification_model.load_state_dict(torch.load(f=model_path, weights_only=True, map_location=self.DEVICE))
             self.classification_model.eval()
+
             self.get_logger().info(f"Classification model loaded in {self.DEVICE} completed")
         except Exception as e:
             self.get_logger().error(f"Error loading model: {e}")
@@ -162,18 +165,19 @@ class Detection(Node):
                 continue
 
             # Neural Network Train: save data Locally ##########################################################################
-            cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
-            self.object_data_list.append(cluster)
-            data_save_path = "/home/group5/dd2419_ws/src/perception_pkg/trials/object_data/milestone3_box"
-            arrays_to_save = {}
-            for i, item in enumerate(self.object_data_list):
-                arrays_to_save[f'cluster_{i}'] = item
-            np.savez_compressed(data_save_path, **arrays_to_save)
-            self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
+            # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
+            # self.object_data_list.append(cluster)
+            # data_save_path = "/home/group5/dd2419_ws/src/perception_pkg/trials/object_data/milestone3_box"
+            # arrays_to_save = {}
+            # for i, item in enumerate(self.object_data_list):
+            #     arrays_to_save[f'cluster_{i}'] = item
+            # np.savez_compressed(data_save_path, **arrays_to_save)
+            # self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
 
             # Neural Network Inference:
             object_cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
-            cluster_tensor = torch.tensor(object_cluster, dtype=torch.float32).unsqueeze(0).to(self.DEVICE)
+            cluster_tensor = torch.tensor(object_cluster, dtype=torch.float32).to(self.DEVICE)
+            cluster_tensor = cluster_tensor.permute(1, 0).unsqueeze(0)  # Shape: (1, 6, num_points) | (batch_size, channels, num_points)
             print(f"Detection on the run: cluster length {len(object_cluster)}")
 
             with torch.no_grad():
