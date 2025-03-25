@@ -20,7 +20,6 @@ from geometry_msgs.msg import Pose
 
 import math
 from sklearn.cluster import DBSCAN
-from sklearn.decomposition import PCA
 from scipy.spatial import cKDTree
 
 
@@ -95,7 +94,7 @@ class Detection(Node):
         # Relevant points:
         #  - distance: (x²+y²)  less than 2.0 meters
         #  - height:   (z)      between [0.010, 0.13]
-        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 1.4
+        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 2.0
         height_relevance = (points[:, 2] <= 0.13) & (points[:, 2] >= 0.000)
 
         relevant_mask = distance_relevance & height_relevance
