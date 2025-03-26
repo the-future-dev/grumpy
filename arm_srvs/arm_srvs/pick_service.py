@@ -224,8 +224,8 @@ class PickService(Node):
     def check_angles_and_times(self, angles, times):
         """
         Args:
-            angles: List, required, the angles for each servo to be set to
-            times:  List, required, the times for each servo to get to the given angle
+            angles: list, required, the angles for each servo to be set to
+            times:  list, required, the times for each servo to get to the given angle
         Returns:
             
         Other functions:
@@ -252,10 +252,10 @@ class PickService(Node):
     def publish_angles(self, angles, times):
         """
         Args:
-            angles: List, required, the angles for each servo to be set to
-            times:  List, optional, the times for each servo to get to the given angle
+            angles: list, required, the angles for each servo to be set to
+            times:  list, optional, the times for each servo to get to the given angle
         Returns:
-            Bool, if the arm has moved to the correct angles
+            bool, if the arm has moved to the correct angles
         Other functions:
             Publishes the angles of the servos to the arm in the correct format
         """
