@@ -22,8 +22,9 @@ class PositioningService(Node):
         self.object_pose  = Pose()
         self.object_label = ""
 
-        self.x_stop = 0.30  # The x-position where the robot should stop when driving with the RGB-D camera
-        self.y_tol  = 0.05  # The tolerance for the y-position when driving with the RGB-D camera
+        self.x_stop = 0.25  # The x-position where the robot should stop when driving with the RGB-D camera
+        self.y_offset = -0.075  # The y-position where the robot should stop rotating with the RGB-D camera
+        self.y_tol  = 0.02  # The tolerance for the y-position when driving with the RGB-D camera
 
         # Create the positioning service
         self.srv = self.create_service(
@@ -73,7 +74,7 @@ class PositioningService(Node):
                     next_step = "RotateRobotWithRGB-D"  # Move to the next step
 
                 case "DriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback
-                    if np.isclose(goal_y, 0, atol=self.y_tol) and goal_x <= self.x_stop:  # End condition for driving the robot using the RGB-D camera
+                    if np.isclose(goal_y, self.y_offset, atol=self.y_tol) and goal_x <= self.x_stop:  # End condition for driving the robot using the RGB-D camera
                         self.publish_robot_movement(0.0, 0.0)  # Stop the robot
                         next_step = "DriveRobotWithoutRGB-D"  # Move to the next step
                     else:
@@ -157,16 +158,16 @@ class PositioningService(Node):
         if x == 0 and y == 0:  # Stop the robot
             msg.duty_cycle_right = 0.0
             msg.duty_cycle_left = 0.0
-        elif np.isclose(y, 0, atol=self.y_tol):
+        elif np.isclose(y, self.y_offset, atol=self.y_tol):
             msg.duty_cycle_right = self.vel_forward
             msg.duty_cycle_left  = self.vel_forward
         else:
             # The robot should not turn faster than the maximum turn velocity and should turn slower the lower the y-value is
-            turn_vel = np.min(self.vel_rotate, abs(y))
+            turn_vel = np.min(self.vel_rotate, abs(y - self.y_offset))
 
-            # Turn left if y > 0, otherwise turn right
-            msg.duty_cycle_right = turn_vel if y > 0 else -turn_vel
-            msg.duty_cycle_left  = -turn_vel if y > 0 else turn_vel  
+            # Turn left if y > y_offset, otherwise turn right
+            msg.duty_cycle_right = turn_vel if y > self.y_offset else -turn_vel
+            msg.duty_cycle_left  = -turn_vel if y > self.y_offset else turn_vel  
 
             # Also drive forward while turning but depending on how much turning is needed
             msg.duty_cycle_right += self.vel_forward * self.y_tol / turn_vel
