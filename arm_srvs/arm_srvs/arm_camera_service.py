@@ -30,7 +30,7 @@ class ArmCameraService(Node):
          
         # Sets angles of the servos for different tasks, as well as time for the arm to move into these positions:
         self.initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around
-        self.view_thetas    = [-1, -1, 3000, 17500, 9000, -1]  # Angles when the arm camera has a view over the entire pick-up area
+        self.view_thetas    = [-1, -1, 3000, 18000, 9000, -1]  # Angles when the arm camera has a view over the entire pick-up area
 
         self.times = [1000, 1000, 1000, 1000, 1000, 1000]  # Standard angle movement times to all positions
 
