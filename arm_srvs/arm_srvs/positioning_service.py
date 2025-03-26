@@ -5,7 +5,6 @@ import rclpy
 import rclpy.logging
 from robp_interfaces.msg import DutyCycles
 from rclpy.node import Node
-from std_msgs.msg import Int16MultiArray
 from geometry_msgs.msg import Pose
 import numpy as np
 import time
@@ -16,14 +15,15 @@ class PositioningService(Node):
         super().__init__('positioning_srv')
 
         # Set speeds for the robot to move
-        self.vel_forward = 0.1
-        self.vel_rotate = 0.05
-        self.vel_small_rotate = 0.01
-        self.vel_arrived = 0.08
+        self.vel_forward = 0.15
+        self.vel_rotate  = 0.1
 
         # Goal object position and label:
-        self.object_pose = Pose()
+        self.object_pose  = Pose()
         self.object_label = ""
+
+        self.x_stop = 0.30  # The x-position where the robot should stop when driving with the RGB-D camera
+        self.y_tol  = 0.05  # The tolerance for the y-position when driving with the RGB-D camera
 
         # Create the positioning service
         self.srv = self.create_service(
@@ -65,20 +65,24 @@ class PositioningService(Node):
 
         while step not in end_strings:
             self._logger.info(f'{step}')
-            x = self.object_pose.position.x
-            y = self.object_pose.position.y
+            goal_x = self.object_pose.position.x
+            goal_y = self.object_pose.position.y
             match step:
                 case "Start":  # Ask if we see an/the goal object
                     # self.check_object(request.label, request.pose)  # Check if the object is the correct one
-                    next_step = "RotateRobot"  # Move to the next step
+                    next_step = "RotateRobotWithRGB-D"  # Move to the next step
 
-                case "DriveRobot":  # Rotate the robot until it points towards the goal object
-                    if np.isclose(y, 0, atol=0.05) and x <= 0.30:  # End condition for driving the robot using the RGB-D camera
+                case "DriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback
+                    if np.isclose(goal_y, 0, atol=self.y_tol) and goal_x <= self.x_stop:  # End condition for driving the robot using the RGB-D camera
                         self.publish_robot_movement(0.0, 0.0)  # Stop the robot
-                        next_step = "Success"  # Move to the next step
+                        next_step = "DriveRobotWithoutRGB-D"  # Move to the next step
                     else:
-                        self.publish_robot_movement(x, y)  # Drive the robot
-                        next_step = "DriveRobot"
+                        self.publish_robot_movement(goal_x, goal_y)  # Drive the robot
+                        next_step = "DriveRobotWithRGB-D"
+                
+                case "DriveRobotWithoutRGB-D":  # Drive the robot without the RGB-D camera
+                    self.publish_robot_movement(goal_x, 0.0)  # Drive the robot
+                    next_step = "Success"  # End the FSM
             
             step = next_step
             
@@ -110,30 +114,6 @@ class PositioningService(Node):
         self.object_label = label
 
 
-    def extract_object_position(self, pose:Pose):
-        """
-        Args:
-            msg: Pose, required, the position and orientation of the object
-        Returns:
-            x: float, x-position of the object in base_link frame
-            y: float, y-position of the object in base_link frame
-            z: float, z-position of the object in base_link frame
-        Other functions:
-
-        """
-
-        x, y, z = pose.position.x, pose.position.y, pose.position.z
-
-        assert isinstance(x, float), self._logger.error('x was not type float')
-        assert isinstance(x, float), self._logger.error('y was not type float')
-        assert isinstance(x, float), self._logger.error('z was not type float')
-
-
-        self._logger.info('Got the position of the object')
-
-        return x, y, z
-    
-
     def check_object(self, label, pose):
         """
         Args:
@@ -148,6 +128,7 @@ class PositioningService(Node):
         assert isinstance(label, str), self._logger.error('label was not type str')
         assert isinstance(pose, Pose), self._logger.error('pose was not type Pose')
 
+        # Check if the object from perception is the requested goal object
         goal_object = (label == self.object_label and
                        np.isclose(self.object_pose.position.x, pose.position.x, atol=0.10) and
                        np.isclose(self.object_pose.position.y, pose.position.y, atol=0.10) and
@@ -155,51 +136,6 @@ class PositioningService(Node):
                        )
 
         return goal_object
-
-    # def get_delta_theta_6(self, x, y):
-    #     """
-    #     Args:
-    #         x: float, required, x-position of the object in base_link frame
-    #         y: float, required, y-position of the object in base_link frame
-    #     Returns:
-    #         delta_theta_6: float, degrees that servo 6 has to rotate from its position
-    #     Other functions:
-
-    #     """
-
-    #     x_dist = x - self.x_origin_servo5
-    #     y_dist = y - self.y_origin_servo5
-
-    #     # Calculate the angle for servo 6 in radians and convert to degrees
-    #     return np.rad2deg(np.arctan2(y_dist, x_dist))
-
-
-    # def check_angles_and_times(self, angles, times):
-    #     """
-    #     Args:
-    #         angles: List, required, the angles for each servo to be set to
-    #         times:  List, required, the times for each servo to get to the given angle
-    #     Returns:
-            
-    #     Other functions:
-    #         Raises error if the angles and times are not in the correct format, length or interval
-    #     """
-
-    #     assert isinstance(angles, list), self._logger.error('angles is not of type list')
-    #     assert isinstance(times, list), self._logger.error('times is not of type list')
-    #     assert len(angles) == 6, self._logger.error('angles was not of length 6')
-    #     assert len(times) == 6, self._logger.error('times was not of length 6')
-    #     assert all(isinstance(angle, int) for angle in angles), self._logger.error('angles was not of type int')
-    #     assert all(isinstance(time, int) for time in times), self._logger.error('times was not of type int')
-    #     assert all(1000 <= time <= 5000 for time in times), self._logger.error('times was not within the interval [1000, 5000]')
-    #     assert (0 <= angles[0] <= 11000) or (angles[0] == -1), self._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
-    #     assert (0 <= angles[1] <= 24000) or (angles[1] == -1), self._logger.error(f'servo 2 was not within the interval [0, 24000] or -1, got {angles[1]}')
-    #     assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), self._logger.error(f'servo 3 was not within the interval [2500, 21000] or -1, got {angles[2]}')
-    #     assert (3000 <= angles[3] <= 21500) or (angles[3] == -1), self._logger.error(f'servo 4 was not within the interval [3000, 21500] or -1, got {angles[3]}')
-    #     assert (6000 <= angles[4] <= 18000) or (angles[4] == -1), self._logger.error(f'servo 5 was not within the interval [6000, 18000] or -1, got {angles[4]}')
-    #     assert (0 <= angles[5] <= 20000) or (angles[5] == -1), self._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
-
-    #     self._logger.info('Checked the angles and times')
 
     
     def publish_robot_movement(self, x, y):
@@ -221,22 +157,24 @@ class PositioningService(Node):
         if x == 0 and y == 0:  # Stop the robot
             msg.duty_cycle_right = 0.0
             msg.duty_cycle_left = 0.0
-        elif np.isclose(y, 0, atol=0.05):
+        elif np.isclose(y, 0, atol=self.y_tol):
             msg.duty_cycle_right = self.vel_forward
-            msg.duty_cycle_left = self.vel_forward
+            msg.duty_cycle_left  = self.vel_forward
         else:
-            if y > 0:
-                msg.duty_cycle_right = self.vel_rotate
-                msg.duty_cycle_left = -self.vel_rotate
-            elif y < 0:
-                msg.duty_cycle_right = -self.vel_rotate
-                msg.duty_cycle_left = self.vel_rotate
+            # The robot should not turn faster than the maximum turn velocity and should turn slower the lower the y-value is
+            turn_vel = np.min(self.vel_rotate, abs(y))
 
+            # Turn left if y > 0, otherwise turn right
+            msg.duty_cycle_right = turn_vel if y > 0 else -turn_vel
+            msg.duty_cycle_left  = -turn_vel if y > 0 else turn_vel  
 
-        # Publish the velocities to the wheel motors
-        self.motor_publisher.publish(msg)
+            # Also drive forward while turning but depending on how much turning is needed
+            msg.duty_cycle_right += self.vel_forward * self.y_tol / turn_vel
+            msg.duty_cycle_left  += self.vel_forward * self.y_tol / turn_vel
 
-        self._logger.info('Published the robot movement')
+        self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
+
+        time.sleep(0.1) # Sleep for 0.1 second to give the robot time to move
 
 
 def main(args=None):
