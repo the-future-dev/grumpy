@@ -9,7 +9,7 @@ import sensor_msgs_py.point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2
 from rclpy.node import Node
 
-from grumpy_interfaces.msg import ObjectDetection1D 
+from grumpy_interfaces.msg import ObjectDetection1D
 
 from visualization_msgs.msg import Marker
 
@@ -30,7 +30,7 @@ import os
 import ament_index_python.packages as packages
 
 import torch
-from perception_pkg.classification_model import PointNetEncoderXYZRGB, PointNetClassifier
+from perception_pkg.classification_model import DGCNNClassifier
 
 from enum import Enum
 
@@ -50,7 +50,7 @@ class Detection(Node):
         self.create_subscription(
             PointCloud2, '/camera/camera/depth/color/points', self.cloud_callback, 10)
 
-        # Data OUT: 
+        # Data OUT:
         self._object_pose = self.create_publisher(ObjectDetection1D, '/perception/object_poses', 10)
         self._pub = self.create_publisher(PointCloud2, '/perception/camera/ground_filter', 10) # TODO: remove debug
         self.marker_publisher = self.create_publisher(Marker, '/perception/object_names_marker', 10) # TODO: remove debug
@@ -60,19 +60,21 @@ class Detection(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = TransformBroadcaster(self)
 
-        self.get_logger().info(f"Ros2 initialization completed")
-
-        
         try:
             # Neural Network Classificator load 
             self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-            
+
             package_share_directory = packages.get_package_share_directory('perception_pkg')
-            model_path = os.path.join(package_share_directory, 'models', '04.pth')
-            
-            self.classification_model = PointNetClassifier(PointNetEncoderXYZRGB(in_channels=6, out_channels=1024, use_layernorm=True), num_classes=len(ObjectEnum)).to(self.DEVICE)
-            self.classification_model.load_state_dict(torch.load(model_path, map_location=self.DEVICE))
+            model_path = os.path.join(package_share_directory, 'models', '05.pth')
+
+            self.classification_model = DGCNNClassifier(
+                input_dims=6,  # XYZ + RGB
+                emb_dims=512,
+                num_classes=len(ObjectEnum)
+            ).to(self.DEVICE)
+            self.classification_model.load_state_dict(torch.load(f=model_path, weights_only=True, map_location=self.DEVICE))
             self.classification_model.eval()
+
             self.get_logger().info(f"Classification model loaded in {self.DEVICE} completed")
         except Exception as e:
             self.get_logger().error(f"Error loading model: {e}")
@@ -90,18 +92,18 @@ class Detection(Node):
         points = self.fast_transform2(points) # points transformed to the robot's frame 
 
         # Relevant points:
-        #  - distance: (x²+y²)  less than 1.5 meters
-        #  - height:   (z)      between [0.010, 0.2]
+        #  - distance: (x²+y²)  less than 2.0 meters
+        #  - height:   (z)      between [0.010, 0.13]
         distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 2.0
-        height_relevance = (points[:, 2] <= 0.19) & (points[:, 2] >= 0.010)
-        
+        height_relevance = (points[:, 2] <= 0.13) & (points[:, 2] >= 0.000)
+
         relevant_mask = distance_relevance & height_relevance
         relevant_indices = np.where(relevant_mask)[0]
         gen = gen[relevant_indices, :]
         points = points[relevant_indices, :]
         colors_rgb = colors_rgb[relevant_indices, :]
 
-        # Ground filtering: 
+        # Ground filtering:
         # - slope based method
         slope_threshold = 100
         number_of_neighbors = 1
@@ -120,17 +122,17 @@ class Detection(Node):
         # Grouping distance (eps): 2.5 cm
         # Core Point min samples : 25
         # Number of parallel jobs: 3
-        cluster_leaf_size= 0.01
-        cluster_eps = 0.025
-        cluster_min_samples = 25
+        cluster_leaf_size= 0.001
+        cluster_eps = 0.009
+        cluster_min_samples = 1
         downsampled_points, downsampled_indices = self.voxel_grid_filter(points, leaf_size=cluster_leaf_size)
         points = downsampled_points
         colors_rgb = colors_rgb[downsampled_indices]
-        
+
         db = DBSCAN(eps=cluster_eps, min_samples=cluster_min_samples)
                     # n_jobs=cluster_n_jobs, algorithm=cluster_algorithm
         labels = db.fit_predict(points)
-        
+
         for label in set(labels):
             if label == -1:  # Ignore noise
                 continue
@@ -139,32 +141,43 @@ class Detection(Node):
             cluster_points = points[cluster_indices]
             cluster_rgb = colors_rgb[cluster_indices]
 
-            cluster_pc2 = np.concatenate([cluster_points, self.pack_rgb(cluster_rgb)], axis=1) # TODO: remove debug
-            msgs_pub = pc2.create_cloud(msg.header, msg.fields, cluster_pc2) # TODO: remove debug
-            msgs_pub.header.frame_id = "base_link" # TODO: remove debug
-            self._pub.publish(msgs_pub) # TODO: remove debug
-
             if cluster_points.size == 0:
                 continue
 
             # 3. Object Classification ################################################################
-            if np.max(cluster_points[:, 2]) >= 0.17:
-                # Noise: it could be a table, a chair, ..., but not our Objects as they are at most 15cm high!
+            if np.max(cluster_points[:, 2]) >= 0.117:
+                # Noise: it could be a table, a chair, ..., but not our Objects as they are at most 10cm high!
                 continue
-            
+
+            # Cluster Initial Analysis ##########################################################################
+            if len(cluster_points) != len(cluster_rgb):
+                raise ValueError("Wrong input: mismatch in size of cluster_points (x,y,z) and cluster_rgb (r, g, b)")
+
+            if len(cluster_points) < 20:
+                continue
+
+            min_x, min_y, min_z = np.min(cluster_points, axis=0)
+            max_x, max_y, max_z = np.max(cluster_points, axis=0)
+            bbox_dims = np.array([max_x - min_x, max_y - min_y, max_z - min_z]) * 100
+
+            if bbox_dims[2] < 3: # object at least 3 cm high
+                continue
+
             # Neural Network Train: save data Locally ##########################################################################
-            cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
-            self.object_data_list.append(cluster)
-            data_save_path = "milestone2"
-            arrays_to_save = {}
-            for i, item in enumerate(self.object_data_list):
-                arrays_to_save[f'cluster_{i}'] = item
-            np.savez_compressed(data_save_path, **arrays_to_save)
-            self.get_logger().info(f"Saved object data to {data_save_path}")
-            
+            # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
+            # self.object_data_list.append(cluster)
+            # data_save_path = "/home/group5/dd2419_ws/src/perception_pkg/trials/object_data/milestone3_box"
+            # arrays_to_save = {}
+            # for i, item in enumerate(self.object_data_list):
+            #     arrays_to_save[f'cluster_{i}'] = item
+            # np.savez_compressed(data_save_path, **arrays_to_save)
+            # self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
+
             # Neural Network Inference:
             object_cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
-            cluster_tensor = torch.tensor(object_cluster, dtype=torch.float32).unsqueeze(0).to(self.DEVICE)
+            cluster_tensor = torch.tensor(object_cluster, dtype=torch.float32).to(self.DEVICE)
+            cluster_tensor = cluster_tensor.permute(1, 0).unsqueeze(0)  # Shape: (1, 6, num_points) | (batch_size, channels, num_points)
+
             with torch.no_grad():
                 pred_values = self.classification_model(cluster_tensor)
             del cluster_tensor
@@ -174,12 +187,12 @@ class Detection(Node):
             object_label = prediction.item()
             object_label_enum = ObjectEnum(object_label)
             x_obj, y_obj, z_obj = np.mean(object_cluster[:, :3], axis=0)
-            
+
             if object_label_enum != ObjectEnum.NOISE:
                 s = ObjectDetection1D()
                 s.header.stamp = msg.header.stamp
-                s.header.frame_id = "base_link"                    
-                s.label.data = 'B' if object_label_enum == ObjectEnum.BOX else f'{object_label}'
+                s.header.frame_id = "base_link"
+                s.label.data = object_label_enum.name
                 s.pose.position.x = x_obj
                 s.pose.position.y = y_obj
                 s.pose.position.z = z_obj
@@ -191,7 +204,7 @@ class Detection(Node):
                 msgs_pub.header.frame_id = "base_link" # TODO: remove debug
                 self._pub.publish(msgs_pub) # TODO: remove debug
 
-                self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{label}| {object_label_enum}")
+                self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{object_label_enum.name}")
 
     def unpack_rgb(self, packed_colors):
         """
