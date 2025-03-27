@@ -30,8 +30,8 @@ class PlannerExplorationNode(Node):
         self.n_corners = self.workspace.shape[1]
         self.counter = 0
         self.grid = None
-        self.map_ylength = 568
-        self.map_xlength = 1400
+        self.map_xlength = 1900 
+        self.map_ylength = 752 
         self.resolution = 3
     
         self.tf_buffer = Buffer()

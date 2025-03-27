@@ -21,8 +21,8 @@ class OccupancyGridMapNode(Node):
         super().__init__('occupancy_grid_map_node') 
 
         #Choose if Exploration or Collecttion, could be implemented with argument later
-        self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -220],
-                                   [-130, -130, 66, 66, 284, 284, 130, 130]])
+        self.workspace = np.array([[-50, 470, 750, 950, 950, 810, 810, -50],
+                                   [-50, -50, 154, 154, 376, 376, 220, 220]])
         #self.workspace = np.array([[-220, 220, 220, -220],
                                   #[-130, -130, 130, 130]])
 

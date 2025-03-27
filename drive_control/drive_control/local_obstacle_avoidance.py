@@ -19,8 +19,8 @@ class LocalObstacleAvoidanceNode(Node):
 
         #Use grid to do local obstacle avoidance
         self.grid = None
-        self.map_xlength = 1400 #1400 exporation, 440 collection
-        self.map_ylength = 568  #568 exploration, 260 collection
+        self.map_xlength = 1900 
+        self.map_ylength = 752  
         self.resolution = 3
         self.adjust = False 
 
