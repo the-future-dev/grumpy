@@ -22,9 +22,9 @@ class PositioningService(Node):
         self.object_pose  = Pose()
         self.object_label = ""
 
-        self.x_stop = 0.25  # The x-position where the robot should stop when driving with the RGB-D camera
+        self.x_stop   =  0.25  # The x-position where the robot should stop when driving with the RGB-D camera
         self.y_offset = -0.075  # The y-position where the robot should stop rotating with the RGB-D camera
-        self.y_tol  = 0.02  # The tolerance for the y-position when driving with the RGB-D camera
+        self.y_tol    =  0.02  # The tolerance for the y-position when driving with the RGB-D camera
 
         # Create the positioning service
         self.srv = self.create_service(
@@ -71,15 +71,15 @@ class PositioningService(Node):
             match step:
                 case "Start":  # Ask if we see an/the goal object
                     # self.check_object(request.label, request.pose)  # Check if the object is the correct one
-                    next_step = "RotateRobotWithRGB-D"  # Move to the next step
+                    next_step = "RotateRobotWithRGB-D"  # Next step
 
                 case "DriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback
                     if np.isclose(goal_y, self.y_offset, atol=self.y_tol) and goal_x <= self.x_stop:  # End condition for driving the robot using the RGB-D camera
                         self.publish_robot_movement(0.0, 0.0)  # Stop the robot
-                        next_step = "DriveRobotWithoutRGB-D"  # Move to the next step
+                        next_step = "DriveRobotWithoutRGB-D"  # Next step
                     else:
                         self.publish_robot_movement(goal_x, goal_y)  # Drive the robot
-                        next_step = "DriveRobotWithRGB-D"
+                        next_step = "DriveRobotWithRGB-D"  # Next step
                 
                 case "DriveRobotWithoutRGB-D":  # Drive the robot without the RGB-D camera
                     self.publish_robot_movement(goal_x, 0.0)  # Drive the robot

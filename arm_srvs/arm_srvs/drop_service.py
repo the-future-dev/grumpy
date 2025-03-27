@@ -80,27 +80,27 @@ class DropService(Node):
                 case "Start":  # Make sure the arm is in the initial position but does not drop the object
                     thetas = self.initial_thetas.copy()  # Copy the initial thetas
                     thetas[0] = -1  # Make sure the gripper does not move
-                    next_step = "GetPosition"  # Move to the next step
+                    next_step = "GetPosition"  # Next step
 
                 case "GetPosition":  # Get the position of the box from the request
                     assert isinstance(request.pose, Pose), self._logger.error(f'request was not type Pose')  # Assert that the request has the correct type
                     x, y, z = self.extract_object_position(request.pose)  # Get the position of the box from the request
                     thetas = [-1, -1, -1, -1, -1, -1]  # Do not move the arm
-                    next_step = "RotateBase"  # Move to the next step
+                    next_step = "RotateBase"  # Next step
 
                 case "RotateBase":  # Move servo 6/base to the correct angle
                     # Calculate the change of the angle for servo 6, then new angle of servo 6, round and convert to int
                     theta_servo6 = round(self.initial_thetas[5] + self.get_delta_theta_6(x, y) * 100)
                     thetas = [-1, -1, -1, -1, -1, theta_servo6]  # Only servo 6 is moved
-                    next_step = "DropAngles"  # Move to the next step
+                    next_step = "DropAngles"  # Next step
 
                 case "DropAngles":  # Sets the angles for the arm to drop the object
                     thetas = self.drop_thetas
-                    next_step = "DropObject"  # Move to the next step
+                    next_step = "DropObject"  # Next step
 
                 case "DropObject":  # Drops the object
                     thetas = [1000, -1, -1, -1, -1, -1]  # Only move and open the gripper
-                    next_step = "DrivePosition"  # Move to the next step
+                    next_step = "DrivePosition"  # Next step
 
                 case "DrivePosition":  # Finish the drop sequence by going back to the initial position
                     thetas = self.initial_thetas
@@ -212,7 +212,7 @@ class DropService(Node):
         """
         Args:
             angles: list, required, the angles for each servo to be set to
-            times:  list, optional, the times for each servo to get to the given angle
+            times:  list, required, the times for each servo to get to the given angle
         Returns:
              : bool, if the arm has moved to the correct angles
         Other functions:

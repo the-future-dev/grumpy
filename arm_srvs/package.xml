@@ -10,6 +10,7 @@
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>python3-numpy</depend>
   <depend>python3-time</depend>
   <depend>grumpy_interfaces</depend>

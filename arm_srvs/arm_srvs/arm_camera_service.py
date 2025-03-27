@@ -5,6 +5,8 @@ import rclpy.logging
 from rclpy.node import Node
 from std_msgs.msg import Int16MultiArray
 from geometry_msgs.msg import Pose
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 import numpy as np
 import time
 
@@ -57,6 +59,13 @@ class ArmCameraService(Node):
             1
         )
 
+        self.image_subscriber = self.create_subscription(
+            Image,
+            '/arm_camera/filtered/image_raw',
+            self.image_data,
+            1
+        )
+
     
     def camera_sequence(self, request, response):
         """
@@ -70,37 +79,25 @@ class ArmCameraService(Node):
         """
 
         step = "Start"
-        x, y, z = 0, 0, 0
         end_strings = ["Success", "Failure"]
+        object_pose = Pose()
 
         while step not in end_strings:
             self._logger.info(f'{step}')
             times = self.times
             match step:
-                case "Start":  # Make sure the arm is in the initial position but does not drop the object
-                    thetas = self.initial_thetas.copy()  # Copy the initial thetas
-                    thetas[0] = -1  # Make sure the gripper does not move
-                    next_step = "GetPosition"  # Move to the next step
+                case "Start":  # Make sure the arm is in the initial position
+                    thetas = self.initial_thetas
+                    next_step = "ViewPosition"  # Next step
 
-                case "GetPosition":  # Get the position of the box from the request
-                    assert isinstance(request.pose, Pose), self._logger.error(f'request was not type Pose')  # Assert that the request has the correct type
-                    x, y, z = self.extract_object_position(request.pose)  # Get the position of the box from the request
-                    thetas = [-1, -1, -1, -1, -1, -1]  # Do not move the arm
-                    next_step = "RotateBase"  # Move to the next step
+                case "ViewPosition":  # Set the arm to the view position
+                    thetas = self.view_thetas  # Set the goal angles to the view thetas
+                    next_step = "GetObjectPosition"  # Next step
 
-                case "RotateBase":  # Move servo 6/base to the correct angle
-                    # Calculate the change of the angle for servo 6, then new angle of servo 6, round and convert to int
-                    theta_servo6 = round(self.initial_thetas[5] + self.get_delta_theta_6(x, y) * 100)
-                    thetas = [-1, -1, -1, -1, -1, theta_servo6]  # Only servo 6 is moved
-                    next_step = "DropAngles"  # Move to the next step
-
-                case "DropAngles":  # Sets the angles for the arm to drop the object
-                    thetas = self.drop_thetas
-                    next_step = "DropObject"  # Move to the next step
-
-                case "DropObject":  # Drops the object
-                    thetas = [1000, -1, -1, -1, -1, -1]  # Only move and open the gripper
-                    next_step = "DrivePosition"  # Move to the next step
+                case "GetObjectPosition":  # Extract the position of the object from the arm camera
+                    object_pose.position.x, object_pose.position.y = self.get_object_position()  # Get the position of the object
+                    thetas = [-1, -1, -1, -1, -1, -1]  # Do not move the arm servos
+                    next_step = "DrivePosition"  # Next step
 
                 case "DrivePosition":  # Finish the drop sequence by going back to the initial position
                     thetas = self.initial_thetas
@@ -130,47 +127,25 @@ class ArmCameraService(Node):
 
         self.current_angles = current_angles
 
-
-    def extract_object_position(self, pose:Pose):
-        """
-        Args:
-            msg: Pose, required, the position and orientation of the object
-        Returns:
-            x: float, x-position of the object in base_link frame
-            y: float, y-position of the object in base_link frame
-            z: float, z-position of the object in base_link frame
-        Other functions:
-
-        """
-
-        x, y, z = pose.position.x, pose.position.y, pose.position.z
-
-        assert isinstance(x, float), self._logger.error('x was not type float')
-        assert isinstance(x, float), self._logger.error('y was not type float')
-        assert isinstance(x, float), self._logger.error('z was not type float')
-
-
-        self._logger.info('Got the position of the object')
-
-        return x, y, z
     
+    def image_data(self, msg:Image):
+        bridge = CvBridge()
 
-    def get_delta_theta_6(self, x, y):
+
+    def get_object_position(self):
         """
         Args:
-            x: float, required, x-position of the object in base_link frame
-            y: float, required, y-position of the object in base_link frame
-        Returns:
-            delta_theta_6: float, degrees that servo 6 has to rotate from its position
-        Other functions:
 
+        Returns:
+            x: float, the x-coordinate of the object in the base_link frame
+            y: float, the y-coordinate of the object in the base_link frame
+        Other functions:
+            
         """
 
-        x_dist = x - self.x_origin_servo5
-        y_dist = y - self.y_origin_servo5
+        
 
-        # Calculate the angle for servo 6 in radians and convert to degrees
-        return np.rad2deg(np.arctan2(y_dist, x_dist))
+        return x, y
 
 
     def check_angles_and_times(self, angles, times):
@@ -204,8 +179,8 @@ class ArmCameraService(Node):
     def publish_angles(self, angles, times):
         """
         Args:
-            angles: List, required, the angles for each servo to be set to
-            times:  List, optional, the times for each servo to get to the given angle
+            angles: list, required, the angles for each servo to be set to
+            times:  list, required, the times for each servo to get to the given angle
         Returns:
         
         Other functions:
