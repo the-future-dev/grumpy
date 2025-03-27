@@ -24,10 +24,10 @@ class LocalObstacleAvoidance(py_trees.behaviour.Behaviour):
     def update(self):
         """
         Method that will be exectued when behaviour is ticked
-        """    
+        """
         if self.node.free_path:
             self.stop_robot = True
-            self.drive_free = True
+            # self.drive_free = True
             return py_trees.common.Status.SUCCESS
         else:
             self.node.get_logger().info('In occupied space')
@@ -38,15 +38,14 @@ class LocalObstacleAvoidance(py_trees.behaviour.Behaviour):
                 msg = Bool()
                 msg.data = True
                 self.node.stop_robot_pub.publish(msg)
-                self.node.have_goal = False
                 self.node.have_path = False
             else:
-                if self.drive_free:
-                    self.node.get_logger().info('Driving to free space')
-                    self.drive_free = False
-                    msg = Bool()
-                    msg.data = True
-                    self.node.drive_to_free_pub.publish(msg)
+                # if self.drive_free:
+                self.node.get_logger().info('Driving to free space')
+                # self.drive_free = False
+                msg = Bool()
+                msg.data = True
+                self.node.drive_to_free_pub.publish(msg)
 
             self.node.get_logger().info('Not yet in free space')
             return py_trees.common.Status.RUNNING
@@ -151,8 +150,8 @@ class GetPath(py_trees.behaviour.Behaviour):
     def __init__(self, node:Node):
         super(GetPath, self).__init__('GetPath')
         self.node = node
-        self.get_goal = True
-        self.get_path = True
+        self.node.get_goal = True
+        self.node.get_path = True
 
     def update(self):
         """
@@ -160,26 +159,27 @@ class GetPath(py_trees.behaviour.Behaviour):
         """
         if self.node.have_path:
             # if we have a path we want to get path next time we go into this part of the behaviour
-            self.get_path = True
+            self.node.get_path = True
             self.node.get_logger().info('We have a path to pass on to DriveToGoal')
             return py_trees.common.Status.SUCCESS
 
         else:
+            self.node.get_logger().info('We do not have a path')
             if self.node.have_goal:
                 # if we have a goal we want to get goal next time we go into this part of the behaviour
-                self.get_goal = True
+                self.node.get_goal = True
                 
                 # if we have a goal send it to A* but only do it once
-                if self.get_path:
-                    self.get_path = False
+                if self.node.get_path:
+                    self.node.get_path = False
                     self.node.get_logger().info('Publishing goal to A*')
                     self.node.send_goal_pub.publish(self.node.goal)
                 else:
                     self.node.get_logger().info('Waiting for path from A*')    
             else:
                 # only publish to get goal once
-                if self.get_goal:
-                    self.get_goal = False
+                if self.node.get_goal:
+                    self.node.get_goal = False
 
                     self.node.get_logger().info('Publishing Bool to planner to get goal')
                     msg = Bool()
@@ -311,6 +311,7 @@ class GetIcpScan(py_trees.behaviour.Behaviour):
     def __init__(self, node:Node):
         super(GetIcpScan, self).__init__('GetIcpScan')
         self.node = node
+        self.node.have_scan = True
         self.take_ref_scan = True
 
     def update(self):
@@ -362,21 +363,37 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
         super(DriveToGoal, self).__init__('DriveToGoal')
         self.node = node
         self.publish_path = True
+        self.set_poses_list = True
+        self.empty_list = False
     
     def update(self):
         """
         Method that will be executed when behaviour is ticked
         """
-        if self.node.at_goal:
+        # if self.node.at_goal:
+        if self.empty_list:
+            self.empty_list = False
             self.publish_path = True
+            self.set_poses_list = True
             return py_trees.common.Status.SUCCESS
         else:
-            if self.publish_path:
-                self.publish_path = False
-                self.node.get_logger().info('Publishing path to drive_control')
-                self.node.drive_to_goal_pub.publish(self.node.path)
-            else:
-                self.node.get_logger().info('Waiting for drive_control to finish')
+            # if self.publish_path:
+            if self.set_poses_list:
+                self.set_poses_list = False
+                self.poses_list = self.node.path.poses
+
+            self.node.get_logger().info(f'Poses List length: {len(self.poses_list)}')
+            pose = self.poses_list.pop(0)
+
+            if len(self.poses_list)==0:
+                self.empty_list = True
+
+            self.node.path.poses = [pose]
+            self.publish_path = False
+            self.node.get_logger().info('Publishing next pose to drive_control')
+            self.node.drive_to_goal_pub.publish(self.node.path)
+            # else:
+                # self.node.get_logger().info('Waiting for drive_control to finish')
 
             return py_trees.common.Status.RUNNING
 
@@ -492,7 +509,9 @@ class BrainCollection(Node):
         Callback that sets the path that will be sent to drive control
         """
         if len(msg.poses) == 0:
+            self.get_logger().info('Path from A* is empty')
             self.have_goal = False
+            self.get_path = True
         else:
             self.path = msg
             self.have_path = True 

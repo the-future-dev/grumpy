@@ -94,7 +94,7 @@ class Detection(Node):
         # Relevant points:
         #  - distance: (x²+y²)  less than 2.0 meters
         #  - height:   (z)      between [0.010, 0.13]
-        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 2.0
+        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 1.4
         height_relevance = (points[:, 2] <= 0.13) & (points[:, 2] >= 0.000)
 
         relevant_mask = distance_relevance & height_relevance
@@ -164,14 +164,14 @@ class Detection(Node):
                 continue
 
             # Neural Network Train: save data Locally ##########################################################################
-            # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
-            # self.object_data_list.append(cluster)
-            # data_save_path = "/home/group5/dd2419_ws/src/perception_pkg/trials/object_data/milestone3_box"
-            # arrays_to_save = {}
-            # for i, item in enumerate(self.object_data_list):
-            #     arrays_to_save[f'cluster_{i}'] = item
-            # np.savez_compressed(data_save_path, **arrays_to_save)
-            # self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
+            cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
+            self.object_data_list.append(cluster)
+            data_save_path = "/home/group5/dd2419_ws/src/perception_pkg/trials/object_data/milestone3_cube2"
+            arrays_to_save = {}
+            for i, item in enumerate(self.object_data_list):
+                arrays_to_save[f'cluster_{i}'] = item
+            np.savez_compressed(data_save_path, **arrays_to_save)
+            self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
 
             # Neural Network Inference:
             object_cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
