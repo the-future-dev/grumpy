@@ -15,7 +15,6 @@ import heapq
 from builtin_interfaces.msg import Time
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
-from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 
 class ANode:
     #Create a A-star Node for queueing
@@ -43,8 +42,6 @@ class AStarAlgorithmNode(Node):
     def __init__(self):
         super().__init__('a_star_algorithm_node')
 
-        qos_profile = QoSProfile(depth = 1, durability = QoSDurabilityPolicy.TRANSIENT_LOCAL)
-
         # Priotrity ques for A star algorithm
         self.Q = None
         self.grid = None
@@ -53,76 +50,42 @@ class AStarAlgorithmNode(Node):
         self.grid_yg = 0
         self.grid_recieved = False
         self.goal_pose_recieved = False
+        self.map_xlength = 1400   #1400 exporation, 440 collection
+        self.map_ylength = 568    #568 exploration, 260 collection
+        self.resolution = 3
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
         # Publisher to puclish path to follow
-        self.path_pub = self.create_publisher(Path, 'path/Astar', 1)
+        self.path_pub = self.create_publisher(Path, 'Astar/path', 1)
 
         # Subscribe to grid and next goal topic
-        self.next_goal_sub = self.create_subscription(PoseStamped, 'pose/goal_next', self.next_goal_cb, 1)
-        self.grid_sub = self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
+        self.create_subscription(PoseStamped, 'Astar/next_goal', self.next_goal_cb, 1)
+        self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
 
     def next_goal_cb(self, msg:PoseStamped):
+        #Call back when pose revieved
 
-        if self.goal_pose_recieved == False:
+        goal_x = msg.pose.position.x
+        goal_y = msg.pose.position.y
+        self.grid_xg, self.grid_yg = self.map_to_grid(goal_x, goal_y)
+        self.goal_pose_recieved = True
 
-            goal_x = msg.pose.position.x
-            goal_y = msg.pose.position.y
-
-            self.grid_xg, self.grid_yg = self.map_to_grid(goal_x, goal_y)
-            self.goal_pose_recieved = True
-
-            self.publish_path()
+        self.publish_path()
 
     def grid_cb(self, msg:Int16MultiArray):
         #Return array from message of grid
 
         if self.grid_recieved == False:
+
             rows = msg.layout.dim[0].size
             columns = msg.layout.dim[1].size
             data = msg.data
             self.grid = np.array([data]).reshape(rows, columns)
+
             self.grid_recieved = True
             self.publish_path()
-        
-    def map_to_grid(self, x, y):
-        #Take map coordinates and convert to grid
-         
-        grid_x = np.floor((x + 1400/2)/3)
-        grid_y = np.floor((y + 568/2)/3)
-
-        grid_x = grid_x.astype(int)
-        grid_y = grid_y.astype(int)
-
-        return grid_x, grid_y
-
-    def grid_to_map(self, grid_x, grid_y):
-        #Take grid indices and converts to some x,y in that grid
-       
-        x = (grid_x*3 - 1400/2)/100 #Hard coded parameters right now 
-        y = (grid_y*3 - 568/2)/100
-
-        return x, y
-    
-    def current_pos(self):
-        #Uses transform to fins current pose of the robot in the map fram
-        tf_future = self.tf_buffer.wait_for_transform_async('map', 'base_link', self.get_clock().now())
-        rclpy.spin_until_future_complete(self, tf_future, timeout_sec=2)
-
-        try:
-            tf = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
-        except TransformException as ex:
-             self.get_logger().info(f'Could not transform{ex}')
-             return
-
-        x = tf.transform.translation.x
-        y = tf.transform.translation.y
-
-        grid_x, grid_y = self.map_to_grid(100*x, 100*y) #Convert to grid indices, scale to centimeters
-
-        return grid_x, grid_y
     
     def publish_path(self):
         #Function whihc finally publish un simplified path
@@ -131,15 +94,6 @@ class AStarAlgorithmNode(Node):
            return
         self.get_logger().info(f'INTO A_STAR')
         result = self.solve_path_points()
-
-        # cmap = plt.cm.get_cmap('viridis', 5)
-
-        # plt.figure(figsize=(10, 10))
-        # plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
-        # cbar = plt.colorbar()
-        # cbar.set_ticks([0, 1, 2, 3, 4])
-        # plt.savefig('test_astar')
-        # plt.close()
         
         if not result:
             msg_empty = Path()
@@ -237,7 +191,6 @@ class AStarAlgorithmNode(Node):
 
         for i in next_nodes:
             heapq.heappush(self.Q, i)
-        
         return
 
     def end_point(self, node_curr):
@@ -278,7 +231,7 @@ class AStarAlgorithmNode(Node):
     
     def reduce_poses(self, x_list, y_list):
 
-        N = len(x_list) // 5
+        N = len(x_list) // 8
 
         cs = interp1d(x_list, y_list)
 
@@ -286,6 +239,43 @@ class AStarAlgorithmNode(Node):
         y_new = cs(x_new)
         
         return x_new, y_new
+    
+    def map_to_grid(self, x, y):
+        #Take map coordinates and convert to grid
+         
+        grid_x = np.floor((x + self.map_xlength/2)/self.resolution)
+        grid_y = np.floor((y + self.map_ylength/2)/self.resolution)
+
+        grid_x = grid_x.astype(int)
+        grid_y = grid_y.astype(int)
+
+        return grid_x, grid_y
+
+    def grid_to_map(self, grid_x, grid_y):
+        #Take grid indices and converts to some x,y in that grid
+       
+        x = (grid_x*self.resolution - self.map_xlength/2)/100 #Hard coded parameters right now 
+        y = (grid_y*self.resolution - self.map_ylength/2)/100
+
+        return x, y
+    
+    def current_pos(self):
+        #Uses transform to fins current pose of the robot in the map fram
+        tf_future = self.tf_buffer.wait_for_transform_async('map', 'base_link', self.get_clock().now())
+        rclpy.spin_until_future_complete(self, tf_future, timeout_sec=2)
+
+        try:
+            tf = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        except TransformException as ex:
+             self.get_logger().info(f'Could not transform{ex}')
+             return
+
+        x = tf.transform.translation.x
+        y = tf.transform.translation.y
+
+        grid_x, grid_y = self.map_to_grid(100*x, 100*y) #Convert to grid indices, scale to centimeters
+
+        return grid_x, grid_y
 
 def main():
     rclpy.init()

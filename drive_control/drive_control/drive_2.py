@@ -1,4 +1,3 @@
-
 import math
 import rclpy
 import rclpy.clock
@@ -19,28 +18,36 @@ class SampleDriveControlNode(Node):
     def __init__(self):
         super().__init__('sample_drive_control_node')
 
-        self.vel_forward = 0.15
-        self.vel_rotate = 0.1
-        self.vel_small_rotate = 0.02
-        self.vel_arrived = 0.08
+        self.vel_forward = 0.13
+        self.vel_rotate = 0.09
+        self.vel_small_rotate = 0.015
+        self.vel_arrived = 0.05
+
+        # stop variable
+        self.stop = False
+        self.drive_to_free = False
 
         #Create buffer to look for transform 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
-        self.create_publisher(Bool, 'drive/feedback', 1)
-
         #Create publisher to publish motor control
-        self.motor_publisher = self.create_publisher(DutyCycles, '/motor/duty_cycles', 10)
-        self.drive_feedback = self.create_publisher(Bool, '/drive/feedback', 1)
+        self.motor_publisher = self.create_publisher(DutyCycles, 'motor/duty_cycles', 10)
+        self.drive_feedback = self.create_publisher(Bool, 'drive/feedback', 1)
 
-        self.create_subscription(Path, 'path/next_goal', self.path_cb, 1)
+        self.create_subscription(Path, 'drive/path', self.path_cb, 1)
+        self.create_subscription(Bool, 'drive/stop', self.stop_cb, 1)
+        self.create_subscription(Path, 'avoidance/drive_to_free', self.drive_free_cb, 1)
 
     def path_cb(self, msg:Path):
+        #Call back that iterates in poses and drives to them, can maybe implement offset if it is needed
+
+        self.drive_to_free = False
 
         for pose in msg.poses:
           result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
-          print(pose.pose.position.x, pose.pose.position.y)
+          if result == False:
+              break
 
         msg_stop = DutyCycles()
         msg_stop.duty_cycle_right = 0.0
@@ -50,6 +57,24 @@ class SampleDriveControlNode(Node):
         msg_feedback = Bool()
         msg_feedback.data = result
         self.drive_feedback.publish(msg_feedback)
+    
+    def stop_cb(self, msg:Bool):
+        #Callback that sets stop variable to True if stop
+        self.stop = msg.data
+
+    def drive_free_cb(self, msg:Path):
+        
+        self.drive_to_free = True 
+        self.stop = False
+        
+        for pose in msg.poses:
+            self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+
+        self.drive_to_free = False
+        msg_stop = DutyCycles()
+        msg_stop.duty_cycle_left = 0.0
+        msg_stop.duty_cycle_right = 0.0
+        self.motor_publisher.publish(msg_stop)
 
     def set_drive_input(self, x, y):
 
@@ -62,10 +87,12 @@ class SampleDriveControlNode(Node):
         sample_point.point.y = y
         sample_point.point.z = 0.0
 
-        #print(sample_point.point.x, sample_point.point.y)
-
         #While loop that rotates robot until aligned   
         while True:
+
+            if self.stop == True and self.drive_to_free == False:
+                self.get_logger().info(f'Stopping, in occupied zone')
+                return False
 
             tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'odom', self.get_clock().now())
             rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
@@ -101,6 +128,9 @@ class SampleDriveControlNode(Node):
  
         #While loop that drives forward until reaching point
         while True:
+
+            if self.stop == True and self.drive_to_free == False:
+                return False
             
             tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'odom', self.get_clock().now())
             rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)

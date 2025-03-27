@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'drive_control'
+package_name = 'brain'
 
 setup(
     name=package_name,
@@ -14,15 +14,14 @@ setup(
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='robot',
-    maintainer_email='robot@todo.todo',
+    maintainer_email='malte.sundgren@gmail.com',
     description='TODO: Package description',
-    license='Apache-2.0',
+    license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'drive_path = drive_control.drive_path:main',
-            'local_obstacle_avoidance = drive_control.local_obstacle_avoidance:main',
-            'drive_2 = drive_control.drive_2:main'
+            'brain_collection = brain.brain_collection:main',
+            'brain_exploration = brain.brain_exploration:main'
         ],
     },
 )
