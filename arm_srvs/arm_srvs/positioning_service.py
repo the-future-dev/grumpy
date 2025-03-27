@@ -65,7 +65,7 @@ class PositioningService(Node):
         end_strings = ["Success", "Failure"]
 
         while step not in end_strings:
-            self._logger.info(f'{step}')
+            self._logger.info(f'{step}')  # Log the current step
             goal_x = self.object_pose.position.x
             goal_y = self.object_pose.position.y
             match step:

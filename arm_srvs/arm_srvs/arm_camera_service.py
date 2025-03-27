@@ -5,8 +5,8 @@ import rclpy.logging
 from rclpy.node import Node
 from std_msgs.msg import Int16MultiArray
 from geometry_msgs.msg import Pose
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
+from sensor_msgs.msg import CompressedImage
+import cv2
 import numpy as np
 import time
 
@@ -38,6 +38,14 @@ class ArmCameraService(Node):
 
         self.current_angles = self.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
 
+        self.image_data = None  # The image data from the arm camera
+
+        # Camera parameters for calibration and undistortion of the image
+        self.camera_matrix = np.array([[438.783367, 0.000000, 305.593336],
+                                       [0.000000, 437.302876, 243.738352],
+                                       [0.000000, 0.000000, 1.000000]])
+        self.dist_coeffs = np.array([-0.361976, 0.110510, 0.001014, 0.000505, 0.000000])
+
         # Create the drop service
         self.srv = self.create_service(
             ArmCameraDetection, 
@@ -60,8 +68,8 @@ class ArmCameraService(Node):
         )
 
         self.image_subscriber = self.create_subscription(
-            Image,
-            '/arm_camera/filtered/image_raw',
+            CompressedImage,
+            '/arm_camera/image_raw/compressed',
             self.image_data,
             1
         )
@@ -70,21 +78,21 @@ class ArmCameraService(Node):
     def camera_sequence(self, request, response):
         """
         Args:
-            request: Pose, required, the position and orientation of the box
+            
         Returns:
-            response: bool, if the drop was successful or not
+            response.pose   : Pose, the position of the object in the base_link frame
+            response.success: bool, if the camera sequence was successful or not
         Other functions:
-            Controlls the pick up sequence
+            Controlls the camera sequence
             Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
         """
 
         step = "Start"
         end_strings = ["Success", "Failure"]
-        object_pose = Pose()
 
         while step not in end_strings:
-            self._logger.info(f'{step}')
-            times = self.times
+            self._logger.info(f'{step}')  # Log the current step
+            times = self.times  # Set the times to the standard times
             match step:
                 case "Start":  # Make sure the arm is in the initial position
                     thetas = self.initial_thetas
@@ -95,11 +103,11 @@ class ArmCameraService(Node):
                     next_step = "GetObjectPosition"  # Next step
 
                 case "GetObjectPosition":  # Extract the position of the object from the arm camera
-                    object_pose.position.x, object_pose.position.y = self.get_object_position()  # Get the position of the object
+                    response.pose.position.x, response.pose.position.y = self.get_object_position()  # Get the position of the object
                     thetas = [-1, -1, -1, -1, -1, -1]  # Do not move the arm servos
                     next_step = "DrivePosition"  # Next step
 
-                case "DrivePosition":  # Finish the drop sequence by going back to the initial position
+                case "DrivePosition":  # Finish the viewing sequence by going back to the initial position
                     thetas = self.initial_thetas
                     next_step = "Success"  # End the FSM
             
@@ -117,6 +125,15 @@ class ArmCameraService(Node):
 
 
     def current_servos(self, msg:Int16MultiArray):
+        """
+        Args:
+            msg: Int16MultiArray, required, the angles of the servos
+        Returns:
+
+        Other functions:
+            Listens to what the angles of the servos currently are and sets a self variable to these angles
+        """
+
         current_angles = msg.data
 
         assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
@@ -128,8 +145,22 @@ class ArmCameraService(Node):
         self.current_angles = current_angles
 
     
-    def image_data(self, msg:Image):
-        bridge = CvBridge()
+    def image_data(self, msg:CompressedImage):
+        """
+        Args:
+            msg: CompressedImage, required, the image message from the arm camera
+        Returns:
+
+        Other functions:
+            Listens to the image message from the arm camera and sets a self variable to this data
+        """
+
+        image_data = msg.data
+
+        assert isinstance(image_data, list), self._logger.error('image data is not of type list')
+        assert all(isinstance(point, int) for point in image_data), self._logger.error('points in image data was not of type int')
+
+        self.image_data = image_data
 
 
     def get_object_position(self):
@@ -140,10 +171,117 @@ class ArmCameraService(Node):
             x: float, the x-coordinate of the object in the base_link frame
             y: float, the y-coordinate of the object in the base_link frame
         Other functions:
+            Uses the image data from the arm camera to detect objects and their positions
+        """
+        
+        object_centers = []  # Initialize object centers
+        x, y = 0, 0  # No object found, set to 0, 0
+
+        np_arr = np.frombuffer(self.image_data, np.uint8)  # Convert CompressedImage to OpenCV format
+        bgr_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)  # Decode as BGR
+        undistorted_image = cv2.undistort(bgr_image, self.camera_matrix, self.dist_coeffs)  # Undistort the image
+        hsv_image = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
+
+        masks = self.create_masks(hsv_image)  # Create masks for red, green, and blue objects
+
+        for i in range(len(masks)):  
+            mask = self.clean_mask(masks[i])  # Clean each mask using morphological operations
+            object_centers += self.find_objects(mask)  # Find object centers
+
+        self._logger.info(f'Found {len(object_centers)} number of objects')
+
+        if not object_centers.empty():  # If object(s) were found
+            x, y = object_centers[0]  # Set the position of the first object found
+
+        x, y = self.transform_to_base_link(x, y)  # Transform the position to the base_link frame
+
+        return x, y
+
+
+    def create_masks(self, hsv_image):
+        """
+        Args:
+            hsv_image: np.array, required, the image in HSV format
+        Returns:
+            x: float, the x-coordinate of the object in the base_link frame
+            y: float, the y-coordinate of the object in the base_link frame
+        Other functions:
+            Uses the image data from the arm camera to detect objects and their positions
+        """
+        
+        # Define HSV ranges
+        lower_red1, upper_red1 = np.array([0, 120, 70]), np.array([10, 255, 255])
+        lower_red2, upper_red2 = np.array([170, 120, 70]), np.array([180, 255, 255])
+        lower_green, upper_green = np.array([35, 100, 50]), np.array([85, 255, 255])
+        lower_blue, upper_blue = np.array([100, 150, 50]), np.array([140, 255, 255])
+
+        # Create masks for each color
+        mask_red1 = cv2.inRange(hsv_image, lower_red1, upper_red1)
+        mask_red2 = cv2.inRange(hsv_image, lower_red2, upper_red2)
+        red_mask = mask_red1 | mask_red2  # Combine both red masks
+        green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
+        blue_mask = cv2.inRange(hsv_image, lower_blue, upper_blue)
+
+        return [red_mask, green_mask, blue_mask]
+
+    def clean_mask(self, mask):
+        """
+        Args:
+            mask: np.array, required, the mask to be cleaned
+        Returns:
+            mask: np.array, the cleaned mask
+        Other functions:
+            
+        """
+        
+        kernel = np.ones((5, 5), np.uint8)  # Define kernel for morphological operations
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)  # Open to remove noise
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)  # Close to fill holes
+        return mask
+
+
+    def find_objects(self, mask):
+        """
+        Args:
+            mask: np.array, required, the mask to find objects in
+        Returns:
+            centers: list, the centers of the objects found
+        Other functions:
             
         """
 
-        
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask
+        centers = []
+
+        self._logger.info(f'Found {len(contours)} number of potential objects')
+
+        for contour in contours:  # Loop through all contours
+            if cv2.contourArea(contour) > 500:  # Ignore small noise
+                M = cv2.moments(contour)  # Calculate the moments of the contour
+                if M["m00"] != 0:  # Avoid division by zero
+                    cx = int(M["m10"] / M["m00"])  
+                    cy = int(M["m01"] / M["m00"])
+                    centers.append((cx, cy))
+
+        self._logger.info(f'Found {len(centers)} number of centers')
+
+        return centers
+
+
+    def transform_to_base_link(self, x, y):
+        """
+        Args:
+            x: float, required, the pixel x-coordinate of the object in the arm camera image
+            y: float, required, the pixel y-coordinate of the object in the arm camera image
+        Returns:
+            x: float, the x-coordinate of the object in the base_link frame
+            y: float, the y-coordinate of the object in the base_link frame
+        Other functions:
+            
+        """
+
+        x = x / 640
+        y = y / 480
 
         return x, y
 

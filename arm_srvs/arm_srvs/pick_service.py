@@ -73,8 +73,8 @@ class PickService(Node):
         end_strings = ["Success", "Failure"]
 
         while step not in end_strings:
-            self._logger.info(f'{step}')
-            times = self.times
+            self._logger.info(f'{step}')  # Log the current step
+            times = self.times  # Set the times to the standard times
             match step:
                 case "Start":  # Make sure the arm is in the initial position
                     thetas = self.initial_thetas
@@ -142,7 +142,7 @@ class PickService(Node):
 
         assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
         assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
-        assert all(isinstance(current_angles, int) for angle in current_angles), self._logger.error('angles was not of type int')
+        assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
 
         self.current_angles = current_angles
 
