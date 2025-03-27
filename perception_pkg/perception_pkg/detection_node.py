@@ -192,7 +192,7 @@ class Detection(Node):
                 s = ObjectDetection1D()
                 s.header.stamp = msg.header.stamp
                 s.header.frame_id = "base_link"
-                s.label.data = 'B' if object_label_enum == ObjectEnum.BOX else f'{object_label}'
+                s.label.data = object_label_enum.name
                 s.pose.position.x = x_obj
                 s.pose.position.y = y_obj
                 s.pose.position.z = z_obj
