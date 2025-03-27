@@ -50,8 +50,8 @@ class AStarAlgorithmNode(Node):
         self.grid_yg = 0
         self.grid_recieved = False
         self.goal_pose_recieved = False
-        self.map_xlength = 1400   #1400 exporation, 440 collection
-        self.map_ylength = 568    #568 exploration, 260 collection
+        self.map_xlength = 1900 
+        self.map_ylength = 752 
         self.resolution = 3
 
         self.tf_buffer = Buffer()
