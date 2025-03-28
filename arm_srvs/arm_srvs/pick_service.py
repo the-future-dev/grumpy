@@ -7,33 +7,34 @@ from std_msgs.msg import Int16MultiArray
 from geometry_msgs.msg import Pose
 import numpy as np
 import time
+import arm_srvs.utils as utils
 
 class PickService(Node):
 
     def __init__(self):
         super().__init__('pick_srv')
 
-        # Origin of servo 5 in base_link frame:
-        self.x_origin_servo5 = -0.00450
-        self.y_origin_servo5 = -0.04750
-        self.z_origin_servo5 =  0.12915
-        self.theta_servo5    =  60
+        # # Origin of servo 5 in base_link frame:
+        # self.x_origin_servo5 = -0.00450
+        # self.y_origin_servo5 = -0.04750
+        # self.z_origin_servo5 =  0.12915
+        # self.theta_servo5    =  60
 
-        # Constants in the robot arm links:
-        self.l1 = 0.10048  # From joint of servo 5 to joint of servo 4:
-        self.l2 = 0.094714  # From joint of servo 4 to joint of servo 3:
-        self.l3 = 0.05071 + 0.11260  # From joint of servo 3 to joint of servo 2 + from joint servo 2 to griping point
+        # # Constants in the robot arm links:
+        # self.l1 = 0.10048  # From joint of servo 5 to joint of servo 4:
+        # self.l2 = 0.094714  # From joint of servo 4 to joint of servo 3:
+        # self.l3 = 0.05071 + 0.11260  # From joint of servo 3 to joint of servo 2 + from joint servo 2 to griping point
 
-        # Origin of servo 4 in rho+z-plane
-        self.z_origin_servo4   = self.z_origin_servo5 + self.l1 * np.sin(np.deg2rad(90) - np.deg2rad(self.theta_servo5))
-        self.rho_origin_servo4 = self.l1 * np.cos(np.deg2rad(90) - np.deg2rad(self.theta_servo5))
+        # # Origin of servo 4 in rho+z-plane
+        # self.z_origin_servo4   = self.z_origin_servo5 + self.l1 * np.sin(np.deg2rad(90) - np.deg2rad(self.theta_servo5))
+        # self.rho_origin_servo4 = self.l1 * np.cos(np.deg2rad(90) - np.deg2rad(self.theta_servo5))
          
-        # Sets angles of the servos for different tasks, as well as time for the arm to move into these positions:
-        self.initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around
+        # # Sets angles of the servos for different tasks, as well as time for the arm to move into these positions:
+        # self.initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around
 
-        self.times = [1000, 1000, 1000, 1000, 1000, 1000]  # Standard angle movement times to all positions
+        # self.times = [1000, 1000, 1000, 1000, 1000, 1000]  # Standard angle movement times to all positions
 
-        self.current_angles = self.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
+        self.current_angles = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
         
         # Create the pick service
         self.srv = self.create_service(
@@ -74,45 +75,48 @@ class PickService(Node):
 
         while step not in end_strings:
             self._logger.info(f'{step}')  # Log the current step
-            times = self.times  # Set the times to the standard times
+            times = utils.times  # Set the times to the standard times
             match step:
                 case "Start":  # Make sure the arm is in the initial position
-                    thetas = self.initial_thetas
+                    thetas = utils.initial_thetas
                     next_step = "GetPosition"  # Next step
 
                 case "GetPosition":  # Get the position of the object from the request
-                    assert isinstance(request.pose, Pose), self._logger.error(f'request was not type Pose')  # Assert that the request has the correct type
-                    x, y, z = self.extract_object_position(request.pose)  # Get the position of the object from the request
-                    thetas = [-1, -1, -1, -1, -1, -1]  # Do not move the arm
+                    # x, y, z = self.extract_object_position(request.pose)  # Get the position of the object from the request
+                    x, y, z = utils.extract_object_position(request.pose)
+                    thetas = utils.still_thetas  # Do not move the arm
                     next_step = "RotateBase"  # Next step
 
                 case "RotateBase":  # Move servo 6/base to the correct angle
                     # Calculate the change of the angle for servo 6, then new angle of servo 6, round and convert to int
-                    theta_servo6 = round(self.initial_thetas[5] + self.get_delta_theta_6(x, y) * 100)
-                    thetas = [-1, -1, -1, -1, -1, theta_servo6]  # Only servo 6 is moved
+                    theta_servo6 = round(utils.initial_thetas[5] + self.get_delta_theta_6(x, y) * 100)
+                    thetas = utils.still_thetas  
+                    thetas[5] = theta_servo6  # Only servo 6 is moved
                     next_step = "PickOrigin"  # Next step
 
                 case "PickOrigin":  # Move the arm to the position from were the inverse kinematics are calculated
-                    thetas = [-1, -1, -1, -1, round(self.theta_servo5 * 100), -1]  # Set the angle for servo 5 for inverse kinematics
+                    thetas = utils.still_thetas
+                    thetas[4] = round(utils.theta_servo5 * 100)  # Set the angle for servo 5 for inverse kinematics
                     next_step = "InverseKinematics"  # Next step
 
                 case "InverseKinematics":  # Move the arm to the grasp position calculated by the inverse kinematics
                     delta_theta_servo3, delta_theta_servo4 = self.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
-                    theta_servo3 = round(self.initial_thetas[2] + delta_theta_servo3 * 100)  # New angle of servo 3, round and convert to int
-                    theta_servo4 = round(self.initial_thetas[3] + delta_theta_servo4 * 100)  # New angle of servo 4, round and convert to int
+                    theta_servo3 = round(utils.initial_thetas[2] + delta_theta_servo3 * 100)  # New angle of servo 3, round and convert to int
+                    theta_servo4 = round(utils.initial_thetas[3] + delta_theta_servo4 * 100)  # New angle of servo 4, round and convert to int
                     # self._logger.info(f'{theta_servo3, theta_servo4}')
-                    thetas = [-1, -1, theta_servo3, theta_servo4, -1, -1]  # Only servo 3 and 4 are moved
+                    thetas = utils.still_thetas
+                    thetas[2], thetas[3] = theta_servo3, theta_servo4  # Only servo 3 and 4 are moved
                     next_step = "GraspObject"  # Next step
                 
                 case "GraspObject":  # Grasp the object
-                    thetas = [10000, -1, -1, -1, -1, -1]  # Close the gripper
-                    times = [3000, 2000, 2000, 2000, 2000, 2000]  # Set the times to slowly close the gripper
+                    thetas = utils.still_thetas
+                    thetas[0] = 10000  # Close the gripper
+                    times[0] = 3000  # Set the time to slowly close the gripper
                     next_step = "DrivePosition"  # Next step
 
                 case "DrivePosition":  # Finish the pick up sequence by going back to the initial position, but not for the gripper
-                    thetas = self.initial_thetas.copy()  # Copy the initial thetas
-                    thetas[0], thetas[2] = -1, 9000  # Make sure the gripper does not move and that it tilts a bit forward
-                    times = [2000, 2000, 2000, 2000, 2000, 2000]  # Longer time might be needed to move the arm back a far distance
+                    thetas = utils.drive_thetas
+                    times = [2 * t for t in times]  # Longer time might be needed to move the arm back a far distance
                     next_step = "Success"  # End the FSM
             
             self.check_angles_and_times(thetas, times)  # Assert that the angles and times are in the correct format
@@ -181,8 +185,8 @@ class PickService(Node):
 
         """
 
-        x_dist = x - self.x_origin_servo5
-        y_dist = y - self.y_origin_servo5
+        x_dist = x - utils.x_origin_servo5
+        y_dist = y - utils.y_origin_servo5
 
         # Calculate the angle for servo 6 in radians and convert to degrees
         return np.rad2deg(np.arctan2(y_dist, x_dist))
@@ -201,22 +205,22 @@ class PickService(Node):
 
         """
         # The hypotenuse (rho) from the origin of servo 5 to the object position in the xy-plane minus the distance servo 4 has already moved
-        rho_dist = np.sqrt(np.power(x - self.x_origin_servo5, 2) + np.power(y - self.y_origin_servo5, 2)) - self.rho_origin_servo4
-        z_dist = z - self.z_origin_servo4  # The z position of the object minus the z position of servo 4
+        rho_dist = np.sqrt(np.power(x - utils.x_origin_servo5, 2) + np.power(y - utils.y_origin_servo5, 2)) - utils.rho_origin_servo4
+        z_dist = z - utils.z_origin_servo4  # The z position of the object minus the z position of servo 4
 
         # self._logger.info(f'rho {rho_dist}, z {z_dist}')
 
         # Calculate the angles for servo 3 and 4 in radians
-        cos_d_t_servo3 = (rho_dist ** 2 + z_dist ** 2 - self.l2 ** 2 - self.l3 ** 2) / (2 * self.l2 * self.l3)
+        cos_d_t_servo3 = (rho_dist ** 2 + z_dist ** 2 - utils.l2 ** 2 - utils.l3 ** 2) / (2 * utils.l2 * utils.l3)
         delta_theta_servo3 = - np.arctan2(np.sqrt(1 - cos_d_t_servo3 ** 2), cos_d_t_servo3)
         delta_theta_servo4 = (np.arctan2(z_dist, rho_dist) - 
-                              np.arctan2(self.l3 * np.sin(delta_theta_servo3), self.l2 + (self.l3 * np.cos(delta_theta_servo3))))
+                              np.arctan2(utils.l3 * np.sin(delta_theta_servo3), utils.l2 + (utils.l3 * np.cos(delta_theta_servo3))))
         
         # self._logger.info(f'servo 3 {np.rad2deg(delta_theta_servo3)}, servo 4 { (- np.rad2deg(delta_theta_servo4)) + (90 - self.theta_servo5)}')
         
         # Convert the angles to degrees and adjust for the initial angle of servo 5
         delta_theta_servo3 = np.rad2deg(delta_theta_servo3)
-        delta_theta_servo4 = (- np.rad2deg(delta_theta_servo4)) + (90 - self.theta_servo5)
+        delta_theta_servo4 = (- np.rad2deg(delta_theta_servo4)) + (90 - utils.theta_servo5)
 
         return delta_theta_servo3, delta_theta_servo4
 
