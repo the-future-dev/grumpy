@@ -13,6 +13,7 @@ from shapely.geometry import Point
 import matplotlib.pyplot as plt
 from std_msgs.msg import Int16MultiArray, MultiArrayDimension
 from scipy.ndimage import binary_dilation
+from grumpy_interfaces.msg import ObjectDetection1D
 
 class OccupancyGridMapNode(Node):
     
@@ -23,8 +24,6 @@ class OccupancyGridMapNode(Node):
         #Choose if Exploration or Collecttion, could be implemented with argument later
         self.workspace = np.array([[-50, 470, 750, 950, 950, 810, 810, -50],
                                    [-50, -50, 154, 154, 376, 376, 220, 220]])
-        #self.workspace = np.array([[-220, 220, 220, -220],
-                                  #[-130, -130, 130, 130]])
 
         self.polygon = Polygon(self.workspace.T)
         self.inflate_polygon = self.polygon.buffer(-25)
@@ -33,7 +32,6 @@ class OccupancyGridMapNode(Node):
         self.frame_id = 'map'
         self.map_xlength = np.max(self.workspace[0])*2
         self.map_ylength = np.max(self.workspace[1])*2
-        self.counter = 0
         
         #Values for grid cells
         self.unknown = -1
@@ -60,6 +58,7 @@ class OccupancyGridMapNode(Node):
 
         #Subscribe to both lidar scan
         self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
+        self.obstacle_subscription = self.create_subscription(ObjectDetection1D, '/object_mapping/object_poses', self.object_cb, 10)
 
     #Function which fills the space outside workspace as occupied, very slow now but have not succeded with other
     def fill_outside_grid(self):
@@ -75,13 +74,20 @@ class OccupancyGridMapNode(Node):
                 if not self.inflate_polygon.contains(point):
                     self.grid[j, i] = self.outside
         return
+    
+    def object_cb(self, msg:ObjectDetection1D):
+
+        x = 100*msg.pose.pose.position.x
+        y = 100*msg.pose.pose.position.y
+        point = np.array([[x],
+                          [y]])
+        value = self.object_box
+
+        self.map_to_grid(point, value)
+        self.publish_grid()
 
     #Lidar callback calculates detected object from laser scan, would implement to only run every xth time
     def lidar_cb(self, msg:LaserScan):
-
-        self.counter += 1
-        if self.counter % 5 != 0: #Only use every Xth scan 
-            return
         
         #Get data from message
         min_angle = msg.angle_min
@@ -166,7 +172,7 @@ class OccupancyGridMapNode(Node):
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
 
-        inflate_size = int(6/self.resolution)
+        inflate_size = int(12/self.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
         
         new_grid = np.zeros_like(self.grid)
@@ -212,7 +218,7 @@ class OccupancyGridMapNode(Node):
         x_grid_points = x_grid_points[mask_in_bounds]
         y_grid_points = y_grid_points[mask_in_bounds]
 
-        #If placing an an object or box we do not want to care about where in workspace
+        #If placing an object or box we do not want to care about where in workspace
         if value == self.object_box:
             return x_grid_points, y_grid_points
         

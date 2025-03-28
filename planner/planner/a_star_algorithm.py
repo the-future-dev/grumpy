@@ -240,6 +240,14 @@ class AStarAlgorithmNode(Node):
         
         return x_new, y_new
     
+    def check_free_path(self, x_start, y_start, x_end, y_end):
+
+        x_line = np.linspace(x_start, x_end, 100)
+        y_line = np.linspace(y_start, y_end, 100)
+
+        grid_x_line, grid_y_line = self.map_to_grid(100*x_line, y_line)
+
+    
     def map_to_grid(self, x, y):
         #Take map coordinates and convert to grid
          
