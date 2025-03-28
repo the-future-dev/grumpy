@@ -274,6 +274,8 @@ class ICP_node(Node):
         pose = PoseStamped()
         pose.header = self._path.header
 
+        self.get_logger().info(f'Current position according to localization; x: {pose_with_covariance.pose.pose.position.x}, y: {pose_with_covariance.pose.pose.position.y}')
+
         pose.pose.position.x = pose_with_covariance.pose.pose.position.x
         pose.pose.position.y = pose_with_covariance.pose.pose.position.y
         pose.pose.orientation.z = pose_with_covariance.pose.pose.orientation.z

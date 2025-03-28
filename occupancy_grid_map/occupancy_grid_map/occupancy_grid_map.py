@@ -150,17 +150,14 @@ class OccupancyGridMapNode(Node):
     #Convert map coordinate to grid indices and set as occupied or free
     def map_to_grid(self, map_points, value):
 
-        inflate = 0.3*100 #Scale to centimeters, introduce inflation to wokr in configuration space
         x_map = map_points[0, :]
         y_map = map_points[1, :]
 
         x_grid_points = np.floor((x_map + self.map_xlength/2)/self.resolution) #Convert to grid indices
         y_grid_points = np.floor((y_map + self.map_ylength/2)/self.resolution)
-        inflate = np.floor(inflate/self.resolution)
 
         x_grid_points = x_grid_points.astype(int) #Make sure int index
         y_grid_points = y_grid_points.astype(int)
-        inflate = inflate.astype(int)
 
         x_grid_points, y_grid_points = self.filter_points(x_grid_points, y_grid_points, value)
 
@@ -206,7 +203,7 @@ class OccupancyGridMapNode(Node):
         plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
         cbar = plt.colorbar()
         cbar.set_ticks([0, 1, 2, 3, 4])
-        plt.savefig('fantastic_map')
+        plt.savefig('/home/group5/dd2419_ws/outputs/fantastic_map')
         plt.close()
 
         self.grid_pub.publish(msg_grid)
