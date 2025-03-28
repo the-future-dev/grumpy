@@ -83,7 +83,7 @@ class PickService(Node):
 
                 case "GetPosition":  # Get the position of the object from the request
                     # x, y, z = self.extract_object_position(request.pose)  # Get the position of the object from the request
-                    x, y, z = utils.extract_object_position(request.pose)
+                    x, y, z = utils.extract_object_position(self, request.pose)
                     thetas = utils.still_thetas  # Do not move the arm
                     next_step = "RotateBase"  # Next step
 
@@ -116,7 +116,7 @@ class PickService(Node):
 
                 case "DrivePosition":  # Finish the pick up sequence by going back to the initial position, but not for the gripper
                     thetas = utils.drive_thetas
-                    times = [2 * t for t in times]  # Longer time might be needed to move the arm back a far distance
+                    times = [2000] * 6  # Longer time might be needed to move the arm back a far distance
                     next_step = "Success"  # End the FSM
             
             self.check_angles_and_times(thetas, times)  # Assert that the angles and times are in the correct format
@@ -276,6 +276,7 @@ class PickService(Node):
         time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
 
         return self.current_angles == angles  # Checks if the arm has moved to the correct angles
+        # return True
 
 def main(args=None):
     rclpy.init()
