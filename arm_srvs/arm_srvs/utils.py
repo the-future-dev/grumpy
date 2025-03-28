@@ -1,6 +1,12 @@
 import numpy as np
 from geometry_msgs.msg import Pose
 
+######################################
+# This file contains the:
+# Common functions for the arm services
+# Common constants for the arm
+######################################
+
 
 # Origin of servo 5 in base_link frame:
 x_origin_servo5 = -0.00450
