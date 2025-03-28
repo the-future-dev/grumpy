@@ -23,8 +23,10 @@ class OccupancyGridMapNode(Node):
         #Choose if Exploration or Collecttion, could be implemented with argument later
         self.workspace = np.array([[-50, 470, 750, 950, 950, 810, 810, -50],
                                    [-50, -50, 154, 154, 376, 376, 220, 220]])
-        #self.workspace = np.array([[-220, 220, 220, -220],
-                                  #[-130, -130, 130, 130]])
+        
+                                   
+        # self.workspace = np.array([[-220, 220, 220, -220],
+        #                           [-130, -130, 130, 130]])
 
         self.polygon = Polygon(self.workspace.T)
         self.inflate_polygon = self.polygon.buffer(-25)
@@ -80,8 +82,8 @@ class OccupancyGridMapNode(Node):
     def lidar_cb(self, msg:LaserScan):
 
         self.counter += 1
-        if self.counter % 5 != 0: #Only use every Xth scan 
-            return
+        # if self.counter % 5 != 0: #Only use every Xth scan 
+        #     return
         
         #Get data from message
         min_angle = msg.angle_min
@@ -163,7 +165,7 @@ class OccupancyGridMapNode(Node):
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
 
-        inflate_size = int(6/self.resolution)
+        inflate_size = int(30/self.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
         
         new_grid = np.zeros_like(self.grid)

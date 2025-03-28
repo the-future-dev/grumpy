@@ -156,10 +156,12 @@ class ICP_node(Node):
         # get new reference scan if bool is true, this is the case in the origin and when set by the brain
         if self.new_reference_scan:
             self.new_reference_scan = False
-            # x and y position odom-frame_id (lidar_link)
-            x = t.transform.translation.x 
-            y = t.transform.translation.y
+            # x and y position map-frame_id (lidar_link)
+            # odom-frame_id + latest transform between map and odom
+            x = t.transform.translation.x + self.t.transform.translation.x 
+            y = t.transform.translation.y + self.t.transform.translation.y
             pos = (x,y)
+            self.get_logger().info(f'Position from localization when getting new reference scan; x: {x}, y: {y}')
 
             # append position of robot for the pointcloud and the pointcloud transformed to odom frame
             self.reference_clouds.append((pos, pointcloud))
@@ -274,7 +276,7 @@ class ICP_node(Node):
         pose = PoseStamped()
         pose.header = self._path.header
 
-        self.get_logger().info(f'Current position according to localization; x: {pose_with_covariance.pose.pose.position.x}, y: {pose_with_covariance.pose.pose.position.y}')
+        # self.get_logger().info(f'Current position according to localization; x: {pose_with_covariance.pose.pose.position.x}, y: {pose_with_covariance.pose.pose.position.y}')
 
         pose.pose.position.x = pose_with_covariance.pose.pose.position.x
         pose.pose.position.y = pose_with_covariance.pose.pose.position.y

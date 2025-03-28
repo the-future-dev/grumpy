@@ -68,12 +68,12 @@ def generate_launch_description():
     return LaunchDescription([
         brain_exploration,
         drive_path,
-        #occupancy_grid_map,
+        occupancy_grid_map,
         local_obstacle_avoidance,
         planner,
         a_star,
-        # localization,
-        # icp_node,
-        perception,
-        object_mapping
+        localization,
+        icp_node,
+        # perception,
+        # object_mapping
     ])

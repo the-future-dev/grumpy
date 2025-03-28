@@ -46,8 +46,9 @@ class LocalObstacleAvoidanceNode(Node):
         self.local_obstacle_avoidance()
     
     def adjust_cb(self,msg:Bool):
-        #Function which is called when in occipied positiona and find nearest free point to drive to 
+        #Function which is called when in occipied position and find nearest free point to drive to 
 
+        self.get_logger().info('Local obstacle avoidance in callback from brain')
         free_indices = np.argwhere(self.grid == 0)
 
         grid_x = free_indices[:, 1]

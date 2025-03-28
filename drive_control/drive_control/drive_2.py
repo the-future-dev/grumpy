@@ -37,7 +37,7 @@ class SampleDriveControlNode(Node):
 
         self.create_subscription(Path, 'drive/path', self.path_cb, 1)
         self.create_subscription(Bool, 'drive/stop', self.stop_cb, 1)
-        self.create_subscription(Path, 'avoidance/drive_to_free', self.drive_free_cb, 1)
+        self.create_subscription(Path, 'avoidance/drive_free', self.drive_free_cb, 1)
 
     def path_cb(self, msg:Path):
         #Call back that iterates in poses and drives to them, can maybe implement offset if it is needed
@@ -63,7 +63,8 @@ class SampleDriveControlNode(Node):
         self.stop = msg.data
 
     def drive_free_cb(self, msg:Path):
-        
+        self.get_logger().info('In drive free callback')
+
         self.drive_to_free = True 
         self.stop = False
         
