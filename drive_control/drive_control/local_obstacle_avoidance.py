@@ -19,8 +19,8 @@ class LocalObstacleAvoidanceNode(Node):
 
         #Use grid to do local obstacle avoidance
         self.grid = None
-        self.map_xlength = 1400 #1400 exporation, 440 collection
-        self.map_ylength = 568  #568 exploration, 260 collection
+        self.map_xlength = 1900 
+        self.map_ylength = 752  
         self.resolution = 3
         self.adjust = False 
 
@@ -46,8 +46,9 @@ class LocalObstacleAvoidanceNode(Node):
         self.local_obstacle_avoidance()
     
     def adjust_cb(self,msg:Bool):
-        #Function which is called when in occipied positiona and find nearest free point to drive to 
+        #Function which is called when in occipied position and find nearest free point to drive to 
 
+        self.get_logger().info('Local obstacle avoidance in callback from brain')
         free_indices = np.argwhere(self.grid == 0)
 
         grid_x = free_indices[:, 1]

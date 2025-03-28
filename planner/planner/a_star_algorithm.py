@@ -50,8 +50,8 @@ class AStarAlgorithmNode(Node):
         self.grid_yg = 0
         self.grid_recieved = False
         self.goal_pose_recieved = False
-        self.map_xlength = 1400   #1400 exporation, 440 collection
-        self.map_ylength = 568    #568 exploration, 260 collection
+        self.map_xlength = 1900 
+        self.map_ylength = 752 
         self.resolution = 3
 
         self.tf_buffer = Buffer()
@@ -134,7 +134,7 @@ class AStarAlgorithmNode(Node):
             grid_x = node_curr.grid_x
             grid_y = node_curr.grid_y
 
-            if abs(self.grid_xg - grid_x) < 5 and abs(self.grid_yg - grid_y) < 5: #limits can be changed
+            if abs(self.grid_xg - grid_x) < 1 and abs(self.grid_yg - grid_y) < 1: #limits can be changed
                 pose_list, time = self.end_point(node_curr)
                 if not pose_list:
                     return None, time

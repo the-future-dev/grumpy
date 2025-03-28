@@ -21,10 +21,12 @@ class OccupancyGridMapNode(Node):
         super().__init__('occupancy_grid_map_node') 
 
         #Choose if Exploration or Collecttion, could be implemented with argument later
-        self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -220],
-                                   [-130, -130, 66, 66, 284, 284, 130, 130]])
-        #self.workspace = np.array([[-220, 220, 220, -220],
-                                  #[-130, -130, 130, 130]])
+        self.workspace = np.array([[-50, 470, 750, 950, 950, 810, 810, -50],
+                                   [-50, -50, 154, 154, 376, 376, 220, 220]])
+        
+                                   
+        # self.workspace = np.array([[-220, 220, 220, -220],
+        #                           [-130, -130, 130, 130]])
 
         self.polygon = Polygon(self.workspace.T)
         self.inflate_polygon = self.polygon.buffer(-25)
@@ -80,8 +82,8 @@ class OccupancyGridMapNode(Node):
     def lidar_cb(self, msg:LaserScan):
 
         self.counter += 1
-        if self.counter % 5 != 0: #Only use every Xth scan 
-            return
+        # if self.counter % 5 != 0: #Only use every Xth scan 
+        #     return
         
         #Get data from message
         min_angle = msg.angle_min
@@ -144,17 +146,14 @@ class OccupancyGridMapNode(Node):
     #Convert map coordinate to grid indices and set as occupied or free
     def map_to_grid(self, map_points, value):
 
-        inflate = 0.3*100 #Scale to centimeters, introduce inflation to wokr in configuration space
         x_map = map_points[0, :]
         y_map = map_points[1, :]
 
         x_grid_points = np.floor((x_map + self.map_xlength/2)/self.resolution) #Convert to grid indices
         y_grid_points = np.floor((y_map + self.map_ylength/2)/self.resolution)
-        inflate = np.floor(inflate/self.resolution)
 
         x_grid_points = x_grid_points.astype(int) #Make sure int index
         y_grid_points = y_grid_points.astype(int)
-        inflate = inflate.astype(int)
 
         x_grid_points, y_grid_points = self.filter_points(x_grid_points, y_grid_points, value)
 
@@ -166,7 +165,7 @@ class OccupancyGridMapNode(Node):
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
 
-        inflate_size = int(6/self.resolution)
+        inflate_size = int(30/self.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
         
         new_grid = np.zeros_like(self.grid)
@@ -200,7 +199,7 @@ class OccupancyGridMapNode(Node):
         plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
         cbar = plt.colorbar()
         cbar.set_ticks([0, 1, 2, 3, 4])
-        plt.savefig('fantastic_map')
+        plt.savefig('/home/group5/dd2419_ws/outputs/fantastic_map')
         plt.close()
 
         self.grid_pub.publish(msg_grid)
