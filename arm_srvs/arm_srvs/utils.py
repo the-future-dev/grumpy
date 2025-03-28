@@ -7,21 +7,27 @@ from geometry_msgs.msg import Pose
 # Common constants for the arm
 ######################################
 
-
 # Origin of servo 5 in base_link frame:
 x_origin_servo5 = -0.00450
 y_origin_servo5 = -0.04750
 z_origin_servo5 =  0.12915
-theta_servo5    =  60
+
+# Angles of the servos for different tasks:
+theta_servo5_pick = 60
+theta_servo5_view = 30
+theta_servo4_view = 60
+theta_servo3_view = 90
 
 # Constants in the robot arm links:
-l1 = 0.10048  # From joint of servo 5 to joint of servo 4:
-l2 = 0.094714  # From joint of servo 4 to joint of servo 3:
-l3 = 0.05071 + 0.11260  # From joint of servo 3 to joint of servo 2 + from joint servo 2 to griping point
+l_5_4     = 0.10048  # From joint of servo 5 to joint of servo 4:
+l_4_3     = 0.094714  # From joint of servo 4 to joint of servo 3:
+l_3_2_ee  = 0.05071 + 0.11260  # From joint of servo 3 to joint of servo 2 + from joint servo 2 to end effector
+l_3_cam_z = 0.046483 # From joint of servo 3 to :
+l_3_cam_y = 0.042169
 
 # Origin of servo 4 in rho+z-plane
-z_origin_servo4   = z_origin_servo5 + l1 * np.sin(np.deg2rad(90) - np.deg2rad(theta_servo5))
-rho_origin_servo4 = l1 * np.cos(np.deg2rad(90) - np.deg2rad(theta_servo5))
+z_origin_servo4   = z_origin_servo5 + l_5_4 * np.sin(np.deg2rad(90) - np.deg2rad(theta_servo5_pick))
+rho_origin_servo4 = l_5_4 * np.cos(np.deg2rad(90) - np.deg2rad(theta_servo5_pick))
     
 # Angles of the servos for different tasks:
 initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around without object

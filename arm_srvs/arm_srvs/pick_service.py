@@ -75,7 +75,7 @@ class PickService(Node):
 
                 case "PickOrigin":  # Move the arm to the position from were the inverse kinematics are calculated
                     thetas = utils.still_thetas.copy()  # Move part of arm
-                    thetas[4] = round(utils.theta_servo5 * 100)  # Set the angle for servo 5 for inverse kinematics
+                    thetas[4] = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
                     next_step = "InverseKinematics"  # Next step
 
                 case "InverseKinematics":  # Move the arm to the grasp position calculated by the inverse kinematics
@@ -146,14 +146,14 @@ class PickService(Node):
         z_dist = z - utils.z_origin_servo4  # The z position of the object minus the z position of servo 4
 
         # Calculate the angles for servo 3 and 4 in radians
-        cos_d_t_servo3 = (rho_dist ** 2 + z_dist ** 2 - utils.l2 ** 2 - utils.l3 ** 2) / (2 * utils.l2 * utils.l3)
+        cos_d_t_servo3 = (rho_dist ** 2 + z_dist ** 2 - utils.l_4_3 ** 2 - utils.l_3_2_ee ** 2) / (2 * utils.l_4_3 * utils.l_3_2_ee)
         delta_theta_servo3 = - np.arctan2(np.sqrt(1 - cos_d_t_servo3 ** 2), cos_d_t_servo3)
         delta_theta_servo4 = (np.arctan2(z_dist, rho_dist) - 
-                              np.arctan2(utils.l3 * np.sin(delta_theta_servo3), utils.l2 + (utils.l3 * np.cos(delta_theta_servo3))))
+                              np.arctan2(utils.l_3_2_ee * np.sin(delta_theta_servo3), utils.l_4_3 + (utils.l_3_2_ee * np.cos(delta_theta_servo3))))
         
         # Convert the angles to degrees and adjust for the initial angle of servo 5
         delta_theta_servo3 = np.rad2deg(delta_theta_servo3)
-        delta_theta_servo4 = (- np.rad2deg(delta_theta_servo4)) + (90 - utils.theta_servo5)
+        delta_theta_servo4 = (- np.rad2deg(delta_theta_servo4)) + (90 - utils.theta_servo5_pick)
 
         return delta_theta_servo3, delta_theta_servo4
         
