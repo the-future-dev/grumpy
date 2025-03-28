@@ -17,14 +17,26 @@ l3 = 0.05071 + 0.11260  # From joint of servo 3 to joint of servo 2 + from joint
 z_origin_servo4   = z_origin_servo5 + l1 * np.sin(np.deg2rad(90) - np.deg2rad(theta_servo5))
 rho_origin_servo4 = l1 * np.cos(np.deg2rad(90) - np.deg2rad(theta_servo5))
     
-# Sets angles of the servos for different tasks, as well as time for the arm to move into these positions:
+# Angles of the servos for different tasks:
 initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around without object
 drive_thetas   = [-1, 12000, 9000, 12000, 12000, 12000]  # Arm pointing straight up, gripper tilted forward, used for driving around with object
 drop_thetas    = [-1 , -1, 3000, 14500, 9000, -1]  # Angles for droping objects into the bins
 view_thetas    = [-1, -1, 3000, 18000, 9000, -1]  # Angles when the arm camera has a view over the entire pick-up area
-still_thetas    = [-1, -1, -1, -1, -1, -1]  # Angles for when the arm should not move
+still_thetas   = [-1, -1, -1, -1, -1, -1]  # Angles for when the arm should not move
 
 times = [1000, 1000, 1000, 1000, 1000, 1000]  # Standard angle movement times to all positions
+
+# The position of the camera in the base_link frame
+cam_pos = Pose()
+cam_pos.position.x = 0.1
+cam_pos.position.y = 0.1
+cam_pos.position.z = 0.1
+
+# Camera parameters for calibration and undistortion of the image
+intrinsic_mtx = np.array([[438.783367, 0.000000, 305.593336],
+                          [0.000000, 437.302876, 243.738352],
+                          [0.000000, 0.000000, 1.000000]])
+dist_coeffs   = np.array([-0.361976, 0.110510, 0.001014, 0.000505, 0.000000])
 
 
 def extract_object_position(self, pose:Pose):
@@ -52,7 +64,7 @@ def extract_object_position(self, pose:Pose):
         return x, y, z
 
 
-def get_delta_theta_6(self, x, y):
+def get_delta_theta_6(x, y):
         """
         Args:
             x: float, required, x-position of the object in base_link frame
@@ -63,8 +75,8 @@ def get_delta_theta_6(self, x, y):
 
         """
 
-        x_dist = x - self.x_origin_servo5
-        y_dist = y - self.y_origin_servo5
+        x_dist = x - x_origin_servo5
+        y_dist = y - y_origin_servo5
 
         # Calculate the angle for servo 6 in radians and convert to degrees
         return np.rad2deg(np.arctan2(y_dist, x_dist))
@@ -74,7 +86,7 @@ def check_angles_and_times(self, angles, times):
         """
         Args:
             angles: list, required, the angles for each servo to be set to
-            times:  list, required, the times for each servo to get to the given angle
+            times : list, required, the times for each servo to get to the given angle
         Returns:
             
         Other functions:
@@ -96,3 +108,19 @@ def check_angles_and_times(self, angles, times):
         assert (0 <= angles[5] <= 20000) or (angles[5] == -1), self._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
 
         self._logger.info('Checked the angles and times')
+
+
+def changed_thetas_correctly(pub_angles, curr_angles):
+    """
+    Args:
+        pub_angles : list, required, the angles that were published to the arm
+        curr_angles: list, required, the angles that the arm is at after the angles have been published and the required time has passed
+    Returns:
+        bool, if the arm has moved to the published angles
+    Other functions:
+        
+    """
+
+    return len(pub_angles) == len(curr_angles) and all(
+        pub_angles[i] == -1 or pub_angles[i] == curr_angles[i] for i in range(len(pub_angles))
+    )

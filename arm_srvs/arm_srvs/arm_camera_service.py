@@ -9,46 +9,16 @@ from sensor_msgs.msg import CompressedImage
 import cv2
 import numpy as np
 import time
+import arm_srvs.utils as utils
 
 class ArmCameraService(Node):
 
     def __init__(self):
         super().__init__('arm_camera_srv')
 
-        # Origin of servo 5 in base_link frame:
-        self.x_origin_servo5 = -0.00450
-        self.y_origin_servo5 = -0.04750
-        self.z_origin_servo5 =  0.12915
-        self.theta_servo5    =  60
-
-        # Constants in the robot arm links:
-        self.l1 = 0.10048  # From joint of servo 5 to joint of servo 4:
-        self.l2 = 0.094714  # From joint of servo 4 to joint of servo 3:
-        self.l3 = 0.05071 + 0.11260  # From joint of servo 3 to joint of servo 2 + from joint servo 2 to griping point
-
-        # Origin of servo 4 in rho+z-plane
-        self.z_origin_servo4   = self.z_origin_servo5 + self.l1 * np.sin(np.deg2rad(90) - np.deg2rad(self.theta_servo5))
-        self.rho_origin_servo4 = self.l1 * np.cos(np.deg2rad(90) - np.deg2rad(self.theta_servo5))
-         
-        # Sets angles of the servos for different tasks, as well as time for the arm to move into these positions:
-        self.initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around
-        self.view_thetas    = [-1, -1, 3000, 18000, 9000, -1]  # Angles when the arm camera has a view over the entire pick-up area
-        self.current_angles = self.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
-
-        self.cam_pos = Pose() # The position of the camera in the base_link frame
-        self.cam_pos.position.x = 0.1
-        self.cam_pos.position.y = 0.1
-        self.cam_pos.position.z = 0.1
-
-        self.times = [1000, 1000, 1000, 1000, 1000, 1000]  # Standard angle movement times to all positions
+        self.current_angles = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
 
         self.image_data = None  # The image data from the arm camera
-
-        # Camera parameters for calibration and undistortion of the image
-        self.intrinsic_mtx = np.array([[438.783367, 0.000000, 305.593336],
-                                       [0.000000, 437.302876, 243.738352],
-                                       [0.000000, 0.000000, 1.000000]])
-        self.dist_coeffs = np.array([-0.361976, 0.110510, 0.001014, 0.000505, 0.000000])
 
         # Create the drop service
         self.srv = self.create_service(
@@ -99,23 +69,23 @@ class ArmCameraService(Node):
             times = self.times  # Set the times to the standard times
             match step:
                 case "Start":  # Make sure the arm is in the initial position
-                    thetas = self.initial_thetas
+                    thetas = utils.initial_thetas
                     next_step = "ViewPosition"  # Next step
 
                 case "ViewPosition":  # Set the arm to the view position
-                    thetas = self.view_thetas  # Set the goal angles to the view thetas
+                    thetas = utils.view_thetas  # Set the goal angles to the view thetas
                     next_step = "GetObjectPosition"  # Next step
 
                 case "GetObjectPosition":  # Extract the position of the object from the arm camera
                     response.pose.position.x, response.pose.position.y = self.get_object_position()  # Get the position of the object
-                    thetas = [-1, -1, -1, -1, -1, -1]  # Do not move the arm servos
+                    thetas = utils.still_thetas  # Do not move the arm servos
                     next_step = "DrivePosition"  # Next step
 
                 case "DrivePosition":  # Finish the viewing sequence by going back to the initial position
-                    thetas = self.initial_thetas
+                    thetas = utils.initial_thetas
                     next_step = "Success"  # End the FSM
             
-            self.check_angles_and_times(thetas, times)  # Assert that the angles and times are in the correct format
+            utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format
             
             if self.publish_angles(thetas, times):  # Publish the angles to the arm and check if the arm has moved to the correct angles
                 step = next_step
@@ -144,7 +114,7 @@ class ArmCameraService(Node):
         assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
         assert all(isinstance(current_angles, int) for angle in current_angles), self._logger.error('angles was not of type int')
 
-        self.get_logger.info('Got the angles of the servos')
+        self._logger.info('Got the angles of the servos')
 
         self.current_angles = current_angles
 
@@ -183,7 +153,7 @@ class ArmCameraService(Node):
 
         np_arr = np.frombuffer(self.image_data, np.uint8)  # Convert CompressedImage to OpenCV format
         bgr_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)  # Decode as BGR
-        undistorted_image = cv2.undistort(bgr_image, self.intrinsic_mtx, self.dist_coeffs)  # Undistort the image
+        undistorted_image = cv2.undistort(bgr_image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
         hsv_image = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
 
         masks = self.create_masks(hsv_image)  # Create masks for red, green, and blue objects
@@ -227,6 +197,7 @@ class ArmCameraService(Node):
         blue_mask = cv2.inRange(hsv_image, lower_blue, upper_blue)
 
         return [red_mask, green_mask, blue_mask]
+
 
     def clean_mask(self, mask):
         """
@@ -284,48 +255,20 @@ class ArmCameraService(Node):
             
         """
 
-        fx, fy = self.intrinsic_mtx[0, 0], self.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
-        cx, cy = self.intrinsic_mtx[0, 2], self.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
+        fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
+        cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
 
-        x = (y_pixel - cx) * (self.cam_pos.position.z / fx) + self.cam_pos.position.x
-        y = (x_pixel - cy) * (self.cam_pos.position.z / fy) + self.cam_pos.position.y
+        x = (y_pixel - cx) * (utils.cam_pos.position.z / fx) + utils.cam_pos.position.x
+        y = (x_pixel - cy) * (utils.cam_pos.position.z / fy) + utils.cam_pos.position.y
 
         return x, y
-
-
-    def check_angles_and_times(self, angles, times):
-        """
-        Args:
-            angles: List, required, the angles for each servo to be set to
-            times:  List, required, the times for each servo to get to the given angle
-        Returns:
-            
-        Other functions:
-            Raises error if the angles and times are not in the correct format, length or interval
-        """
-
-        assert isinstance(angles, list), self._logger.error('angles is not of type list')
-        assert isinstance(times, list), self._logger.error('times is not of type list')
-        assert len(angles) == 6, self._logger.error('angles was not of length 6')
-        assert len(times) == 6, self._logger.error('times was not of length 6')
-        assert all(isinstance(angle, int) for angle in angles), self._logger.error('angles was not of type int')
-        assert all(isinstance(time, int) for time in times), self._logger.error('times was not of type int')
-        assert all(1000 <= time <= 5000 for time in times), self._logger.error('times was not within the interval [1000, 5000]')
-        assert (0 <= angles[0] <= 11000) or (angles[0] == -1), self._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
-        assert (0 <= angles[1] <= 24000) or (angles[1] == -1), self._logger.error(f'servo 2 was not within the interval [0, 24000] or -1, got {angles[1]}')
-        assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), self._logger.error(f'servo 3 was not within the interval [2500, 21000] or -1, got {angles[2]}')
-        assert (3000 <= angles[3] <= 21500) or (angles[3] == -1), self._logger.error(f'servo 4 was not within the interval [3000, 21500] or -1, got {angles[3]}')
-        assert (6000 <= angles[4] <= 18000) or (angles[4] == -1), self._logger.error(f'servo 5 was not within the interval [6000, 18000] or -1, got {angles[4]}')
-        assert (0 <= angles[5] <= 20000) or (angles[5] == -1), self._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
-
-        self._logger.info('Checked the angles and times')
 
     
     def publish_angles(self, angles, times):
         """
         Args:
             angles: list, required, the angles for each servo to be set to
-            times:  list, required, the times for each servo to get to the given angle
+            times : list, required, the times for each servo to get to the given angle
         Returns:
         
         Other functions:
@@ -343,7 +286,7 @@ class ArmCameraService(Node):
 
         time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
 
-        return self.current_angles == angles  # Checks if the arm has moved to the correct angles
+        return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
 
 def main(args=None):
     rclpy.init()
