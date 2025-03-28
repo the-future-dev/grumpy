@@ -33,15 +33,19 @@ class ArmCameraService(Node):
         # Sets angles of the servos for different tasks, as well as time for the arm to move into these positions:
         self.initial_thetas = [1000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around
         self.view_thetas    = [-1, -1, 3000, 18000, 9000, -1]  # Angles when the arm camera has a view over the entire pick-up area
+        self.current_angles = self.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
+
+        self.cam_pos = Pose() # The position of the camera in the base_link frame
+        self.cam_pos.position.x = 0.1
+        self.cam_pos.position.y = 0.1
+        self.cam_pos.position.z = 0.1
 
         self.times = [1000, 1000, 1000, 1000, 1000, 1000]  # Standard angle movement times to all positions
-
-        self.current_angles = self.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
 
         self.image_data = None  # The image data from the arm camera
 
         # Camera parameters for calibration and undistortion of the image
-        self.camera_matrix = np.array([[438.783367, 0.000000, 305.593336],
+        self.intrinsic_mtx = np.array([[438.783367, 0.000000, 305.593336],
                                        [0.000000, 437.302876, 243.738352],
                                        [0.000000, 0.000000, 1.000000]])
         self.dist_coeffs = np.array([-0.361976, 0.110510, 0.001014, 0.000505, 0.000000])
@@ -179,7 +183,7 @@ class ArmCameraService(Node):
 
         np_arr = np.frombuffer(self.image_data, np.uint8)  # Convert CompressedImage to OpenCV format
         bgr_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)  # Decode as BGR
-        undistorted_image = cv2.undistort(bgr_image, self.camera_matrix, self.dist_coeffs)  # Undistort the image
+        undistorted_image = cv2.undistort(bgr_image, self.intrinsic_mtx, self.dist_coeffs)  # Undistort the image
         hsv_image = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
 
         masks = self.create_masks(hsv_image)  # Create masks for red, green, and blue objects
@@ -193,7 +197,7 @@ class ArmCameraService(Node):
         if not object_centers.empty():  # If object(s) were found
             x, y = object_centers[0]  # Set the position of the first object found
 
-        x, y = self.transform_to_base_link(x, y)  # Transform the position to the base_link frame
+        x, y = self.pixel_to_base_link(x, y)  # Transform the position to the base_link frame
 
         return x, y
 
@@ -268,7 +272,7 @@ class ArmCameraService(Node):
         return centers
 
 
-    def transform_to_base_link(self, x, y):
+    def pixel_to_base_link(self, x_pixel, y_pixel):
         """
         Args:
             x: float, required, the pixel x-coordinate of the object in the arm camera image
@@ -280,8 +284,11 @@ class ArmCameraService(Node):
             
         """
 
-        x = x / 640
-        y = y / 480
+        fx, fy = self.intrinsic_mtx[0, 0], self.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
+        cx, cy = self.intrinsic_mtx[0, 2], self.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
+
+        x = (y_pixel - cx) * (self.cam_pos.position.z / fx) + self.cam_pos.position.x
+        y = (x_pixel - cy) * (self.cam_pos.position.z / fy) + self.cam_pos.position.y
 
         return x, y
 
