@@ -74,7 +74,8 @@ class PositioningService(Node):
                     next_step = "RotateRobotWithRGB-D"  # Next step
 
                 case "DriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback
-                    if np.isclose(goal_y, self.y_offset, atol=self.y_tol) and goal_x <= self.x_stop:  # End condition for driving the robot using the RGB-D camera
+                    # End condition for driving the robot using the RGB-D camera
+                    if np.isclose(goal_y, self.y_offset, atol=self.y_tol) and goal_x <= self.x_stop:
                         self.publish_robot_movement(0.0, 0.0)  # Stop the robot
                         next_step = "DriveRobotWithoutRGB-D"  # Next step
                     else:
@@ -82,7 +83,9 @@ class PositioningService(Node):
                         next_step = "DriveRobotWithRGB-D"  # Next step
                 
                 case "DriveRobotWithoutRGB-D":  # Drive the robot without the RGB-D camera
-                    self.publish_robot_movement(goal_x, 0.0)  # Drive the robot
+                    for _ in range(5):  
+                        self.publish_robot_movement(goal_x, self.y_offset)  # Drive the robot forward multiple times
+                    self.publish_robot_movement(0.0, 0.0)  # Stop the robot
                     next_step = "Success"  # End the FSM
             
             step = next_step
