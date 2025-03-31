@@ -4,7 +4,7 @@ from rclpy.node import Node
 
 import rclpy.time
 from tf2_ros import TransformException,  TransformBroadcaster
-from tf_transformations import quaternion_from_matrix, quaternion_matrix
+from tf_transformations import quaternion_from_matrix, quaternion_matrix, euler_from_quaternion
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from sensor_msgs.msg import LaserScan, PointCloud2
@@ -276,7 +276,9 @@ class ICP_node(Node):
         pose = PoseStamped()
         pose.header = self._path.header
 
-        # self.get_logger().info(f'Current position according to localization; x: {pose_with_covariance.pose.pose.position.x}, y: {pose_with_covariance.pose.pose.position.y}')
+        [_, _, yaw] = euler_from_quaternion([pose_with_covariance.pose.pose.orientation.x, pose_with_covariance.pose.pose.orientation.y, pose_with_covariance.pose.pose.orientation.z,pose_with_covariance.pose.pose.orientation.w])
+
+        #self.get_logger().info(f'Current position according to localization; x: {pose_with_covariance.pose.pose.position.x}, y: {pose_with_covariance.pose.pose.position.y}, theta: {yaw}')
 
         pose.pose.position.x = pose_with_covariance.pose.pose.position.x
         pose.pose.position.y = pose_with_covariance.pose.pose.position.y

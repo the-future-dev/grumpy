@@ -31,31 +31,32 @@ class LocalObstacleAvoidance(py_trees.behaviour.Behaviour):
             self.stop_robot = True
             self.drive_free = True
             
-            return py_trees.common.Status.SUCCESS
-        else:
-            self.node.get_logger().info('In occupied space')
+        return py_trees.common.Status.SUCCESS
+        
+        # else:
+        #     self.node.get_logger().info('In occupied space')
             
 
-            # only publish so that action is performed once and to do drive free stop robot has to have been performed
-            if self.stop_robot:
-                self.node.get_logger().info('Stopping robot')
-                self.stop_robot = False
-                self.node.set_poses_list = True
-                msg = Bool()
-                msg.data = True
-                self.node.stop_robot_pub.publish(msg)
-                self.node.have_path = False
-            else:
-                if self.drive_free:
-                    self.node.get_logger().info('Driving to free space')
-                    self.drive_free = False
-                    msg = Bool()
-                    msg.data = True
-                    self.node.drive_to_free_pub.publish(msg)
-                else:
-                    self.node.get_logger().info('Trying to reach free space')
+        #     # only publish so that action is performed once and to do drive free stop robot has to have been performed
+        #     if self.stop_robot:
+        #         self.node.get_logger().info('Stopping robot')
+        #         self.stop_robot = False
+        #         self.node.set_poses_list = True
+        #         msg = Bool()
+        #         msg.data = True
+        #         self.node.stop_robot_pub.publish(msg)
+        #         self.node.have_path = False
+        #     else:
+        #         if self.drive_free:
+        #             self.node.get_logger().info('Driving to free space')
+        #             self.drive_free = False
+        #             msg = Bool()
+        #             msg.data = True
+        #             self.node.drive_to_free_pub.publish(msg)
+        #         else:
+        #             self.node.get_logger().info('Trying to reach free space')
 
-            return py_trees.common.Status.RUNNING
+        #     return py_trees.common.Status.RUNNING
 
 
 class NoUnknownSpaceLeft(py_trees.behaviour.Behaviour):
@@ -94,16 +95,16 @@ class GetIcpScan(py_trees.behaviour.Behaviour):
             self.take_ref_scan = True
             return py_trees.common.Status.SUCCESS
         else:
-            self.node.get_logger().info('Do not have reference scan')
+            self.node.get_logger().debug('Do not have reference scan')
             # take reference scan for ICP, but only publish once
             if self.take_ref_scan:
                 self.take_ref_scan = False
-                self.node.get_logger().info('Publishing Bool to ICP node so that it takes ref scan')
+                self.node.get_logger().debug('Publishing Bool to ICP node so that it takes ref scan')
                 msg = Bool()
                 msg.data = True
                 self.node.take_ref_scan_pub.publish(msg)
             else:
-                self.node.get_logger().info('Waiting for ICP to take ref scan')
+                self.node.get_logger().debug('Waiting for ICP to take ref scan')
 
             return py_trees.common.Status.RUNNING
 
@@ -122,7 +123,7 @@ class TurnRobot(py_trees.behaviour.Behaviour):
         if self.node.have_turned:
             return py_trees.common.Status.SUCCESS
         else:
-            self.node.get_logger().info('Turning Robot') # TODO implement logic to turn robot 
+            self.node.get_logger().debug('Turning Robot') # TODO implement logic to turn robot 
             self.node.have_turned = True
             return py_trees.common.Status.RUNNING
 
@@ -204,14 +205,22 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
                 if not self.node.at_goal:
                     self.node.get_logger().info('Waiting for drive control to reach point')
                     return py_trees.common.Status.RUNNING
+                else:
+                    if len(self.poses_list)==0:
+                        self.empty_list = True
+                        self.node.get_logger().info(f'No poses left, should have reached goal')
+                        return py_trees.common.Status.RUNNING
 
+
+            self.node.at_goal = False    
             self.node.get_logger().info(f'Poses List length: {len(self.poses_list)}')
-            pose = self.poses_list.pop(0)
+            
+            path = self.node.path
+            path.poses = self.poses_list
+            self.node.path_list_pub.publish(path)
 
-            if len(self.poses_list)==0:
-                self.empty_list = True
-                self.node.get_logger().info(f'No poses left, should have reached goal')
-                return py_trees.common.Status.RUNNING
+            if len(self.poses_list)>0:
+                pose = self.poses_list.pop(0)
 
             self.node.path.poses = [pose]
             self.node.get_logger().info('Publishing next pose to drive_control')
@@ -250,8 +259,9 @@ class BrainExploration(Node):
         self.have_scan = False
         self.have_goal = False
         self.have_turned = False
+        self.recalculate_path = True
 
-        self.at_goal = False
+        self.at_goal = True
         self.corner_ex_done = False
         self.no_unknown_left = False
 
@@ -267,6 +277,7 @@ class BrainExploration(Node):
         self.drive_to_free_pub = self.create_publisher(Bool, 'avoidance/drive_to_free', 1)
         self.drive_to_goal_pub = self.create_publisher(Path, 'drive/path', 1)
         self.take_ref_scan_pub = self.create_publisher(Bool, '/icp_node/get_new_reference_scan', 1)
+        self.path_list_pub = self.create_publisher(Path, '/brain/path_list', 1)
 
         # Create ROS 2 behaviour tree
         self.tree = self.create_behaviour_tree()
@@ -288,6 +299,12 @@ class BrainExploration(Node):
         """
         self.get_logger().info(f'Avoidance node is telling us that path_free = {msg.data}')
         self.free_path = msg.data
+        if not self.free_path and self.recalculate_path:
+            self.recalculate_path = False
+            self.have_path = False
+            self.set_poses_list = True 
+        else:
+            self.recalculate_path = True
     
     def set_path_cb(self, msg:Path):
         """
@@ -309,6 +326,7 @@ class BrainExploration(Node):
         self.get_logger().info('Have received goal from planner')
         self.goal = msg
         self.have_goal = True
+        self.get_path = True
     
     def corner_ex_done_cb(self, msg:Bool):
         """

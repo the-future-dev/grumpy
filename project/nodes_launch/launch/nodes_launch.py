@@ -7,21 +7,49 @@ import os
 
 def generate_launch_description():
     # Start nodes
-    odometry = Node(
-        package='odometry',
-        executable='odometry',
+    # brain_exploration = Node(
+    #     package='brain',
+    #     executable='brain_exploration',
+    #     output='screen'
+    # )
+
+    localization = Node(
+        package='localization',
+        executable='localization',
         output='screen'
     )
-
-    lidar = Node(
-        package='lidar',
-        executable='lidar',
+    icp_node = Node(
+        package='icp_node',
+        executable='icp_node',
         output='screen'
-    ) 
+    )
+    # occupancy_grid_map = Node(
+    #     package='occupancy_grid_map',
+    #     executable='occupancy_grid_map',
+    #     output='screen'
+    # )
 
-    drive_control = Node(
+    # local_obstacle_avoidance = Node(
+    #     package='drive_control',
+    #     executable='local_obstacle_avoidance',
+    #     output = 'screen'
+    # )
+
+    # planner = Node(
+    #     package='planner',
+    #     executable='planner_exploration',
+    #     output='screen'
+    # )
+
+    # a_star = Node(
+    #     package='planner',
+    #     executable='a_star_algorithm',
+    #     output='screen'
+    # )
+
+    drive_path = Node(
         package='drive_control',
-        executable='drive_control',
+        executable='drive_2',
         output='screen'
     )
 
@@ -37,11 +65,10 @@ def generate_launch_description():
         output='screen'
     )
 
-
     return LaunchDescription([
-        drive_control,
-        odometry,
-        lidar,
-        perception,
+        drive_path,
+        localization,
+        icp_node,
+        # perception,
         object_mapping
     ])

@@ -15,6 +15,8 @@ import heapq
 from builtin_interfaces.msg import Time
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
+from matplotlib.colors import BoundaryNorm
+from scipy.ndimage import binary_dilation
 
 class ANode:
     #Create a A-star Node for queueing
@@ -45,9 +47,11 @@ class AStarAlgorithmNode(Node):
         # Priotrity ques for A star algorithm
         self.Q = None
         self.grid = None
-        self.checked = 10   
+        self.checked = 5   
         self.grid_xg = 0
         self.grid_yg = 0
+        self.grid_rob_x = 0
+        self.grid_rob_y = 0
         self.grid_recieved = False
         self.goal_pose_recieved = False
         self.map_xlength = 1900 
@@ -84,8 +88,39 @@ class AStarAlgorithmNode(Node):
             data = msg.data
             self.grid = np.array([data]).reshape(rows, columns)
 
+            self.inflate_grid()
+
             self.grid_recieved = True
             self.publish_path()
+
+    def inflate_grid(self):
+
+        inflate_size_obs = int(30/self.resolution)
+        inflate_size_out = int(21/self.resolution)
+
+        inflate_matrix_obs = np.ones((2 * inflate_size_obs + 1, 2 * inflate_size_obs + 1))
+        inflate_matrix_out = np.ones((2 * inflate_size_out + 1, 2 * inflate_size_out + 1))
+
+        new_grid_obs = np.zeros_like(self.grid)
+        new_grid_out = np.zeros_like(self.grid)
+        
+        arg_obstacle = np.argwhere(self.grid == 1)
+        arg_outside_inflate = np.argwhere(self.grid == 2)
+
+        new_grid_obs[arg_obstacle[:, 0], arg_obstacle[:, 1]] = 1
+        new_grid_out[arg_outside_inflate[:, 0], arg_outside_inflate[:, 1]] = 1
+
+        new_grid_obs = binary_dilation(new_grid_obs, structure=inflate_matrix_obs)*1
+        new_grid_out = binary_dilation(new_grid_out, structure=inflate_matrix_out)*2
+
+        mask_zeros_obs = new_grid_obs == 0
+        mask_zeros_out = new_grid_out == 0
+        
+        new_grid_obs[mask_zeros_obs] = -1
+        new_grid_out[mask_zeros_out] = -1
+
+        self.grid = np.maximum(self.grid, new_grid_obs)
+        self.grid = np.maximum(self.grid, new_grid_out)
     
     def publish_path(self):
         #Function whihc finally publish un simplified path
@@ -121,11 +156,26 @@ class AStarAlgorithmNode(Node):
         #Function which takes the Q and decides whether to go to next item in Q or if at endpoint
 
         #Take grid current pose
-        grid_x, grid_y = self.current_pos()
-        print(self.grid[self.grid_yg, self.grid_xg], self.grid[grid_y, grid_x])
+        self.grid_rob_x, self.grid_rob_y = self.current_pos()
 
-        G = abs(self.grid_xg - grid_x)**2 + abs(self.grid_yg - grid_y)**2 
-        node_curr = ANode(grid_x, grid_y, None, 0, G) #Initial node, current pose
+        if self.grid[self.grid_rob_y, self.grid_rob_x] > 0:
+            self.get_logger().info('Not in free space so takes closest free cell to start with')
+
+            free_indices = np.argwhere(self.grid == -1)
+            self.get_logger().info(f'{free_indices}')
+
+            grid_free_x = free_indices[:, 1]
+            grid_free_y = free_indices[:, 0]
+
+            dists = np.sqrt((grid_free_x - self.grid_rob_x)**2 + (grid_free_y - self.grid_rob_y)**2)
+            
+            min_dist_index = np.argmin(dists)
+
+            self.grid_rob_x = grid_free_x[min_dist_index]
+            self.grid_rob_y = grid_free_y[min_dist_index]
+
+        G = abs(self.grid_xg - self.grid_rob_x)**2 + abs(self.grid_yg - self.grid_rob_y)**2 
+        node_curr = ANode(self.grid_rob_x, self.grid_rob_y, None, 0, G) #Initial node, current pose
         self.Q = [node_curr] 
         heapq.heapify(self.Q) #heapify to simplify ordering
 
@@ -134,7 +184,7 @@ class AStarAlgorithmNode(Node):
             grid_x = node_curr.grid_x
             grid_y = node_curr.grid_y
 
-            if abs(self.grid_xg - grid_x) < 1 and abs(self.grid_yg - grid_y) < 1: #limits can be changed
+            if abs(self.grid_xg - grid_x) < 8 and abs(self.grid_yg - grid_y) < 8: #limits can be changed
                 pose_list, time = self.end_point(node_curr)
                 if not pose_list:
                     return None, time
@@ -199,35 +249,74 @@ class AStarAlgorithmNode(Node):
         pose_list = []
         x_list = []
         y_list = []
-        # time = Time() #Unsure why this tim object is the only working på not rclpy
         time = self.get_clock().now().to_msg()
+        grid_curr_x = self.grid_rob_x
+        grid_curr_y = self.grid_rob_y
+        first_node = node_curr
 
         while node_curr.parent != None:
 
             x, y = self.grid_to_map(node_curr.grid_x, node_curr.grid_y)
+            self.grid[node_curr.grid_y, node_curr.grid_x] = -2
+            #curr_x, curr_y = self.grid_to_map(grid_curr_x, grid_curr_y)
+            #free = self.check_free_path(curr_x, curr_y, x, y)
 
             x_list.append(x)
             y_list.append(y)
             node_curr = node_curr.parent
+
+            # if free == True:
+            #     x_list.append(x)
+            #     y_list.append(y)
+            #     if node_curr.grid_x == first_node.grid_x and node_curr.grid_y == first_node.grid_y:
+            #         self.get_logger().info('Breaking loop')
+            #         break
+            #     else:
+            #         grid_curr_x = node_curr.grid_x
+            #         grid_curr_y = node_curr.grid_y
+            #         node_curr = first_node
+            # else:
+            #     node_curr = node_curr.parent
 
         x_list = x_list[::-1]
         y_list = y_list[::-1]
 
         if not x_list:
             return None, time
-        
-        new_x, new_y = self.reduce_poses(x_list, y_list)
 
-        for i in range(len(new_x)):
+        cmap = plt.cm.get_cmap('Paired', 8)
+        norm = BoundaryNorm([-2, -1, 0, 1, 2, 3, 4, 5, 6], cmap.N)
+        plt.figure(figsize=(10, 10))
+        plt.imshow(self.grid, cmap=cmap, norm=norm, interpolation='nearest', origin='lower')
+        cbar = plt.colorbar()
+        cbar.set_ticks([-2, -1, 0, 1, 2, 3, 4, 5])
+        plt.savefig('/home/group5/dd2419_ws/outputs/astar_map')
+        plt.close()
+
+        x_list, y_list = self.reduce_poses(x_list, y_list)
+
+        for i in range(len(x_list)):
             pose = PoseStamped()
             pose.header.frame_id = 'map'
             pose.header.stamp = time
-            pose.pose.position.x = new_x[i]
-            pose.pose.position.y = new_y[i]
+            pose.pose.position.x = x_list[i]
+            pose.pose.position.y = y_list[i]
             pose.pose.position.z = 0.0
             pose_list.append(pose)
 
         return pose_list, time
+
+    def check_free_path(self, x_start, y_start, x_end, y_end):
+
+        x_line = np.linspace(x_start, x_end, 1000)
+        y_line = np.linspace(y_start, y_end, 1000)
+
+        grid_x_line, grid_y_line = self.map_to_grid(100*x_line, 100*y_line)
+
+        if np.any((self.grid[grid_y_line, grid_x_line] > 0) & (self.grid[grid_y_line, grid_x_line] < 10)):
+            return False
+        else:
+            return True
     
     def reduce_poses(self, x_list, y_list):
 
