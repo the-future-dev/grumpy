@@ -24,14 +24,14 @@ class PlannerExplorationNode(Node):
     def __init__(self):
         super().__init__('planner_exploration_node') 
 
-        self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -220],
-                                   [-130, -130, 66, 66, 284, 284, 130, 130]])
+        self.workspace = np.array([[-50, 470, 750, 950, 950, 810, 810, -50],
+                                   [-50, -50, 154, 154, 376, 376, 220, 220]])
         
         self.n_corners = self.workspace.shape[1]
         self.counter = 0
         self.grid = None
-        self.map_ylength = 568
-        self.map_xlength = 1400
+        self.map_xlength = 1900 
+        self.map_ylength = 752 
         self.resolution = 3
     
         self.tf_buffer = Buffer()

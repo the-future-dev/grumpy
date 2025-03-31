@@ -29,9 +29,9 @@ class PlannerCollectionNode(Node):
         #####HERE CONNECT WITH PICKUP#######
 
         B = 4
-        self.positions = np.array([[1, 2, 3, B, 3],
-                             [-199, 206, 187, -60, -206],
-                             [-116, -100, 118, -50, 107]])
+        self.positions = np.array([[1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, B, B, B, B, B, B],
+                             [456, 87, 914, 884, 439, 83, 269, 580, 599, 937, 292, 286, 360, 860, 397, 522, 929],
+                             [-30, -34, 346, 346, 281, 196, 172, 95, 37, 52, 301, 74, 193, 14, 367, -35, 206, 226]])
         
         self.object_poses, self.box_poses = self.filter_box_objects()
         self.object = True #Use to choose if going to object or box

@@ -98,7 +98,7 @@ class ObjectMapping(Node):
         self.margin_box = 0.25
         
         # Intialize map file
-        self.filepath = '/home/group-5/dd2419_ws/outputs/object_map.txt'
+        self.filepath = '/home/group5/dd2419_ws/outputs/object_map.txt'
         with open(self.filepath, 'w') as file:
             pass # creates empty file
 
