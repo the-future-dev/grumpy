@@ -22,9 +22,11 @@ class PositioningService(Node):
         self.object_pose  = Pose()
         self.object_label = ""
 
-        self.x_stop   =  0.25  # The x-position where the robot should stop when driving with the RGB-D camera
-        self.y_offset = -0.075  # The y-position where the robot should stop rotating with the RGB-D camera
-        self.y_tol    =  0.02  # The tolerance for the y-position when driving with the RGB-D camera
+        # Target distance-parameters to the goal object/box
+        self.x_stop_pick =  0.25  # The x-position where the robot should stop when driving with the RGB-D camera to an object
+        self.x_stop_drop =  0.15  # The x-position where the robot should stop when driving with the RGB-D camera to a box
+        self.y_offset    = -0.075  # The y-position where the robot should stop rotating with the RGB-D camera
+        self.y_tol       =  0.02  # The tolerance for the y-position when driving with the RGB-D camera
 
         # Create the positioning service
         self.srv = self.create_service(
@@ -74,13 +76,21 @@ class PositioningService(Node):
                     next_step = "RotateRobotWithRGB-D"  # Next step
 
                 case "DriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback
-                    # End condition for driving the robot using the RGB-D camera
-                    if np.isclose(goal_y, self.y_offset, atol=self.y_tol) and goal_x <= self.x_stop:
-                        self.publish_robot_movement(0.0, 0.0)  # Stop the robot
-                        next_step = "DriveRobotWithoutRGB-D"  # Next step
+                    if request.label == 'B':
+                        if np.isclose(goal_y, self.y_offset, atol=self.y_tol) and goal_x <= self.x_stop_drop:
+                            self.publish_robot_movement(0.0, 0.0)  # Stop the robot
+                            next_step = "Success"  # End the FSM
+                        else:
+                            self.publish_robot_movement(goal_x, goal_y)  # Drive the robot
+                            next_step = "DriveRobotWithRGB-D"  # Next step
                     else:
-                        self.publish_robot_movement(goal_x, goal_y)  # Drive the robot
-                        next_step = "DriveRobotWithRGB-D"  # Next step
+                        # End condition for driving the robot using the RGB-D camera
+                        if np.isclose(goal_y, self.y_offset, atol=self.y_tol) and goal_x <= self.x_stop_pick:
+                            self.publish_robot_movement(0.0, 0.0)  # Stop the robot
+                            next_step = "DriveRobotWithoutRGB-D"  # Next step
+                        else:
+                            self.publish_robot_movement(goal_x, goal_y)  # Drive the robot
+                            next_step = "DriveRobotWithRGB-D"  # Next step
                 
                 case "DriveRobotWithoutRGB-D":  # Drive the robot without the RGB-D camera
                     for _ in range(5):  
