@@ -150,23 +150,50 @@ class ArmCameraService(Node):
         time.sleep(1.0)
         
         object_centers = []  # Initialize object centers
-        x, y = 0, 0  # No object found, set to 0, 0
+        x, y           = 0, 0  # No object found, set to 0, 0
 
-        np_arr = np.frombuffer(self.image_data, np.uint8)  # Convert CompressedImage to OpenCV format
-        bgr_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)  # Decode as BGR
+        np_arr            = np.frombuffer(self.image_data, np.uint8)  # Convert CompressedImage to OpenCV format
+        bgr_image         = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)  # Decode as RGB
         undistorted_image = cv2.undistort(bgr_image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
-        hsv_image = cv2.cvtColor(undistorted_image, cv2.COLOR_RGB2HSV)  # Convert to HSV for color-based object detection
+        hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
 
-        masks = self.create_masks(hsv_image)  # Create masks for red, green, and blue objects
+        # Define color ranges in HSV
+        color_ranges = {
+            "red": ((0, 120, 70), (10, 255, 255)),   # Red (low)
+            "red2": ((170, 120, 70), (180, 255, 255)),  # Red (high)
+            "green": ((35, 50, 50), (85, 255, 255)),  # Green
+            "blue": ((90, 50, 50), (130, 255, 255))   # Blue
+        }
 
-        for i in range(len(masks)):  
-            mask = self.clean_mask(masks[i])  # Clean each mask using morphological operations
-            object_centers += self.find_objects(mask)  # Find object centers
+        detected_objects = []
 
-        self._logger.info(f'get_object_position: Found {len(object_centers)} number of objects in total')
+        for color, (lower, upper) in color_ranges.items():
+            mask = cv2.inRange(hsv_image, np.array(lower), np.array(upper))
+            
+            # Find contours of the detected color regions
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            for c in contours:
+                if cv2.contourArea(c) > 75:  # Filter small noise
+                    M = cv2.moments(c)
+                    if M["m00"] != 0:
+                        cx = int(M["m10"] / M["m00"])
+                        cy = int(M["m01"] / M["m00"])
+                        detected_objects.append((color, cx, cy))
+                        self.get_logger().info(f'{color.capitalize()} object center: ({cx}, {cy})')
 
-        if object_centers:  # If object(s) were found
-            x, y = object_centers[0]  # Set the position of the first object found
+        # masks = self.create_masks(hsv_image)  # Create masks for red, green, and blue objects
+
+        # for i in range(len(masks)):  
+        #     mask            = self.clean_mask(masks[i])  # Clean each mask using morphological operations
+        #     object_centers += self.find_objects(mask)  # Find object centers
+
+        # self._logger.info(f'get_object_position: Found {len(object_centers)} number of objects in total')
+
+        # if object_centers:  # If object(s) were found
+        #     x, y = object_centers[0]  # Set the position of the first object found
+
+        _, x, y = detected_objects[0]
 
         x, y = self.pixel_to_base_link(x, y)  # Transform the position to the base_link frame
 
@@ -185,17 +212,17 @@ class ArmCameraService(Node):
         """
         
         # Define HSV ranges
-        lower_red1, upper_red1 = np.array([0, 120, 70]), np.array([10, 255, 255])
-        lower_red2, upper_red2 = np.array([170, 120, 70]), np.array([180, 255, 255])
+        lower_red1, upper_red1   = np.array([0, 120, 70]), np.array([10, 255, 255])
+        lower_red2, upper_red2   = np.array([170, 120, 70]), np.array([180, 255, 255])
         lower_green, upper_green = np.array([35, 100, 50]), np.array([85, 255, 255])
-        lower_blue, upper_blue = np.array([100, 150, 50]), np.array([140, 255, 255])
+        lower_blue, upper_blue   = np.array([100, 150, 50]), np.array([140, 255, 255])
 
         # Create masks for each color
-        mask_red1 = cv2.inRange(hsv_image, lower_red1, upper_red1)
-        mask_red2 = cv2.inRange(hsv_image, lower_red2, upper_red2)
-        red_mask = mask_red1 | mask_red2  # Combine both red masks
+        mask_red1  = cv2.inRange(hsv_image, lower_red1, upper_red1)
+        mask_red2  = cv2.inRange(hsv_image, lower_red2, upper_red2)
+        red_mask   = mask_red1 | mask_red2  # Combine both red masks
         green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
-        blue_mask = cv2.inRange(hsv_image, lower_blue, upper_blue)
+        blue_mask  = cv2.inRange(hsv_image, lower_blue, upper_blue)
 
         return [red_mask, green_mask, blue_mask]
 
@@ -211,8 +238,9 @@ class ArmCameraService(Node):
         """
         
         kernel = np.ones((5, 5), np.uint8)  # Define kernel for morphological operations
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)  # Open to remove noise
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)  # Close to fill holes
+        mask   = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)  # Open to remove noise
+        mask   = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)  # Close to fill holes
+
         return mask
 
 
@@ -227,7 +255,7 @@ class ArmCameraService(Node):
         """
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask
-        centers = []
+        centers     = []
 
         self._logger.info(f'find_objects: Found {len(contours)} of contours')
 
