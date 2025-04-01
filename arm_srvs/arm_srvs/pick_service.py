@@ -58,23 +58,23 @@ class PickService(Node):
             times = utils.times  # Set the times to the standard times
             match step:
                 case "Start":  # Make sure the arm is in the initial position
-                    thetas = utils.initial_thetas
+                    thetas    = utils.initial_thetas
                     next_step = "GetPosition"  # Next step
 
                 case "GetPosition":  # Get the position of the object from the request
-                    x, y, z = utils.extract_object_position(self, request.pose)
-                    thetas = utils.still_thetas  # Do not move the arm
+                    x, y, z   = utils.extract_object_position(self, request.pose)
+                    thetas    = utils.still_thetas  # Do not move the arm
                     next_step = "RotateBase"  # Next step
 
                 case "RotateBase":  # Move servo 6/base to the correct angle
                     # Calculate the change of the angle for servo 6, then new angle of servo 6, round and convert to int
                     theta_servo6 = round(utils.initial_thetas[5] + utils.get_delta_theta_6(x, y) * 100)
-                    thetas = utils.still_thetas.copy()  # Move part of arm
-                    thetas[5] = theta_servo6  # Only servo 6 is moved
-                    next_step = "PickOrigin"  # Next step
+                    thetas       = utils.still_thetas.copy()  # Move part of arm
+                    thetas[5]    = theta_servo6  # Only servo 6 is moved
+                    next_step    = "PickOrigin"  # Next step
 
                 case "PickOrigin":  # Move the arm to the position from were the inverse kinematics are calculated
-                    thetas = utils.still_thetas.copy()  # Move part of arm
+                    thetas    = utils.still_thetas.copy()  # Move part of arm
                     thetas[4] = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
                     next_step = "InverseKinematics"  # Next step
 
@@ -82,19 +82,19 @@ class PickService(Node):
                     delta_theta_servo3, delta_theta_servo4 = self.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
                     theta_servo3 = round(utils.initial_thetas[2] + delta_theta_servo3 * 100)  # New angle of servo 3, round and convert to int
                     theta_servo4 = round(utils.initial_thetas[3] + delta_theta_servo4 * 100)  # New angle of servo 4, round and convert to int
-                    thetas = utils.still_thetas.copy()  # Move part of arm
+                    thetas       = utils.still_thetas.copy()  # Move part of arm
                     thetas[2], thetas[3] = theta_servo3, theta_servo4  # Only servo 3 and 4 are moved
-                    next_step = "GraspObject"  # Next step
+                    next_step    = "GraspObject"  # Next step
                 
                 case "GraspObject":  # Grasp the object
-                    thetas = utils.still_thetas.copy()  # Move part of arm
+                    thetas    = utils.still_thetas.copy()  # Move part of arm
                     thetas[0] = 10000  # Close the gripper
-                    times[0] = 3000  # Set the time to slowly close the gripper
+                    times[0]  = 3000  # Set the time to slowly close the gripper
                     next_step = "DrivePosition"  # Next step
 
                 case "DrivePosition":  # Finish the pick up sequence by going back to the initial position, but not for the gripper
-                    thetas = utils.drive_thetas
-                    times = [2000] * 6  # Longer time might be needed to move the arm back a far distance
+                    thetas    = utils.drive_thetas
+                    times     = [2000] * 6  # Longer time might be needed to move the arm back a far distance
                     next_step = "Success"  # End the FSM
             
             utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format

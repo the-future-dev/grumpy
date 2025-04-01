@@ -69,20 +69,20 @@ class ArmCameraService(Node):
             times = self.times  # Set the times to the standard times
             match step:
                 case "Start":  # Make sure the arm is in the initial position
-                    thetas = utils.initial_thetas
+                    thetas    = utils.initial_thetas
                     next_step = "ViewPosition"  # Next step
 
                 case "ViewPosition":  # Set the arm to the view position
-                    thetas = utils.view_thetas  # Set the goal angles to the view thetas
+                    thetas    = utils.view_thetas  # Set the goal angles to the view thetas
                     next_step = "GetObjectPosition"  # Next step
 
                 case "GetObjectPosition":  # Extract the position of the object from the arm camera
                     response.pose.position.x, response.pose.position.y = self.get_object_position()  # Get the position of the object
-                    thetas = utils.still_thetas  # Do not move the arm servos
+                    thetas    = utils.still_thetas  # Do not move the arm servos
                     next_step = "DrivePosition"  # Next step
 
                 case "DrivePosition":  # Finish the viewing sequence by going back to the initial position
-                    thetas = utils.initial_thetas
+                    thetas    = utils.initial_thetas
                     next_step = "Success"  # End the FSM
             
             utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format

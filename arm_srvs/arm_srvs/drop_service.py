@@ -63,28 +63,28 @@ class DropService(Node):
                     next_step = "GetPosition"  # Next step
 
                 case "GetPosition":  # Get the position of the box from the request
-                    x, y, _ = utils.extract_object_position(self, request.pose)  # Get the position of the box from the request
-                    thetas = utils.still_thetas  # Do not move the arm
+                    x, y, _   = utils.extract_object_position(self, request.pose)  # Get the position of the box from the request
+                    thetas    = utils.still_thetas  # Do not move the arm
                     next_step = "RotateBase"  # Next step
 
                 case "RotateBase":  # Move servo 6/base to the correct angle
                     # Calculate the change of the angle for servo 6, then new angle of servo 6, round and convert to int
                     theta_servo6 = round(utils.initial_thetas[5] + utils.get_delta_theta_6(x, y) * 100)
-                    thetas = utils.still_thetas.copy()  # Move part of arm
-                    thetas[5] = theta_servo6  # Only servo 6 is moved
-                    next_step = "DropAngles"  # Next step
+                    thetas       = utils.still_thetas.copy()  # Move part of arm
+                    thetas[5]    = theta_servo6  # Only servo 6 is moved
+                    next_step    = "DropAngles"  # Next step
 
                 case "DropAngles":  # Sets the angles for the arm to drop the object
-                    thetas = utils.drop_thetas
+                    thetas    = utils.drop_thetas
                     next_step = "DropObject"  # Next step
 
                 case "DropObject":  # Drops the object
-                    thetas = utils.still_thetas.copy()  # Move part of arm
+                    thetas    = utils.still_thetas.copy()  # Move part of arm
                     thetas[0] = 1000  # Only move and open the gripper
                     next_step = "DrivePosition"  # Next step
 
                 case "DrivePosition":  # Finish the drop sequence by going back to the initial position
-                    thetas = utils.initial_thetas
+                    thetas    = utils.initial_thetas
                     next_step = "Success"  # End the FSM
             
             utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format
