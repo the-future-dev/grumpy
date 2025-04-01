@@ -52,74 +52,74 @@ dist_coeffs   = np.array([-0.361976, 0.110510, 0.001014, 0.000505, 0.000000])
 
 
 def extract_object_position(self, pose:Pose):
-        """
-        Args:
-            msg: Pose, required, the position and orientation of the object
-        Returns:
-            x: float, x-position of the object in base_link frame
-            y: float, y-position of the object in base_link frame
-            z: float, z-position of the object in base_link frame
-        Other functions:
+    """
+    Args:
+        msg: Pose, required, the position and orientation of the object
+    Returns:
+        x: float, x-position of the object in base_link frame
+        y: float, y-position of the object in base_link frame
+        z: float, z-position of the object in base_link frame
+    Other functions:
 
-        """
+    """
 
-        assert isinstance(pose, Pose), self._logger.error(f'request was not type Pose')  # Assert that the request has the correct type
+    assert isinstance(pose, Pose), self._logger.error(f'request was not type Pose')  # Assert that the request has the correct type
 
-        x, y, z = pose.position.x, pose.position.y, pose.position.z
+    x, y, z = pose.position.x, pose.position.y, pose.position.z
 
-        assert isinstance(x, float), self._logger.error('x was not type float')
-        assert isinstance(x, float), self._logger.error('y was not type float')
-        assert isinstance(x, float), self._logger.error('z was not type float')
+    assert isinstance(x, float), self._logger.error('x was not type float')
+    assert isinstance(x, float), self._logger.error('y was not type float')
+    assert isinstance(x, float), self._logger.error('z was not type float')
 
-        self._logger.info('Got the position of the object')
+    self._logger.info('Got the position of the object')
 
-        return x, y, z
+    return x, y, z
 
 
 def get_delta_theta_6(x, y):
-        """
-        Args:
-            x: float, required, x-position of the object in base_link frame
-            y: float, required, y-position of the object in base_link frame
-        Returns:
-            delta_theta_6: float, degrees that servo 6 has to rotate from its position
-        Other functions:
+    """
+    Args:
+        x: float, required, x-position of the object in base_link frame
+        y: float, required, y-position of the object in base_link frame
+    Returns:
+        delta_theta_6: float, degrees that servo 6 has to rotate from its position
+    Other functions:
 
-        """
+    """
 
-        x_dist = x - x_origin_servo5
-        y_dist = y - y_origin_servo5
+    x_dist = x - x_origin_servo5
+    y_dist = y - y_origin_servo5
 
-        # Calculate the angle for servo 6 in radians and convert to degrees
-        return np.rad2deg(np.arctan2(y_dist, x_dist))
+    # Calculate the angle for servo 6 in radians and convert to degrees
+    return np.rad2deg(np.arctan2(y_dist, x_dist))
 
 
 def check_angles_and_times(self, angles, times):
-        """
-        Args:
-            angles: list, required, the angles for each servo to be set to
-            times : list, required, the times for each servo to get to the given angle
-        Returns:
-            
-        Other functions:
-            Raises error if the angles and times are not in the correct format, length or interval
-        """
+    """
+    Args:
+        angles: list, required, the angles for each servo to be set to
+        times : list, required, the times for each servo to get to the given angle
+    Returns:
+        
+    Other functions:
+        Raises error if the angles and times are not in the correct format, length or interval
+    """
 
-        assert isinstance(angles, list), self._logger.error('angles is not of type list')
-        assert isinstance(times, list), self._logger.error('times is not of type list')
-        assert len(angles) == 6, self._logger.error('angles was not of length 6')
-        assert len(times) == 6, self._logger.error('times was not of length 6')
-        assert all(isinstance(angle, int) for angle in angles), self._logger.error('angles was not of type int')
-        assert all(isinstance(time, int) for time in times), self._logger.error('times was not of type int')
-        assert all(1000 <= time <= 5000 for time in times), self._logger.error('times was not within the interval [1000, 5000]')
-        assert (0 <= angles[0] <= 11000) or (angles[0] == -1), self._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
-        assert (0 <= angles[1] <= 24000) or (angles[1] == -1), self._logger.error(f'servo 2 was not within the interval [0, 24000] or -1, got {angles[1]}')
-        assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), self._logger.error(f'servo 3 was not within the interval [2500, 21000] or -1, got {angles[2]}')
-        assert (3000 <= angles[3] <= 21500) or (angles[3] == -1), self._logger.error(f'servo 4 was not within the interval [3000, 21500] or -1, got {angles[3]}')
-        assert (6000 <= angles[4] <= 18000) or (angles[4] == -1), self._logger.error(f'servo 5 was not within the interval [6000, 18000] or -1, got {angles[4]}')
-        assert (0 <= angles[5] <= 20000) or (angles[5] == -1), self._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
+    assert isinstance(angles, list), self._logger.error('angles is not of type list')
+    assert isinstance(times, list), self._logger.error('times is not of type list')
+    assert len(angles) == 6, self._logger.error('angles was not of length 6')
+    assert len(times) == 6, self._logger.error('times was not of length 6')
+    assert all(isinstance(angle, int) for angle in angles), self._logger.error('angles was not of type int')
+    assert all(isinstance(time, int) for time in times), self._logger.error('times was not of type int')
+    assert all(1000 <= time <= 5000 for time in times), self._logger.error('times was not within the interval [1000, 5000]')
+    assert (0 <= angles[0] <= 11000) or (angles[0] == -1), self._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
+    assert (0 <= angles[1] <= 24000) or (angles[1] == -1), self._logger.error(f'servo 2 was not within the interval [0, 24000] or -1, got {angles[1]}')
+    assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), self._logger.error(f'servo 3 was not within the interval [2500, 21000] or -1, got {angles[2]}')
+    assert (3000 <= angles[3] <= 21500) or (angles[3] == -1), self._logger.error(f'servo 4 was not within the interval [3000, 21500] or -1, got {angles[3]}')
+    assert (6000 <= angles[4] <= 18000) or (angles[4] == -1), self._logger.error(f'servo 5 was not within the interval [6000, 18000] or -1, got {angles[4]}')
+    assert (0 <= angles[5] <= 20000) or (angles[5] == -1), self._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
 
-        self._logger.info('Checked the angles and times')
+    self._logger.info('Checked the angles and times')
 
 
 def changed_thetas_correctly(pub_angles, curr_angles):

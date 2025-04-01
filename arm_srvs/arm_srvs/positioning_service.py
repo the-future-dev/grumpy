@@ -72,7 +72,7 @@ class PositioningService(Node):
             goal_y = self.object_pose.position.y
             match step:
                 case "Start":  # Ask if we see an/the goal object
-                    # self.check_object(request.label, request.pose)  # Check if the object is the correct one
+                    # self.check_object(request.label, request.pose)  # Check if the object could be the correct one
                     next_step = "RotateRobotWithRGB-D"  # Next step
 
                 case "DriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback
@@ -116,7 +116,7 @@ class PositioningService(Node):
             Updates the poisition of the object while the robot is alinging itself
         """
 
-        pose = msg.pose
+        pose  = msg.pose
         label = msg.label
 
         assert isinstance(pose.position.x, float), self._logger.error('x was not type float')
@@ -124,7 +124,7 @@ class PositioningService(Node):
         assert isinstance(pose.position.z, float), self._logger.error('z was not type float')
         assert isinstance(label, str), self._logger.error('label was not type str')
 
-        self.object_pose = pose
+        self.object_pose  = pose
         self.object_label = label
 
 
