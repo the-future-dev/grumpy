@@ -174,13 +174,13 @@ class ArmCameraService(Node):
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
             for c in contours:
-                if cv2.contourArea(c) > 75:  # Filter small noise
+                if cv2.contourArea(c) > 50:  # Filter small noise
                     M = cv2.moments(c)
                     if M["m00"] != 0:
-                        cx = int(M["m10"] / M["m00"])
-                        cy = int(M["m01"] / M["m00"])
-                        detected_objects.append((color, cx, cy))
-                        self.get_logger().info(f'{color.capitalize()} object center: ({cx}, {cy})')
+                        x = int(M["m10"] / M["m00"])
+                        y = int(M["m01"] / M["m00"])
+                        detected_objects.append((color, x, y))
+                        self.get_logger().info(f'{color.capitalize()} object center: ({x}, {y})')
 
         # masks = self.create_masks(hsv_image)  # Create masks for red, green, and blue objects
 
@@ -192,8 +192,6 @@ class ArmCameraService(Node):
 
         # if object_centers:  # If object(s) were found
         #     x, y = object_centers[0]  # Set the position of the first object found
-
-        _, x, y = detected_objects[0]
 
         x, y = self.pixel_to_base_link(x, y)  # Transform the position to the base_link frame
 
