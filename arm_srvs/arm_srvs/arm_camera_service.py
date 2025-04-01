@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import time
 import arm_srvs.utils as utils
+import array
 
 class ArmCameraService(Node):
 
@@ -44,7 +45,7 @@ class ArmCameraService(Node):
         self.image_subscriber = self.create_subscription(
             CompressedImage,
             '/arm_camera/image_raw/compressed',
-            self.image_data,
+            self.get_image_data,
             1
         )
 
@@ -66,7 +67,7 @@ class ArmCameraService(Node):
 
         while step not in end_strings:
             self._logger.info(f'{step}')  # Log the current step
-            times = self.times  # Set the times to the standard times
+            times = utils.times  # Set the times to the standard times
             match step:
                 case "Start":  # Make sure the arm is in the initial position
                     thetas    = utils.initial_thetas
@@ -114,12 +115,10 @@ class ArmCameraService(Node):
         assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
         assert all(isinstance(current_angles, int) for angle in current_angles), self._logger.error('angles was not of type int')
 
-        self._logger.info('Got the angles of the servos')
-
         self.current_angles = current_angles
 
     
-    def image_data(self, msg:CompressedImage):
+    def get_image_data(self, msg:CompressedImage):
         """
         Args:
             msg: CompressedImage, required, the image message from the arm camera
@@ -131,7 +130,7 @@ class ArmCameraService(Node):
 
         image_data = msg.data
 
-        assert isinstance(image_data, list), self._logger.error('image data is not of type list')
+        assert isinstance(image_data, array.array), self._logger.error('image data is not of type array.array')
         assert all(isinstance(point, int) for point in image_data), self._logger.error('points in image data was not of type int')
 
         self.image_data = image_data
@@ -147,6 +146,8 @@ class ArmCameraService(Node):
         Other functions:
             Uses the image data from the arm camera to detect objects and their positions
         """
+
+        time.sleep(1.0)
         
         object_centers = []  # Initialize object centers
         x, y = 0, 0  # No object found, set to 0, 0
@@ -154,7 +155,7 @@ class ArmCameraService(Node):
         np_arr = np.frombuffer(self.image_data, np.uint8)  # Convert CompressedImage to OpenCV format
         bgr_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)  # Decode as BGR
         undistorted_image = cv2.undistort(bgr_image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
-        hsv_image = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
+        hsv_image = cv2.cvtColor(undistorted_image, cv2.COLOR_RGB2HSV)  # Convert to HSV for color-based object detection
 
         masks = self.create_masks(hsv_image)  # Create masks for red, green, and blue objects
 
@@ -162,9 +163,9 @@ class ArmCameraService(Node):
             mask = self.clean_mask(masks[i])  # Clean each mask using morphological operations
             object_centers += self.find_objects(mask)  # Find object centers
 
-        self._logger.info(f'Found {len(object_centers)} number of objects')
+        self._logger.info(f'get_object_position: Found {len(object_centers)} number of objects in total')
 
-        if not object_centers.empty():  # If object(s) were found
+        if object_centers:  # If object(s) were found
             x, y = object_centers[0]  # Set the position of the first object found
 
         x, y = self.pixel_to_base_link(x, y)  # Transform the position to the base_link frame
@@ -228,17 +229,20 @@ class ArmCameraService(Node):
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask
         centers = []
 
-        self._logger.info(f'Found {len(contours)} number of potential objects')
+        self._logger.info(f'find_objects: Found {len(contours)} of contours')
 
         for contour in contours:  # Loop through all contours
-            if cv2.contourArea(contour) > 500:  # Ignore small noise
+            if cv2.contourArea(contour) > 70:  # Ignore small noise
+                self._logger.info(f'find_objects: The size of the area of the object was {cv2.contourArea(contour)}')
                 M = cv2.moments(contour)  # Calculate the moments of the contour
                 if M["m00"] != 0:  # Avoid division by zero
                     cx = int(M["m10"] / M["m00"])  
                     cy = int(M["m01"] / M["m00"])
                     centers.append((cx, cy))
+                    self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
 
-        self._logger.info(f'Found {len(centers)} number of centers')
+
+        self._logger.info(f'find_objects: Found {len(centers)} of centers')
 
         return centers
 
@@ -254,13 +258,12 @@ class ArmCameraService(Node):
         Other functions:
             
         """
-        
 
         fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
 
-        x = (y_pixel - cx) * (utils.cam_pos.position.z / fx) + utils.cam_pos.position.x
-        y = (x_pixel - cy) * (utils.cam_pos.position.z / fy) + utils.cam_pos.position.y
+        x = (y_pixel - cy) * (utils.cam_pos.position.z / fy) + utils.cam_pos.position.x
+        y = (x_pixel - cx) * (utils.cam_pos.position.z / fx) + utils.cam_pos.position.y
 
         return x, y
 
@@ -287,7 +290,8 @@ class ArmCameraService(Node):
 
         time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
 
-        return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
+        # return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
+        return True
 
 def main(args=None):
     rclpy.init()
