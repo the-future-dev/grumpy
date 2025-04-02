@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-import math
-
+import os
 import numpy as np
 
 import rclpy
@@ -11,7 +10,7 @@ from tf2_ros import TransformBroadcaster
 
 from tf2_ros import TransformException
 from visualization_msgs.msg import Marker, MarkerArray
-from grumpy_interfaces.msg import ObjectDetection1D
+from grumpy_interfaces.msg import ObjectDetection1D, ObjectDetection1DArray
 
 import tf2_geometry_msgs
 
@@ -103,7 +102,7 @@ class ObjectMapping(Node):
         self.margin_box = 0.20
 
         # Intialize map file
-        self.filepath = '/home/group5/dd2419_ws/outputs/object_map.txt'
+        self.filepath = os.path.join(os.path.expanduser('~'), 'dd2419_ws', 'outputs', 'object_map.txt')
         with open(self.filepath, 'w') as file:
             pass # creates empty file
 
@@ -118,10 +117,10 @@ class ObjectMapping(Node):
         self.create_subscription(ObjectDetection1D, '/perception/object_poses', self.object_pose_callback, 10)
 
         # Initialize publisher to publish non-duplicate object poses
-        self.object_pose_pub = self.create_publisher(ObjectDetection1D, '/object_mapping/object_poses', 10)
+        self.object_pose_pub = self.create_publisher(ObjectDetection1DArray, '/object_mapping/object_poses', 10)
         self.marker_publisher = self.create_publisher(MarkerArray, '/object_mapping/object_names_marker', 10)
 
-        self.create_timer(3, self.check_and_publish_updates)
+        self.create_timer(1000, self.check_and_publish_updates)
 
     def check_and_publish_updates(self):
         """Check if we need to publish updates and do so if needed"""
@@ -132,6 +131,7 @@ class ObjectMapping(Node):
     def publish_object_list(self):
         """Publish all detected objects"""
         marker_array = MarkerArray()
+        object_detection_array = ObjectDetection1DArray()
         idx = 0
 
         # Write to file
@@ -150,7 +150,7 @@ class ObjectMapping(Node):
                 detection1D.pose.position.z = 0.0  # Add z coordinate
                 detection1D.pose.orientation.w = 1.0  # Add orientation
 
-                self.object_pose_pub.publish(detection1D)
+                object_detection_array.detected_objects.append(detection1D)
 
                 marker = Marker()
                 marker.header.frame_id = 'map'
@@ -181,6 +181,7 @@ class ObjectMapping(Node):
                 idx += 1
 
         self.marker_publisher.publish(marker_array)
+        self.object_pose_pub.publish(object_detection_array)
 
     def object_pose_callback(self, msg: ObjectDetection1D):
         """

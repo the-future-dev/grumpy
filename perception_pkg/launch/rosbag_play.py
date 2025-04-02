@@ -54,12 +54,12 @@ def generate_launch_description():
         ),
         
         # Start detection node
-        # Node(
-        #     package='detection',
-        #     executable='detection',
-        #     name='detection',
-        #     output='screen'
-        # ),
+        Node(
+            package='perception_pkg',
+            executable='detection_node',
+            name='detection',
+            output='screen'
+        ),
         
         # Start lidar node
         Node(
@@ -67,5 +67,12 @@ def generate_launch_description():
             executable='lidar',
             name='lidar',
             output='screen'
+        ),
+
+        # Start object mapping node
+        Node(
+            package='object_mapping',
+            executable='object_mapping',
+            name='object_mapping',
         ),
     ])
