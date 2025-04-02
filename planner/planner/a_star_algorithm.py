@@ -255,36 +255,36 @@ class AStarAlgorithmNode(Node):
         time = self.get_clock().now().to_msg()
         grid_curr_x = self.grid_rob_x
         grid_curr_y = self.grid_rob_y
-        first_node = node_curr
+        last_node = node_curr
 
         while node_curr.parent != None:
 
             # x, y = self.grid_to_map(node_curr.grid_x, node_curr.grid_y)
-            x, y = self.ws_utils.convert_grid_to_map(node_curr.grid_x, node_curr.grid_y)
+            next_x, next_y = self.ws_utils.convert_grid_to_map(node_curr.grid_x, node_curr.grid_y)
+            curr_x, curr_y = self.ws_utils.convert_grid_to_map(grid_curr_x, grid_curr_y)
+            free = self.check_free_path(curr_x, curr_y, next_x, next_y)
 
-            self.grid[node_curr.grid_y, node_curr.grid_x] = -2
-            #curr_x, curr_y = self.ws_utils.convert_grid_to_map(grid_curr_x, grid_curr_y)
-            #free = self.check_free_path(curr_x, curr_y, x, y)
+            # x_list.append(x)
+            # y_list.append(y)
+            # node_curr = node_curr.parent
 
-            x_list.append(x)
-            y_list.append(y)
-            node_curr = node_curr.parent
+            if free == True:
+                x_list.append(next_x/100)
+                y_list.append(next_y/100)
+                self.grid[node_curr.grid_y, node_curr.grid_x] = -2
 
-            # if free == True:
-            #     x_list.append(x)
-            #     y_list.append(y)
-            #     if node_curr.grid_x == first_node.grid_x and node_curr.grid_y == first_node.grid_y:
-            #         self.get_logger().info('Breaking loop')
-            #         break
-            #     else:
-            #         grid_curr_x = node_curr.grid_x
-            #         grid_curr_y = node_curr.grid_y
-            #         node_curr = first_node
-            # else:
-            #     node_curr = node_curr.parent
+                if node_curr.grid_x == last_node.grid_x and node_curr.grid_y == last_node.grid_y:
+                    self.get_logger().info('Breaking loop')
+                    break
+                else:
+                    grid_curr_x = node_curr.grid_x
+                    grid_curr_y = node_curr.grid_y
+                    node_curr = last_node
+            else:
+                node_curr = node_curr.parent
 
-        x_list = x_list[::-1]
-        y_list = y_list[::-1]
+        # x_list = x_list[::-1]
+        # y_list = y_list[::-1]
 
         if not x_list:
             return None, time
@@ -298,7 +298,7 @@ class AStarAlgorithmNode(Node):
         plt.savefig('/home/group5/dd2419_ws/outputs/astar_map')
         plt.close()
 
-        x_list, y_list = self.reduce_poses(x_list, y_list)
+        #x_list, y_list = self.reduce_poses(x_list, y_list)
 
         for i in range(len(x_list)):
             pose = PoseStamped()
@@ -317,7 +317,7 @@ class AStarAlgorithmNode(Node):
         y_line = np.linspace(y_start, y_end, 1000)
 
         # grid_x_line, grid_y_line = self.map_to_grid(100*x_line, 100*y_line)
-        grid_x_line, grid_y_line = self.ws_utils.convert_map_to_grid(100*x_line, 100*y_line)
+        grid_x_line, grid_y_line = self.ws_utils.convert_map_to_grid(x_line, y_line)
 
         if np.any((self.grid[grid_y_line, grid_x_line] > 0) & (self.grid[grid_y_line, grid_x_line] < 10)):
             return False
