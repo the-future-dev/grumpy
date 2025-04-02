@@ -17,7 +17,7 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 from matplotlib.colors import BoundaryNorm
 from scipy.ndimage import binary_dilation
-from occupancy_grid_map.occupancy_grid_map.workspace_utils import Workspace
+from occupancy_grid_map.workspace_utils import Workspace
 
 class ANode:
     #Create a A-star Node for queueing
@@ -98,8 +98,8 @@ class AStarAlgorithmNode(Node):
 
     def inflate_grid(self):
 
-        inflate_size_obs = int(30/self.resolution)
-        inflate_size_out = int(21/self.resolution)
+        inflate_size_obs = int(30/self.ws_utils.resolution)
+        inflate_size_out = int(21/self.ws_utils.resolution)
 
         inflate_matrix_obs = np.ones((2 * inflate_size_obs + 1, 2 * inflate_size_obs + 1))
         inflate_matrix_out = np.ones((2 * inflate_size_out + 1, 2 * inflate_size_out + 1))
@@ -108,7 +108,7 @@ class AStarAlgorithmNode(Node):
         new_grid_out = np.zeros_like(self.grid)
         
         arg_obstacle = np.argwhere(self.grid == 1)
-        arg_outside_inflate = np.argwhere(self.grid == 2)
+        arg_outside_inflate = np.argwhere(self.grid == 3)
 
         new_grid_obs[arg_obstacle[:, 0], arg_obstacle[:, 1]] = 1
         new_grid_out[arg_outside_inflate[:, 0], arg_outside_inflate[:, 1]] = 1
@@ -202,6 +202,10 @@ class AStarAlgorithmNode(Node):
         neighbor_grid_x = np.array([-1, 0, 1, -1, 1, -1, 0, 1]) + node_curr.grid_x
         neighbor_grid_y = np.array([1, 1, 1, 0, 0, -1, -1 ,-1]) + node_curr.grid_y
 
+        mask_in_bounds = (neighbor_grid_x < self.grid.shape[1]) & (neighbor_grid_y < self.grid.shape[0]) & (neighbor_grid_x >= 0) & (neighbor_grid_y >= 0)
+        neighbor_grid_x = neighbor_grid_x[mask_in_bounds]
+        neighbor_grid_y = neighbor_grid_y[mask_in_bounds]
+
         mask_free = self.grid[neighbor_grid_y, neighbor_grid_x] < 1 #Filter if cells are occupied
 
         next_grid_x = neighbor_grid_x[mask_free]
@@ -263,6 +267,7 @@ class AStarAlgorithmNode(Node):
             next_x, next_y = self.ws_utils.convert_grid_to_map(node_curr.grid_x, node_curr.grid_y)
             curr_x, curr_y = self.ws_utils.convert_grid_to_map(grid_curr_x, grid_curr_y)
             free = self.check_free_path(curr_x, curr_y, next_x, next_y)
+            self.get_logger().info(f'{free}')
 
             # x_list.append(x)
             # y_list.append(y)
@@ -271,6 +276,7 @@ class AStarAlgorithmNode(Node):
             if free == True:
                 x_list.append(next_x/100)
                 y_list.append(next_y/100)
+                self.get_logger().info(f'{x_list}')
                 self.grid[node_curr.grid_y, node_curr.grid_x] = -2
 
                 if node_curr.grid_x == last_node.grid_x and node_curr.grid_y == last_node.grid_y:
@@ -313,13 +319,13 @@ class AStarAlgorithmNode(Node):
 
     def check_free_path(self, x_start, y_start, x_end, y_end):
 
-        x_line = np.linspace(x_start, x_end, 1000)
-        y_line = np.linspace(y_start, y_end, 1000)
+        x_line = np.linspace(x_start, x_end, 100)
+        y_line = np.linspace(y_start, y_end, 100)
 
         # grid_x_line, grid_y_line = self.map_to_grid(100*x_line, 100*y_line)
         grid_x_line, grid_y_line = self.ws_utils.convert_map_to_grid(x_line, y_line)
 
-        if np.any((self.grid[grid_y_line, grid_x_line] > 0) & (self.grid[grid_y_line, grid_x_line] < 10)):
+        if np.any((self.grid[grid_y_line, grid_x_line] > 0) & (self.grid[grid_y_line, grid_x_line] < 5)):
             return False
         else:
             return True
@@ -335,24 +341,6 @@ class AStarAlgorithmNode(Node):
         
         return x_new, y_new
     
-    # def map_to_grid(self, x, y):
-    #     #Take map coordinates and convert to grid
-         
-    #     grid_x = np.floor((x + self.map_xlength/2)/self.resolution)
-    #     grid_y = np.floor((y + self.map_ylength/2)/self.resolution)
-
-    #     grid_x = grid_x.astype(int)
-    #     grid_y = grid_y.astype(int)
-
-    #     return grid_x, grid_y
-
-    # def grid_to_map(self, grid_x, grid_y):
-    #     #Take grid indices and converts to some x,y in that grid
-       
-    #     x = (grid_x*self.resolution - self.map_xlength/2)/100 #Hard coded parameters right now 
-    #     y = (grid_y*self.resolution - self.map_ylength/2)/100
-
-    #     return x, y
     
     def current_pos(self):
         #Uses transform to fins current pose of the robot in the map fram

@@ -65,11 +65,11 @@ def generate_launch_description():
         output='screen'
     )
 
-    # workspace_perimeter = Node(
-    #     package='workspace_init',
-    #     executable='workspace_init',
-    #     output = 'screen'
-    # )
+    workspace_perimeter = Node(
+        package='workspace_init',
+        executable='workspace_init',
+        output = 'screen'
+    )
 
     return LaunchDescription([
         brain_exploration,
@@ -80,7 +80,7 @@ def generate_launch_description():
         a_star,
         localization,
         icp_node,
-        # workspace_perimeter
-        # perception,
-        # object_mapping
+        workspace_perimeter,
+        perception,
+        object_mapping
     ])

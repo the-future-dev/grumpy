@@ -16,7 +16,7 @@ from robp_interfaces.msg import DutyCycles
 import matplotlib.pyplot as plt
 from std_msgs.msg import Bool
 from robp_interfaces.msg import DutyCycles
-from occupancy_grid_map.occupancy_grid_map.workspace_utils import Workspace
+from occupancy_grid_map.workspace_utils import Workspace
 
 
 class PlannerExplorationNode(Node):

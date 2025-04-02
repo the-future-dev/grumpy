@@ -146,7 +146,6 @@ class ICP_node(Node):
         # Transform point cloud to odom
         cloud_odom = do_transform_cloud(cloud, t)
 
-        
         # # Transform point cloud to map
         # transformed_cloud = do_transform_cloud(cloud_odom, self.t)
 

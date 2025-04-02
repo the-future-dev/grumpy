@@ -70,7 +70,6 @@ class Localization(Node):
         
         # if IMU is not zero when starting this is used to calibrate it
         self.imu_offset = None
-        
     
 
     def wrap_angle(self, angle:np.array):
@@ -185,6 +184,13 @@ class Localization(Node):
         """
         Take IMU data to do the update step of the EKF and then publish the transform between odom and baselink
         """
+        q_imu = np.array([0.0, 0.0, -msg.orientation.z, msg.orientation.w])
+        euler_angles = euler_from_quaternion(q_imu)
+
+        # set imu_offset to take into account if it is not 0 in the beginning
+        if self.imu_offset is None:
+            self.imu_offset = euler_angles[2]
+
         # Only update when a new encoder pose is avaiable
         if self.new_encoder_pos is False:
             return
@@ -192,31 +198,8 @@ class Localization(Node):
         # Set encoder pose to False if a new one when it is received so it has to be set as true in encoder callback
         self.new_encoder_pos = False
 
-        q_imu = np.array([0.0, 0.0, -msg.orientation.z, msg.orientation.w])
-        euler_angles = euler_from_quaternion(q_imu)
-
-        if self.imu_offset is None:
-            self.imu_offset = euler_angles[2]
-            return
-
-        theta_imu = euler_angles[2] - self.imu_offset
-        
-
-        # t = TransformStamped()
-        # t.header.stamp = msg.header.stamp
-        # t.header.frame_id = 'odom'
-        # t.child_frame_id = 'imu_test'
-
-        # t.transform.translation.x = 0.0
-        # t.transform.translation.y = 0.0
-        # t.transform.translation.z = 0.1
-
-        # t.transform.rotation.x = q_imu[0]
-        # t.transform.rotation.y = q_imu[1]
-        # t.transform.rotation.z = q_imu[2]
-        # t.transform.rotation.w = q_imu[3]
-
-        # self._tf_broadcaster.sendTransform(t)
+        # wrap angle to be in the interval [-pi, pi]
+        theta_imu = self.wrap_angle(euler_angles[2] - self.imu_offset)
 
         # Kalman gain
         H = np.array([[0.0, 0.0, 1.0]]) # Only updates angle

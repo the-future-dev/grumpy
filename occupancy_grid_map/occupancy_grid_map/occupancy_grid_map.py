@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from std_msgs.msg import Int16MultiArray, MultiArrayDimension
 from scipy.ndimage import binary_dilation
 from grumpy_interfaces.msg import ObjectDetection1D
-from workspace_utils import Workspace
+from occupancy_grid_map.workspace_utils import Workspace
 
 class OccupancyGridMapNode(Node):
     
@@ -31,7 +31,7 @@ class OccupancyGridMapNode(Node):
         self.workspace = self.ws_utils.workspace
 
         self.polygon = Polygon(self.workspace.T)
-        self.inflate_polygon = self.polygon.buffer(-10)
+        #self.inflate_polygon = self.polygon.buffer()
 
         #Initial data
         # self.map_xlength = np.max(self.workspace[0])*2
@@ -71,17 +71,14 @@ class OccupancyGridMapNode(Node):
     def fill_outside_grid(self):
 
         #Go through all points to see if inside or outside, making the initialization slow
-        for i in range(self.grid_xlength):
-            for j in range(self.grid_ylength):
+        for i in range(self.ws_utils.grid_xlength):
+            for j in range(self.ws_utils.grid_ylength):
 
-                x_ind = (i * self.resolution) - self.map_xlength/2
-                y_ind = (j * self.resolution) - self.map_ylength/2
+                x_ind, y_ind = self.ws_utils.convert_grid_to_map(i, j)
 
                 point = Point(x_ind, y_ind)
                 if not self.polygon.contains(point):
                     self.grid[j, i] = self.outside
-                elif self.polygon.contains(point) and not self.inflate_polygon.contains(point):
-                    self.grid[j, i] = self.outside_inflate
 
         return
     
@@ -178,7 +175,7 @@ class OccupancyGridMapNode(Node):
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
 
-        inflate_size = int(9/self.resolution)
+        inflate_size = int(9/self.ws_utils.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
         
         new_grid = np.zeros_like(self.grid)
