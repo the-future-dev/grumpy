@@ -23,9 +23,13 @@ class LocalObstacleAvoidanceNode(Node):
         self.map_ylength = 752  
         self.resolution = 3
         self.adjust = False 
+        self.current_pose_list = []
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
+
+        # Subscription to get path
+        self.create_subscription(Path, '/brain/path_list', self.current_path_cb, 1)
 
         #Publisher to publish when not in free zone 
         self.free_zone_pub = self.create_publisher(Bool, 'avoidance/free_path', 1) #send true if free
@@ -34,6 +38,12 @@ class LocalObstacleAvoidanceNode(Node):
         #Subscription of grid 
         self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
         self.create_subscription(Bool, 'avoidance/drive_to_free', self.adjust_cb, 1)
+
+    def current_path_cb(self, msg:Path):
+        # set current path to check if it is free
+        self.current_pose_list = msg.poses
+        self.get_logger().info(f'Got pose list from brain with length: {len(self.current_pose_list)}')
+
 
     def grid_cb(self, msg:Int16MultiArray):
         #Return array from message of grid
@@ -46,8 +56,9 @@ class LocalObstacleAvoidanceNode(Node):
         self.local_obstacle_avoidance()
     
     def adjust_cb(self,msg:Bool):
-        #Function which is called when in occipied positiona and find nearest free point to drive to 
+        #Function which is called when in occipied position and find nearest free point to drive to 
 
+        self.get_logger().info('Local obstacle avoidance in callback from brain')
         free_indices = np.argwhere(self.grid == 0)
 
         grid_x = free_indices[:, 1]
@@ -83,9 +94,25 @@ class LocalObstacleAvoidanceNode(Node):
         self.rob_x, self.rob_y = self.get_current_pos()
         grid_x, grid_y = self.map_to_grid(100*self.rob_x, 100*self.rob_y)
 
-        free_zone = self.grid[grid_y, grid_x] <= 0
-
-        if free_zone == False:
+        free_path = True
+        _x,_y = self.rob_x, self.rob_y
+        N = 100
+        for next_pose in self.current_pose_list:
+            if not free_path:
+                break
+            x, y = next_pose.pose.position.x, next_pose.pose.position.y
+            delta_x, delta_y = x - _x, y - _y
+            for i in range(N+1):
+                x_i = _x + i / N * delta_x
+                y_i = _y + i / N * delta_y
+                grid_xi, grid_yi = self.map_to_grid(100*x_i, 100*y_i)
+                if self.grid[grid_y, grid_x] > 0:
+                    free_path = False
+                    break
+                    
+            _x, _y = x, y
+            
+        if not free_path:
             msg_free.data = False
             self.free_zone_pub.publish(msg_free)
         else:

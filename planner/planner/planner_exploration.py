@@ -81,17 +81,19 @@ class PlannerExplorationNode(Node):
         y_corner = self.workspace[1, self.counter]
 
         if x_corner < 0:
-            next_x = float(x_corner + 30)
+            next_x = float(x_corner + 40)
         else:
-            next_x = float(x_corner - 30)
+            next_x = float(x_corner - 40)
         if y_corner < 0:
-            next_y = float(y_corner + 30)
+            next_y = float(y_corner + 40)
         else:
-            next_y = float(y_corner - 30)
+            next_y = float(y_corner - 40)
     
         msg_goal.pose.position.x = next_x
         msg_goal.pose.position.y = next_y
         msg_goal.pose.position.z = 0.0
+        self.get_logger().info(f'the goal position is: x: {next_x}, y: {next_y}')
+
 
         self.goal_pose_pub.publish(msg_goal)
         self.corner_pub.publish(msg_corner_done)

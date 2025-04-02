@@ -37,7 +37,7 @@ class SampleDriveControlNode(Node):
 
         self.create_subscription(Path, 'drive/path', self.path_cb, 1)
         self.create_subscription(Bool, 'drive/stop', self.stop_cb, 1)
-        self.create_subscription(Path, 'avoidance/drive_to_free', self.drive_free_cb, 1)
+        self.create_subscription(Path, 'avoidance/drive_free', self.drive_free_cb, 1)
 
     def path_cb(self, msg:Path):
         #Call back that iterates in poses and drives to them, can maybe implement offset if it is needed
@@ -63,7 +63,8 @@ class SampleDriveControlNode(Node):
         self.stop = msg.data
 
     def drive_free_cb(self, msg:Path):
-        
+        self.get_logger().info('In drive free callback')
+
         self.drive_to_free = True 
         self.stop = False
         
@@ -94,11 +95,11 @@ class SampleDriveControlNode(Node):
                 self.get_logger().info(f'Stopping, in occupied zone')
                 return False
 
-            tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'odom', self.get_clock().now())
+            tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'map', self.get_clock().now())
             rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 
             try:
-                tf = self.tf_buffer.lookup_transform('base_link', 'odom', rclpy.time.Time())
+                tf = self.tf_buffer.lookup_transform('base_link', 'map', rclpy.time.Time())
             except TransformException as ex:
                 self.get_logger().info(f'could not transform{ex}')
                 continue
@@ -132,11 +133,11 @@ class SampleDriveControlNode(Node):
             if self.stop == True and self.drive_to_free == False:
                 return False
             
-            tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'odom', self.get_clock().now())
+            tf_future = self.tf_buffer.wait_for_transform_async('base_link', 'map', self.get_clock().now())
             rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 
             try:
-                tf = self.tf_buffer.lookup_transform('base_link', 'odom', rclpy.time.Time())
+                tf = self.tf_buffer.lookup_transform('base_link', 'map', rclpy.time.Time())
             except TransformException as ex:
                 self.get_logger().info(f'could not transform{ex}')
                 continue

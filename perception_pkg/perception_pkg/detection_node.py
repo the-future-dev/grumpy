@@ -164,24 +164,29 @@ class Detection(Node):
                 continue
 
             # Neural Network Train: save data Locally ##########################################################################
-            cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
-            self.object_data_list.append(cluster)
-            data_save_path = "/home/group5/dd2419_ws/src/perception_pkg/trials/object_data/milestone3_cube2"
-            arrays_to_save = {}
-            for i, item in enumerate(self.object_data_list):
-                arrays_to_save[f'cluster_{i}'] = item
-            np.savez_compressed(data_save_path, **arrays_to_save)
-            self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
+            # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
+            # self.object_data_list.append(cluster)
+            # data_save_path = "/home/group5/dd2419_ws/src/perception_pkg/trials/object_data/milestone3_cube2"
+            # arrays_to_save = {}
+            # for i, item in enumerate(self.object_data_list):
+            #     arrays_to_save[f'cluster_{i}'] = item
+            # np.savez_compressed(data_save_path, **arrays_to_save)
+            # self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
 
             # Neural Network Inference:
             object_cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             cluster_tensor = torch.tensor(object_cluster, dtype=torch.float32).to(self.DEVICE)
             cluster_tensor = cluster_tensor.permute(1, 0).unsqueeze(0)  # Shape: (1, 6, num_points) | (batch_size, channels, num_points)
 
-            with torch.no_grad():
-                pred_values = self.classification_model(cluster_tensor)
-            del cluster_tensor
-            torch.cuda.empty_cache()
+            try:
+                with torch.no_grad():
+                    pred_values = self.classification_model(cluster_tensor)
+            except torch.cuda.OutOfMemoryError as e:
+                self.get_logger().error(f"CUDA out of memory: {e}. Skipping this cluster, cluster length {cluster_tensor.shape}.")
+                continue  # Skip this cluster, proceed to the next one
+            finally:
+                del cluster_tensor
+                torch.cuda.empty_cache()
 
             prediction = torch.argmax(pred_values, dim=1)
             object_label = prediction.item()
