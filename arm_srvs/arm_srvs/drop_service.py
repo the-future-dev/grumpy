@@ -4,6 +4,7 @@ import rclpy
 import rclpy.logging
 from rclpy.node import Node
 from std_msgs.msg import Int16MultiArray
+from sensor_msgs.msg import JointState
 from geometry_msgs.msg import Pose
 import numpy as np
 import time
@@ -31,7 +32,7 @@ class DropService(Node):
         )
         
         self.servo_subscriber = self.create_subscription(
-            Int16MultiArray,
+            JointState,
             '/servo_pos_publisher',
             self.current_servos,
             1
