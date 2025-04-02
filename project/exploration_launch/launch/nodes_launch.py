@@ -66,7 +66,7 @@ def generate_launch_description():
     )
 
     workspace_perimeter = Node(
-        package='workspace_init',
+        package='object_mapping',
         executable='workspace_init',
         output = 'screen'
     )

@@ -16,6 +16,7 @@ import tf2_geometry_msgs
 
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
+from occupancy_grid_map.workspace_utils import Workspace
 
 from enum import Enum
 class ObjectEnum(Enum):
@@ -96,6 +97,7 @@ class ObjectMapping(Node):
         self.input_object_list = []
         self.output_object_list = []
         self.needs_update = False  # Flag to track if we need to publish updates
+        self.ws_utils = Workspace()
 
         # Set margin for adding new object
         self.margin_object = 0.15
@@ -120,7 +122,7 @@ class ObjectMapping(Node):
         self.object_pose_pub = self.create_publisher(ObjectDetection1DArray, '/object_mapping/object_poses', 10)
         self.marker_publisher = self.create_publisher(MarkerArray, '/object_mapping/object_names_marker', 10)
 
-        self.create_timer(1000, self.check_and_publish_updates)
+        # self.create_timer(3000, self.check_and_publish_updates)
 
     def check_and_publish_updates(self):
         """Check if we need to publish updates and do so if needed"""
@@ -254,12 +256,18 @@ class ObjectMapping(Node):
             # No objects exist yet, create new one
             self.output_object_list.append(ObjectVoting(label, x, y, angle))
             self.needs_update = True
+        
+        if self.needs_update:
+            self.check_and_publish_updates()
 
     def is_within_workspace(self, x: float, y: float) -> bool:
         """Check if a point is within the workspace boundaries"""
-        # TODO: ask Nova!!
-        return True
 
+        grid_x, grid_y = self.ws_utils.convert_map_to_grid(x, y)
+        if grid_x > self.ws_utils.grid_xlength or grid_x < 0.0 or grid_y > self.ws_utils.grid_ylength or grid_y < 0.0:
+            return False
+        else:
+            return True
 
 def main():
     rclpy.init()

@@ -13,8 +13,9 @@ from shapely.geometry import Point
 import matplotlib.pyplot as plt
 from std_msgs.msg import Int16MultiArray, MultiArrayDimension
 from scipy.ndimage import binary_dilation
-from grumpy_interfaces.msg import ObjectDetection1D
+from grumpy_interfaces.msg import ObjectDetection1DArray, ObjectDetection1D
 from occupancy_grid_map.workspace_utils import Workspace
+from time import sleep
 
 class OccupancyGridMapNode(Node):
     
@@ -24,18 +25,10 @@ class OccupancyGridMapNode(Node):
 
         self.ws_utils = Workspace()
 
-        #Choose if Exploration or Collecttion, could be implemented with argument later
-        # self.workspace = np.array([[-50, 470, 750, 950, 950, 810, 810, -50],
-        #                            [-50, -50, 154, 154, 376, 376, 220, 220]])
-
         self.workspace = self.ws_utils.workspace
 
         self.polygon = Polygon(self.workspace.T)
         #self.inflate_polygon = self.polygon.buffer()
-
-        #Initial data
-        # self.map_xlength = np.max(self.workspace[0])*2
-        # self.map_ylength = np.max(self.workspace[1])*2
         
         #Values for grid cells
         self.unknown = -1
@@ -44,12 +37,6 @@ class OccupancyGridMapNode(Node):
         self.outside_inflate = 2
         self.outside = 3
         self.object_box = 4
-
-        #Create grid
-        # self.resolution = 3 #Can be changed 
-        # self.grid_xlength = int(self.map_xlength/self.resolution)
-        # self.grid_ylength = int(self.map_ylength/self.resolution)
-        # self.grid = np.full((self.grid_ylength, self.grid_xlength), self.unknown, dtype=np.int16)
 
         self.grid = self.ws_utils.create_grid()
 
@@ -65,7 +52,7 @@ class OccupancyGridMapNode(Node):
 
         #Subscribe to both lidar scan
         self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
-        self.obstacle_subscription = self.create_subscription(ObjectDetection1D, '/object_mapping/object_poses', self.object_cb, 10)
+        self.obstacle_subscription = self.create_subscription(ObjectDetection1DArray, '/object_mapping/object_poses', self.object_cb, 10)
 
     #Function which fills the space outside workspace as occupied, very slow now but have not succeded with other
     def fill_outside_grid(self):
@@ -82,15 +69,20 @@ class OccupancyGridMapNode(Node):
 
         return
     
-    def object_cb(self, msg:ObjectDetection1D):
+    def object_cb(self, msg:ObjectDetection1DArray):
 
-        x = 100*msg.pose.pose.position.x
-        y = 100*msg.pose.pose.position.y
-        point = np.array([[x],
-                          [y]])
+        x_list = []
+        y_list = []
         value = self.object_box
 
-        self.map_to_grid(point, value)
+        for obj in msg.detected_objects:
+            x_list.append(100*obj.pose.position.x)
+            y_list.append(100*obj.pose.position.y)
+    
+        points = np.array([[x_list],
+                            [y_list]])
+        
+        self.map_to_grid(points, value)
         self.publish_grid()
 
     #Lidar callback calculates detected object from laser scan, would implement to only run every xth time
@@ -115,8 +107,9 @@ class OccupancyGridMapNode(Node):
         lidar_y = ranges * np.sin(angles)
 
         self.point_to_map(msg, lidar_x, lidar_y, self.obstacle)
-        free_x, free_y = self.raytrace_float(lidar_x, lidar_y)
+        free_x, free_y, unknown_x, unknown_y = self.raytrace_float(lidar_x, lidar_y)
         self.point_to_map(msg, free_x, free_y, self.free)
+        #self.point_to_map(msg, unknown_x, unknown_y, self.unknown)
         self.publish_grid()
 
     #Transform point from one message to map
@@ -159,9 +152,6 @@ class OccupancyGridMapNode(Node):
 
         x_map = map_points[0, :]
         y_map = map_points[1, :]
-
-        # x_grid_points = np.floor((x_map + self.map_xlength/2)/self.resolution) 
-        # y_grid_points = np.floor((y_map + self.map_ylength/2)/self.resolution)
 
         x_grid_points, y_grid_points = self.ws_utils.convert_map_to_grid(x_map, y_map)
 
@@ -217,7 +207,7 @@ class OccupancyGridMapNode(Node):
     def filter_points(self, x_grid_points, y_grid_points, value):
 
         #Mask to filter out of bounds points
-        mask_in_bounds = (x_grid_points < self.grid.shape[1]) & (y_grid_points < self.grid.shape[0])
+        mask_in_bounds = (x_grid_points < self.grid.shape[1]) & (y_grid_points < self.grid.shape[0]) & (x_grid_points > 0) & (y_grid_points > 0) 
         x_grid_points = x_grid_points[mask_in_bounds]
         y_grid_points = y_grid_points[mask_in_bounds]
 
@@ -225,10 +215,16 @@ class OccupancyGridMapNode(Node):
         if value == self.object_box:
             return x_grid_points, y_grid_points
         
-        #Mask to filter out grids outside workspace
+        #Mask to filter object and boxes and outside workspace
         mask_workspace_object_box = self.grid[y_grid_points, x_grid_points] >= self.outside_inflate
         x_grid_points = x_grid_points[~mask_workspace_object_box]
         y_grid_points = y_grid_points[~mask_workspace_object_box]
+
+        #Mask to filter out free space when we want o set unknown space
+        if value == self.unknown:
+            mask_not_free = self.grid[y_grid_points, x_grid_points] != self.free
+            x_grid_points = x_grid_points[mask_not_free]
+            y_grid_points = y_grid_points[mask_not_free]
 
         return x_grid_points, y_grid_points
 
@@ -245,10 +241,13 @@ class OccupancyGridMapNode(Node):
         mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.5) & (x_free > abs(y_free))  #Cone shape
         #mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)  #Box shape
         
+        x_unknown = x_free[~mask_rgbd_scope]
+        y_unknown = y_free[~mask_rgbd_scope]
+
         x_free = x_free[mask_rgbd_scope]
         y_free = y_free[mask_rgbd_scope]
 
-        return x_free, y_free
+        return x_free, y_free, x_unknown, y_unknown
 
 def main():
     rclpy.init()

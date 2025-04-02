@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import BoundaryNorm
 from scipy.ndimage import binary_dilation
 from occupancy_grid_map.workspace_utils import Workspace
+from time import sleep
 
 class ANode:
     #Create a A-star Node for queueing
@@ -56,12 +57,11 @@ class AStarAlgorithmNode(Node):
         self.grid_recieved = False
         self.goal_pose_recieved = False
         self.ws_utils = Workspace()
-        # self.map_xlength = 1900 
-        # self.map_ylength = 752 
-        # self.resolution = 3
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
+
+        sleep(5)
 
         # Publisher to puclish path to follow
         self.path_pub = self.create_publisher(Path, 'Astar/path', 1)
@@ -75,9 +75,9 @@ class AStarAlgorithmNode(Node):
 
         goal_x = msg.pose.position.x
         goal_y = msg.pose.position.y
-        # self.grid_xg, self.grid_yg = self.map_to_grid(goal_x, goal_y)
         self.grid_xg, self.grid_yg = self.ws_utils.convert_map_to_grid(goal_x, goal_y)
         self.goal_pose_recieved = True
+        self.get_logger().info(f'{self.grid_xg}hej')
 
         self.publish_path()
 
@@ -90,16 +90,17 @@ class AStarAlgorithmNode(Node):
             columns = msg.layout.dim[1].size
             data = msg.data
             self.grid = np.array([data]).reshape(rows, columns)
+            self.get_logger().info(f'{self.grid}')
 
             self.inflate_grid()
-
             self.grid_recieved = True
+        
             self.publish_path()
 
     def inflate_grid(self):
 
-        inflate_size_obs = int(30/self.ws_utils.resolution)
-        inflate_size_out = int(21/self.ws_utils.resolution)
+        inflate_size_obs = int(35/self.ws_utils.resolution)
+        inflate_size_out = int(25/self.ws_utils.resolution)
 
         inflate_matrix_obs = np.ones((2 * inflate_size_obs + 1, 2 * inflate_size_obs + 1))
         inflate_matrix_out = np.ones((2 * inflate_size_out + 1, 2 * inflate_size_out + 1))
@@ -165,7 +166,6 @@ class AStarAlgorithmNode(Node):
             self.get_logger().info('Not in free space so takes closest free cell to start with')
 
             free_indices = np.argwhere(self.grid == -1)
-            self.get_logger().info(f'{free_indices}')
 
             grid_free_x = free_indices[:, 1]
             grid_free_y = free_indices[:, 0]
@@ -265,35 +265,37 @@ class AStarAlgorithmNode(Node):
 
             # x, y = self.grid_to_map(node_curr.grid_x, node_curr.grid_y)
             next_x, next_y = self.ws_utils.convert_grid_to_map(node_curr.grid_x, node_curr.grid_y)
-            curr_x, curr_y = self.ws_utils.convert_grid_to_map(grid_curr_x, grid_curr_y)
-            free = self.check_free_path(curr_x, curr_y, next_x, next_y)
-            self.get_logger().info(f'{free}')
+            #curr_x, curr_y = self.ws_utils.convert_grid_to_map(grid_curr_x, grid_curr_y)
+            #free = self.check_free_path(curr_x, curr_y, next_x, next_y)
+            #self.get_logger().info(f'{free}')
 
-            # x_list.append(x)
-            # y_list.append(y)
-            # node_curr = node_curr.parent
+            x_list.append(next_x/100)
+            y_list.append(next_y/100)
+            self.grid[node_curr.grid_y, node_curr.grid_x] = -2
+            node_curr = node_curr.parent
 
-            if free == True:
-                x_list.append(next_x/100)
-                y_list.append(next_y/100)
-                self.get_logger().info(f'{x_list}')
-                self.grid[node_curr.grid_y, node_curr.grid_x] = -2
+            # if free == True:
+            #     x_list.append(next_x/100)
+            #     y_list.append(next_y/100)
+            #     self.grid[node_curr.grid_y, node_curr.grid_x] = -2
 
-                if node_curr.grid_x == last_node.grid_x and node_curr.grid_y == last_node.grid_y:
-                    self.get_logger().info('Breaking loop')
-                    break
-                else:
-                    grid_curr_x = node_curr.grid_x
-                    grid_curr_y = node_curr.grid_y
-                    node_curr = last_node
-            else:
-                node_curr = node_curr.parent
+            #     if node_curr.grid_x == last_node.grid_x and node_curr.grid_y == last_node.grid_y:
+            #         self.get_logger().info(f'{x_list}')
+            #         self.get_logger().info('Breaking loop')
+            #         break
+            #     else:
+            #         grid_curr_x = node_curr.grid_x
+            #         grid_curr_y = node_curr.grid_y
+            #         node_curr = last_node
+            # else:
 
-        # x_list = x_list[::-1]
-        # y_list = y_list[::-1]
+        x_list = x_list[::-1]
+        y_list = y_list[::-1]
 
-        if not x_list:
+        if len(x_list) == 0:
             return None, time
+
+        x_list, y_list = self.reduce_poses(x_list, y_list)
 
         cmap = plt.cm.get_cmap('Paired', 8)
         norm = BoundaryNorm([-2, -1, 0, 1, 2, 3, 4, 5, 6], cmap.N)
@@ -303,8 +305,6 @@ class AStarAlgorithmNode(Node):
         cbar.set_ticks([-2, -1, 0, 1, 2, 3, 4, 5])
         plt.savefig('/home/group5/dd2419_ws/outputs/astar_map')
         plt.close()
-
-        #x_list, y_list = self.reduce_poses(x_list, y_list)
 
         for i in range(len(x_list)):
             pose = PoseStamped()
@@ -332,7 +332,7 @@ class AStarAlgorithmNode(Node):
     
     def reduce_poses(self, x_list, y_list):
 
-        N = len(x_list) // 8
+        N = len(x_list) // 5
 
         cs = interp1d(x_list, y_list)
 

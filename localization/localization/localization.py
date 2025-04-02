@@ -228,7 +228,6 @@ class Localization(Node):
         stamp = msg.header.stamp
 
         self.broadcast_transform(stamp, x, y, q)
-        
 
         self.publish_pose_with_covariance(stamp, x, y, q)
 

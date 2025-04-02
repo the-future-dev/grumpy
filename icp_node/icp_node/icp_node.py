@@ -26,6 +26,9 @@ class ICP_node(Node):
     def __init__(self):
         super().__init__('icp_node')
 
+        self.x = 0.0
+        self.y = 0.0
+
         # Subscribe to lidar
         self.create_subscription(LaserScan,'/scan',self.lidar_callback,10)
 
@@ -139,7 +142,6 @@ class ICP_node(Node):
             self.get_logger().info(f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
             return
 
-
         # Project lidar to point cloud
         cloud = self.proj.projectLaser(msg)
 
@@ -155,12 +157,8 @@ class ICP_node(Node):
         # get new reference scan if bool is true, this is the case in the origin and when set by the brain
         if self.new_reference_scan:
             self.new_reference_scan = False
-            # x and y position map-frame_id (lidar_link)
-            # odom-frame_id + latest transform between map and odom
-            x = t.transform.translation.x + self.t.transform.translation.x 
-            y = t.transform.translation.y + self.t.transform.translation.y
-            pos = (x,y)
-            self.get_logger().info(f'Position from localization when getting new reference scan; x: {x}, y: {y}')
+            pos = (self.x,self.y)
+            self.get_logger().info(f'Position from localization when getting new reference scan; x: {self.x}, y: {self.y}')
 
             # append position of robot for the pointcloud and the pointcloud transformed to odom frame
             self.reference_clouds.append((pos, pointcloud))
@@ -178,9 +176,7 @@ class ICP_node(Node):
             # self.get_logger().info('Have more than one reference clouds')
             min_distance = np.inf
             for pos_cloud, cloud in self.reference_clouds:
-                x = t.transform.translation.x 
-                y = t.transform.translation.y
-                distance = math.hypot(x-pos_cloud[0], y-pos_cloud[1])
+                distance = math.hypot(self.x-pos_cloud[0], self.y-pos_cloud[1])
 
                 if distance < min_distance:
                     # self.get_logger().info('setting new reference cloud')
@@ -211,7 +207,8 @@ class ICP_node(Node):
             self.t.header.stamp = msg.header.stamp
             self._tf_broadcaster.sendTransform(self.t)
             return
-
+        
+        self.get_logger().info('Updating map-odom tf')
         # reset counter since an update is going to be processed
         self.counter = self.N
 
@@ -277,8 +274,11 @@ class ICP_node(Node):
 
         [_, _, yaw] = euler_from_quaternion([pose_with_covariance.pose.pose.orientation.x, pose_with_covariance.pose.pose.orientation.y, pose_with_covariance.pose.pose.orientation.z,pose_with_covariance.pose.pose.orientation.w])
 
-        #self.get_logger().info(f'Current position according to localization; x: {pose_with_covariance.pose.pose.position.x}, y: {pose_with_covariance.pose.pose.position.y}, theta: {yaw}')
-
+        self.x = pose_with_covariance.pose.pose.position.x
+        self.y = pose_with_covariance.pose.pose.position.y 
+        
+        self.get_logger().debug(f'Current position according to localization; x: {self.x}, y: {self.y}, theta: {yaw}')
+        
         pose.pose.position.x = pose_with_covariance.pose.pose.position.x
         pose.pose.position.y = pose_with_covariance.pose.pose.position.y
         pose.pose.orientation.z = pose_with_covariance.pose.pose.orientation.z

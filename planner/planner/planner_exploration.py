@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from std_msgs.msg import Bool
 from robp_interfaces.msg import DutyCycles
 from occupancy_grid_map.workspace_utils import Workspace
+import random
 
 
 class PlannerExplorationNode(Node):
@@ -29,11 +30,8 @@ class PlannerExplorationNode(Node):
                                    [-50, -50, 154, 154, 376, 376, 220, 220]])
         
         self.n_corners = self.workspace.shape[1]
-        self.counter = 0
+        self.counter = 8
         self.grid = None
-        # self.map_xlength = 1900 
-        # self.map_ylength = 752 
-        # self.resolution = 3
         self.ws_utils = Workspace()
     
         self.tf_buffer = Buffer()
@@ -136,14 +134,16 @@ class PlannerExplorationNode(Node):
         next_x = next_x[dist_msk]
         next_y = next_y[dist_msk]
 
-        min_index = np.argmin(dists)
-
-        msg_goal.pose.position.x = float(next_x[min_index])
-        msg_goal.pose.position.y = float(next_y[min_index])
+        arg = random.randint(0, len(dists))
+    
+        msg_goal.pose.position.x = float(next_x[arg])
+        msg_goal.pose.position.y = float(next_y[arg])
         msg_goal.pose.position.z = 0.0
         
         self.goal_pose_pub.publish(msg_goal)
         self.corner_pub.publish(msg_corner_done)
+
+        self.get_logger().info(f'Publishing from planner to brain')
 
         return
     
@@ -163,14 +163,6 @@ class PlannerExplorationNode(Node):
         rob_y = tf.transform.translation.y
 
         return rob_x, rob_y
-
-    # def grid_to_map(self, grid_x, grid_y):
-    #     #Take grid indices and converts to some x,y in that grid
-       
-    #     x = (grid_x*self.resolution - self.map_xlength/2) #Hard coded parameters right now 
-    #     y = (grid_y*self.resolution - self.map_ylength/2)
-
-    #     return x, y
 
 def main():
     rclpy.init()

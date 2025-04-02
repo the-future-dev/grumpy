@@ -18,7 +18,7 @@ class Workspace:
 
         self.map_xlength = self.map_max_x - self.map_min_x
         self.map_ylength = self.map_max_y - self.map_min_y
-        self.resolution = 1
+        self.resolution = 5
 
         self.grid_xlength = int(self.map_xlength/self.resolution)
         self.grid_ylength = int(self.map_ylength/self.resolution)

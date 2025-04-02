@@ -287,7 +287,7 @@ class BrainExploration(Node):
 
         # Sleeping for 5 seconds so that all nodes are initalized properly
         self.get_logger().info('Sleeping for 5 seconds before starting to tick')
-        sleep(5)
+        sleep(10)
 
         # Starting to tick the tree
         self.get_logger().info('Starting to tick the tree')

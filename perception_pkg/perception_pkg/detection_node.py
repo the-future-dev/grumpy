@@ -46,6 +46,10 @@ class Detection(Node):
     def __init__(self):
         super().__init__('detection')
 
+        self.filepath = os.path.join(os.path.expanduser('~'), 'dd2419_ws', 'outputs', 'object_detection_outputs.txt')
+        with open(self.filepath, 'w') as file:
+            pass # creates empty file
+
         # Data IN: Front Camera PointCloud
         self.create_subscription(
             PointCloud2, '/camera/camera/depth/color/points', self.cloud_callback, 10)
@@ -118,9 +122,9 @@ class Detection(Node):
             return
 
         # 2. Point Clustering #######################################################################
-        # Grid Filter (leaf size): 1 cm
-        # Grouping distance (eps): 2.5 cm
-        # Core Point min samples : 25
+        # Grid Filter (leaf size): 1 mm
+        # Grouping distance (eps): 9 mm
+        # Core Point min samples : 20
         # Number of parallel jobs: 3
         cluster_leaf_size= 0.001
         cluster_eps = 0.009
@@ -160,6 +164,7 @@ class Detection(Node):
             max_x, max_y, max_z = np.max(cluster_points, axis=0)
             bbox_dims = np.array([max_x - min_x, max_y - min_y, max_z - min_z]) * 100
 
+
             if bbox_dims[2] < 3: # object at least 3 cm high
                 continue
 
@@ -182,7 +187,11 @@ class Detection(Node):
                 with torch.no_grad():
                     pred_values = self.classification_model(cluster_tensor)
             except torch.cuda.OutOfMemoryError as e:
-                self.get_logger().error(f"CUDA out of memory: {e}. Skipping this cluster, cluster length {cluster_tensor.shape}.")
+                self.get_logger().info(f"\n\n\n----------- CUDA out of memory: {e}. Skipping this cluster, cluster length {cluster_tensor.shape}. -------------\n\n\n")
+                with open(self.filepath, 'a') as file:
+                    file.write(f"----------- CUDA out of memory: {e}. Skipping this cluster, cluster length {cluster_tensor.shape}. -------------")
+                    file.write(line)
+
                 continue  # Skip this cluster, proceed to the next one
             finally:
                 del cluster_tensor
@@ -210,6 +219,26 @@ class Detection(Node):
                 self._pub.publish(msgs_pub) # TODO: remove debug
 
                 self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{object_label_enum.name}")
+            
+            with open(self.filepath, 'a') as file:
+                file_label_str = f'{object_label_enum.name}'
+                file_x = float(round(x_obj, 2))
+                file_y = float(round(y_obj, 2))
+                file_dim0 = float(round(bbox_dims[0])) # Width in cm
+                file_dim1 = float(round(bbox_dims[1])) # Depth in cm
+                file_dim2 = float(round(bbox_dims[2])) # Height in cm
+
+                line = (
+                    f"{file_label_str:<{10}} "
+                    f"{file_x:>{4}.2f} "
+                    f"{file_y:>{4}.2f} "
+                    f"{file_dim0:>{10}.2f} "
+                    f"{file_dim1:>{10}.2f} "
+                    f"{file_dim2:>{10}.2f}\n"
+                )
+
+                file.write(line)
+
 
     def unpack_rgb(self, packed_colors):
         """
