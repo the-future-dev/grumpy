@@ -114,9 +114,9 @@ class ArmCameraService(Node):
 
         current_angles = msg.position
 
-        assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
-        assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
-        assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
+        # assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
+        # assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
+        # assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
 
         self.current_angles = current_angles
 
@@ -150,13 +150,13 @@ class ArmCameraService(Node):
         object_centers = []  # Initialize object centers
         x, y           = 0, 0  # No object found, set to 0, 0
 
-        undistorted_image = cv2.undistort(self.image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
-        hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
+        # undistorted_image = cv2.undistort(self.image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
+        hsv_image         = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
 
         mask            = self.create_masks(hsv_image)  # Create a combined mask for red, green, and blue objects
         mask            = cv2.medianBlur(mask, 5)
         mask            = self.clean_mask(mask)  # Clean each mask using morphological operations
-        object_centers += self.find_objects(mask, hsv_image)  # Find object centers
+        x, y            = self.find_objects(mask, hsv_image)  # Find object centers
 
         self._logger.info(f'get_object_position: Found {len(object_centers)} number of objects in total')
 
@@ -244,13 +244,13 @@ class ArmCameraService(Node):
                 #     centers.append((cx, cy))
                 #     self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
 
-                cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
-                cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
+                # cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
+                # cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
 
         self._logger.info(f'find_objects: Found {len(centers)} of centers')
 
-        cv2.imshow("Detected Objects", image)
-        cv2.waitKey(1)
+        # cv2.imshow("Detected Objects", image)
+        # cv2.waitKey(1)
 
         return (cx, cy)
 
