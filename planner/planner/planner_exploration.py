@@ -16,6 +16,7 @@ from robp_interfaces.msg import DutyCycles
 import matplotlib.pyplot as plt
 from std_msgs.msg import Bool
 from robp_interfaces.msg import DutyCycles
+from occupancy_grid_map.occupancy_grid_map.workspace_utils import Workspace
 
 
 class PlannerExplorationNode(Node):
@@ -30,9 +31,10 @@ class PlannerExplorationNode(Node):
         self.n_corners = self.workspace.shape[1]
         self.counter = 0
         self.grid = None
-        self.map_xlength = 1900 
-        self.map_ylength = 752 
-        self.resolution = 3
+        # self.map_xlength = 1900 
+        # self.map_ylength = 752 
+        # self.resolution = 3
+        self.ws_utils = Workspace()
     
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
@@ -122,10 +124,11 @@ class PlannerExplorationNode(Node):
             self.no_unknown_pub.publish(msg_done)
             return
 
-        x = indices_unkown[:, 1]
-        y = indices_unkown[:, 0]
+        grid_x_unknown = indices_unkown[:, 1]
+        grid_y_unknown = indices_unkown[:, 0]
 
-        next_x, next_y = self.grid_to_map(x, y)
+        # next_x, next_y = self.grid_to_map(x, y)
+        next_x, next_y = self.ws_utils.convert_grid_to_map(grid_x_unknown, grid_y_unknown)
 
         dists = np.sqrt(abs(next_x - rob_x)**2 + abs(next_y - rob_y)**2)
         dist_msk = dists > 200
@@ -161,13 +164,13 @@ class PlannerExplorationNode(Node):
 
         return rob_x, rob_y
 
-    def grid_to_map(self, grid_x, grid_y):
-        #Take grid indices and converts to some x,y in that grid
+    # def grid_to_map(self, grid_x, grid_y):
+    #     #Take grid indices and converts to some x,y in that grid
        
-        x = (grid_x*self.resolution - self.map_xlength/2) #Hard coded parameters right now 
-        y = (grid_y*self.resolution - self.map_ylength/2)
+    #     x = (grid_x*self.resolution - self.map_xlength/2) #Hard coded parameters right now 
+    #     y = (grid_y*self.resolution - self.map_ylength/2)
 
-        return x, y
+    #     return x, y
 
 def main():
     rclpy.init()

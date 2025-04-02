@@ -11,6 +11,7 @@ from std_msgs.msg import Bool
 from std_msgs.msg import Int16MultiArray
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
+from occupancy_grid_map.occupancy_grid_map.workspace_utils import Workspace
 
 class LocalObstacleAvoidanceNode(Node):
 
@@ -19,9 +20,9 @@ class LocalObstacleAvoidanceNode(Node):
 
         #Use grid to do local obstacle avoidance
         self.grid = None
-        self.map_xlength = 1900 
-        self.map_ylength = 752  
-        self.resolution = 3
+        # self.map_xlength = 1900 
+        # self.map_ylength = 752  
+        # self.resolution = 3
         self.adjust = False 
         self.current_pose_list = []
 

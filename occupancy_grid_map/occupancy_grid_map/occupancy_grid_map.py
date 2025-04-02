@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from std_msgs.msg import Int16MultiArray, MultiArrayDimension
 from scipy.ndimage import binary_dilation
 from grumpy_interfaces.msg import ObjectDetection1D
+from workspace_utils import Workspace
 
 class OccupancyGridMapNode(Node):
     
@@ -21,17 +22,20 @@ class OccupancyGridMapNode(Node):
     def __init__(self):
         super().__init__('occupancy_grid_map_node') 
 
+        self.ws_utils = Workspace()
+
         #Choose if Exploration or Collecttion, could be implemented with argument later
-        self.workspace = np.array([[-50, 470, 750, 950, 950, 810, 810, -50],
-                                   [-50, -50, 154, 154, 376, 376, 220, 220]])
+        # self.workspace = np.array([[-50, 470, 750, 950, 950, 810, 810, -50],
+        #                            [-50, -50, 154, 154, 376, 376, 220, 220]])
+
+        self.workspace = self.ws_utils.workspace
 
         self.polygon = Polygon(self.workspace.T)
         self.inflate_polygon = self.polygon.buffer(-10)
 
         #Initial data
-        self.frame_id = 'map'
-        self.map_xlength = np.max(self.workspace[0])*2
-        self.map_ylength = np.max(self.workspace[1])*2
+        # self.map_xlength = np.max(self.workspace[0])*2
+        # self.map_ylength = np.max(self.workspace[1])*2
         
         #Values for grid cells
         self.unknown = -1
@@ -42,10 +46,12 @@ class OccupancyGridMapNode(Node):
         self.object_box = 4
 
         #Create grid
-        self.resolution = 3 #Can be changed 
-        self.grid_xlength = int(self.map_xlength/self.resolution)
-        self.grid_ylength = int(self.map_ylength/self.resolution)
-        self.grid = np.full((self.grid_ylength, self.grid_xlength), self.unknown, dtype=np.int16)
+        # self.resolution = 3 #Can be changed 
+        # self.grid_xlength = int(self.map_xlength/self.resolution)
+        # self.grid_ylength = int(self.map_ylength/self.resolution)
+        # self.grid = np.full((self.grid_ylength, self.grid_xlength), self.unknown, dtype=np.int16)
+
+        self.grid = self.ws_utils.create_grid()
 
         #Transfrom between lidar link and map
         self.tf_buffer = Buffer()
@@ -157,24 +163,22 @@ class OccupancyGridMapNode(Node):
         x_map = map_points[0, :]
         y_map = map_points[1, :]
 
-        x_grid_points = np.floor((x_map + self.map_xlength/2)/self.resolution) #Convert to grid indices
-        y_grid_points = np.floor((y_map + self.map_ylength/2)/self.resolution)
+        # x_grid_points = np.floor((x_map + self.map_xlength/2)/self.resolution) 
+        # y_grid_points = np.floor((y_map + self.map_ylength/2)/self.resolution)
 
-        x_grid_points = x_grid_points.astype(int) #Make sure int index
-        y_grid_points = y_grid_points.astype(int)
+        x_grid_points, y_grid_points = self.ws_utils.convert_map_to_grid(x_map, y_map)
 
         x_grid_points, y_grid_points = self.filter_points(x_grid_points, y_grid_points, value)
 
         self.grid[y_grid_points, x_grid_points] = value
 
-        if value != self.free:
+        if value == self.object_box:
             self.inflate_grid(x_grid_points, y_grid_points, value)
 
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
 
-        inflate_size = int(3/self.resolution)
-        inflate_size = int(12/self.resolution)
+        inflate_size = int(9/self.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
         
         new_grid = np.zeros_like(self.grid)
@@ -228,12 +232,6 @@ class OccupancyGridMapNode(Node):
         mask_workspace_object_box = self.grid[y_grid_points, x_grid_points] >= self.outside_inflate
         x_grid_points = x_grid_points[~mask_workspace_object_box]
         y_grid_points = y_grid_points[~mask_workspace_object_box]
-
-        # #If value is free we dont want to overwrite occupied space, assume static environment
-        # if value == self.free:
-        #     mask_unknown = self.grid[y_grid_points, x_grid_points] == self.unknown
-        #     x_grid_points = x_grid_points[mask_unknown]
-        #     y_grid_points = y_grid_points[mask_unknown]
 
         return x_grid_points, y_grid_points
 
