@@ -111,17 +111,17 @@ class PickService(Node):
         return response
     
 
-    def current_servos(self, msg:Int16MultiArray):
+    def current_servos(self, msg:JointState):
         """
         Args:
-            msg: Int16MultiArray, required, the angles of the servos
+            msg: JointState, required, information about the servos
         Returns:
 
         Other functions:
             Listens to what the angles of the servos currently are and sets a self variable to these angles
         """
 
-        current_angles = msg.data
+        current_angles = msg.position
 
         assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
         assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
@@ -181,8 +181,7 @@ class PickService(Node):
 
         time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
 
-        # return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
-        return True
+        return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
 
 
 def main(args=None):

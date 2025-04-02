@@ -34,9 +34,11 @@ initial_thetas = [3000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing strai
 drive_thetas   = [-1, 12000, 9000, 12000, 12000, 12000]  # Arm pointing straight up, gripper tilted forward, used for driving around with object
 drop_thetas    = [-1 , -1, 3000, 14500, 9000, -1]  # Angles for droping objects into the bins
 view_thetas    = [-1, -1, 3000, 18000, 9500, -1]  # Angles when the arm camera has a view over the entire pick-up area
-still_thetas   = [-1, -1, -1, -1, -1, -1]  # Angles for when the arm should not move
+still_thetas   = [-1] * 6 # Angles for when the arm should not move
 
 times = [1500] * 6  # Standard angle movement times to all positions
+
+servos_offset = 100 # Allowed offset for the servos to be considered at the correct position
 
 # The position of the camera in the base_link frame when in view position
 cam_pos = Pose()
@@ -51,7 +53,7 @@ intrinsic_mtx = np.array([[438.783367, 0.000000, 305.593336],
 dist_coeffs   = np.array([-0.361976, 0.110510, 0.001014, 0.000505, 0.000000])
 
 
-def extract_object_position(self, pose:Pose):
+def extract_object_position(node, pose:Pose):
     """
     Args:
         msg: Pose, required, the position and orientation of the object
@@ -63,15 +65,15 @@ def extract_object_position(self, pose:Pose):
 
     """
 
-    assert isinstance(pose, Pose), self._logger.error(f'request was not type Pose')  # Assert that the request has the correct type
+    assert isinstance(pose, Pose), node._logger.error(f'request was not type Pose')  # Assert that the request has the correct type
 
     x, y, z = pose.position.x, pose.position.y, pose.position.z
 
-    assert isinstance(x, float), self._logger.error('x was not type float')
-    assert isinstance(x, float), self._logger.error('y was not type float')
-    assert isinstance(x, float), self._logger.error('z was not type float')
+    assert isinstance(x, float), node._logger.error('x was not type float')
+    assert isinstance(x, float), node._logger.error('y was not type float')
+    assert isinstance(x, float), node._logger.error('z was not type float')
 
-    self._logger.info('Got the position of the object')
+    node._logger.info('Got the position of the object')
 
     return x, y, z
 
@@ -94,7 +96,7 @@ def get_delta_theta_6(x, y):
     return np.rad2deg(np.arctan2(y_dist, x_dist))
 
 
-def check_angles_and_times(self, angles, times):
+def check_angles_and_times(node, angles, times):
     """
     Args:
         angles: list, required, the angles for each servo to be set to
@@ -105,21 +107,21 @@ def check_angles_and_times(self, angles, times):
         Raises error if the angles and times are not in the correct format, length or interval
     """
 
-    assert isinstance(angles, list), self._logger.error('angles is not of type list')
-    assert isinstance(times, list), self._logger.error('times is not of type list')
-    assert len(angles) == 6, self._logger.error('angles was not of length 6')
-    assert len(times) == 6, self._logger.error('times was not of length 6')
-    assert all(isinstance(angle, int) for angle in angles), self._logger.error('angles was not of type int')
-    assert all(isinstance(time, int) for time in times), self._logger.error('times was not of type int')
-    assert all(1000 <= time <= 5000 for time in times), self._logger.error('times was not within the interval [1000, 5000]')
-    assert (0 <= angles[0] <= 11000) or (angles[0] == -1), self._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
-    assert (0 <= angles[1] <= 24000) or (angles[1] == -1), self._logger.error(f'servo 2 was not within the interval [0, 24000] or -1, got {angles[1]}')
-    assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), self._logger.error(f'servo 3 was not within the interval [2500, 21000] or -1, got {angles[2]}')
-    assert (3000 <= angles[3] <= 21500) or (angles[3] == -1), self._logger.error(f'servo 4 was not within the interval [3000, 21500] or -1, got {angles[3]}')
-    assert (6000 <= angles[4] <= 18000) or (angles[4] == -1), self._logger.error(f'servo 5 was not within the interval [6000, 18000] or -1, got {angles[4]}')
-    assert (0 <= angles[5] <= 20000) or (angles[5] == -1), self._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
+    assert isinstance(angles, list), node._logger.error('angles is not of type list')
+    assert isinstance(times, list), node._logger.error('times is not of type list')
+    assert len(angles) == 6, node._logger.error('angles was not of length 6')
+    assert len(times) == 6, node._logger.error('times was not of length 6')
+    assert all(isinstance(angle, int) for angle in angles), node._logger.error('angles was not of type int')
+    assert all(isinstance(time, int) for time in times), node._logger.error('times was not of type int')
+    assert all(1000 <= time <= 5000 for time in times), node._logger.error('times was not within the interval [1000, 5000]')
+    assert (0 <= angles[0] <= 11000) or (angles[0] == -1), node._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
+    assert (0 <= angles[1] <= 24000) or (angles[1] == -1), node._logger.error(f'servo 2 was not within the interval [0, 24000] or -1, got {angles[1]}')
+    assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), node._logger.error(f'servo 3 was not within the interval [2500, 21000] or -1, got {angles[2]}')
+    assert (3000 <= angles[3] <= 21500) or (angles[3] == -1), node._logger.error(f'servo 4 was not within the interval [3000, 21500] or -1, got {angles[3]}')
+    assert (6000 <= angles[4] <= 18000) or (angles[4] == -1), node._logger.error(f'servo 5 was not within the interval [6000, 18000] or -1, got {angles[4]}')
+    assert (0 <= angles[5] <= 20000) or (angles[5] == -1), node._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
 
-    self._logger.info('Checked the angles and times')
+    node._logger.info('Checked the angles and times')
 
 
 def changed_thetas_correctly(pub_angles, curr_angles):
@@ -128,11 +130,11 @@ def changed_thetas_correctly(pub_angles, curr_angles):
         pub_angles : list, required, the angles that were published to the arm
         curr_angles: list, required, the angles that the arm is at after the angles have been published and the required time has passed
     Returns:
-        bool, if the arm has moved to the published angles
+        bool, if the arm has moved to the published angles, except for the first servo as it is not reliable
     Other functions:
         
     """
 
     return len(pub_angles) == len(curr_angles) and all(
-        pub_angles[i] == -1 or pub_angles[i] == curr_angles[i] for i in range(len(pub_angles))
+        pub_angles[i] == -1 or np.isclose(curr_angles[i], pub_angles[i], servos_offset) for i in range(1, len(pub_angles))
     )
