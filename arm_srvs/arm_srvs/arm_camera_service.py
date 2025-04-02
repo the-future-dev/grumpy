@@ -4,9 +4,8 @@ import rclpy
 import rclpy.logging
 from rclpy.node import Node
 from std_msgs.msg import Int16MultiArray
-from sensor_msgs.msg import JointState
+from sensor_msgs.msg import JointState, CompressedImage, Image
 from geometry_msgs.msg import Pose
-from sensor_msgs.msg import CompressedImage
 import cv2
 import cv_bridge
 import numpy as np
@@ -37,6 +36,12 @@ class ArmCameraService(Node):
             '/multi_servo_cmd_sub',
             1
         )
+
+        self.image_publisher_ = self.create_publisher(
+            Image, 
+            '/arm_services/object_tracking/image_raw', 
+            10
+        )
         
         self.servo_subscriber = self.create_subscription(
             JointState,
@@ -46,8 +51,8 @@ class ArmCameraService(Node):
         )
 
         self.image_subscriber = self.create_subscription(
-            CompressedImage,
-            '/arm_camera/image_raw/compressed',
+            Image,
+            '/arm_camera/image_raw',
             self.get_image_data,
             1
         )
@@ -131,7 +136,7 @@ class ArmCameraService(Node):
             Listens to the image message from the arm camera and sets a self variable to this data
         """
 
-        self.image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
+        self.image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
 
 
     def get_object_position(self):
@@ -147,23 +152,54 @@ class ArmCameraService(Node):
 
         time.sleep(1.0)
         
-        object_centers = []  # Initialize object centers
-        x, y           = 0, 0  # No object found, set to 0, 0
+        cx, cy         = 0, 0  # No object found, set to 0, 0
+        image          = self.image
 
-        # undistorted_image = cv2.undistort(self.image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
-        hsv_image         = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
+        undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
+        hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
 
         mask            = self.create_masks(hsv_image)  # Create a combined mask for red, green, and blue objects
         mask            = cv2.medianBlur(mask, 5)
         mask            = self.clean_mask(mask)  # Clean each mask using morphological operations
-        x, y            = self.find_objects(mask, hsv_image)  # Find object centers
+        # x, y, image     = self.find_objects(mask, image)  # Find object centers
 
-        self._logger.info(f'get_object_position: Found {len(object_centers)} number of objects in total')
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask
+        areas = [cv2.contourArea(c) for c in contours]
 
-        if object_centers:  # If object(s) were found
-            x, y = object_centers[0]  # Set the position of the first object found
+        if len(areas) < 1:
+            self.publish_image(image)
+            return
 
-        x, y = self.pixel_to_base_link(x, y)  # Transform the position to the base_link frame
+        max_index = np.argmax(areas)
+        contour = contours[max_index]
+
+        ########################
+
+        # cx, cy, w, h = cv2.boundingRect(contour)
+        # cv2.rectangle(image, (cx, cy), (cx+w, cy+h), (0, 255, 0), 3)
+
+        ########################
+
+        (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
+        cx, cy, radius = int(cx), int(cy), int(radius)
+        
+        cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
+        cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
+
+        ########################
+
+        # M = cv2.moments(contour)  # Calculate the moments of the contour
+        # if M["m00"] != 0:  # Avoid division by zero
+        #     cx = int(M["m10"] / M["m00"])  
+        #     cy = int(M["m01"] / M["m00"])
+
+        ########################
+
+        self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
+
+        x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
+
+        self.publish_image(image)
 
         return x, y
 
@@ -244,15 +280,12 @@ class ArmCameraService(Node):
                 #     centers.append((cx, cy))
                 #     self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
 
-                # cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
-                # cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
+                cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
+                cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
 
         self._logger.info(f'find_objects: Found {len(centers)} of centers')
 
-        # cv2.imshow("Detected Objects", image)
-        # cv2.waitKey(1)
-
-        return (cx, cy)
+        return (cx, cy), image
 
 
     def pixel_to_base_link(self, x_pixel, y_pixel):
@@ -299,6 +332,12 @@ class ArmCameraService(Node):
         time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
 
         return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
+    
+
+    def publish_image(self, frame):
+        image_message = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+        self.image_publisher_.publish(image_message)
+
 
 def main(args=None):
     rclpy.init()

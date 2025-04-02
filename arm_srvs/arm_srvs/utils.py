@@ -44,7 +44,7 @@ servos_offset = 100 # Allowed offset for the servos to be considered at the corr
 cam_pos = Pose()
 cam_pos.position.x = x_origin_servo5 + l_5_4 * np.sin(np.deg2rad(theta_servo5_view)) + l_4_3 + l_3_cam_x
 cam_pos.position.y = y_origin_servo5
-cam_pos.position.z = z_origin_servo5 + l_5_4 * np.cos(np.deg2rad(theta_servo5_view)) - l_3_cam_z
+cam_pos.position.z = 0.045 + z_origin_servo5 + l_5_4 * np.cos(np.deg2rad(theta_servo5_view)) - l_3_cam_z
 
 # Camera parameters for calibration and undistortion of the image
 intrinsic_mtx = np.array([[438.783367, 0.000000, 305.593336],
