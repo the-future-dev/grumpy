@@ -54,10 +54,10 @@ class WorkspaceInit(Node):
         current_dir = os.path.dirname(os.path.abspath(__file__))
 
         # Go three levels up and into src where the workspace file is located
-        file_path = os.path.abspath(os.path.join(current_dir, '../../../src/workspace_2.tsv'))
+        file_path = os.path.abspath(os.path.join(current_dir, '../../../src/workspace_3.tsv'))
 
         # make sure file path includes correct placement of the workspace file
-        assert 'dd2419_ws/src/workspace_2.tsv' in file_path
+        assert 'dd2419_ws/src/workspace_3.tsv' in file_path
 
         # read file
         df = pd.read_csv(file_path, sep = '\t')

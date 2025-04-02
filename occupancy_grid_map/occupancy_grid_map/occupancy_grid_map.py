@@ -26,7 +26,7 @@ class OccupancyGridMapNode(Node):
                                    [-50, -50, 154, 154, 376, 376, 220, 220]])
 
         self.polygon = Polygon(self.workspace.T)
-        self.inflate_polygon = self.polygon.buffer(-25)
+        self.inflate_polygon = self.polygon.buffer(-10)
 
         #Initial data
         self.frame_id = 'map'
@@ -37,8 +37,9 @@ class OccupancyGridMapNode(Node):
         self.unknown = -1
         self.free = 0
         self.obstacle = 1
-        self.outside = 2
-        self.object_box = 3
+        self.outside_inflate = 2
+        self.outside = 3
+        self.object_box = 4
 
         #Create grid
         self.resolution = 3 #Can be changed 
@@ -71,8 +72,11 @@ class OccupancyGridMapNode(Node):
                 y_ind = (j * self.resolution) - self.map_ylength/2
 
                 point = Point(x_ind, y_ind)
-                if not self.inflate_polygon.contains(point):
+                if not self.polygon.contains(point):
                     self.grid[j, i] = self.outside
+                elif self.polygon.contains(point) and not self.inflate_polygon.contains(point):
+                    self.grid[j, i] = self.outside_inflate
+
         return
     
     def object_cb(self, msg:ObjectDetection1D):
@@ -169,6 +173,7 @@ class OccupancyGridMapNode(Node):
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
 
+        inflate_size = int(3/self.resolution)
         inflate_size = int(12/self.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
         
@@ -220,14 +225,15 @@ class OccupancyGridMapNode(Node):
             return x_grid_points, y_grid_points
         
         #Mask to filter out grids outside workspace
-        mask_workspace = self.grid[y_grid_points, x_grid_points] == self.outside 
-        x_grid_points = x_grid_points[~mask_workspace]
-        y_grid_points = y_grid_points[~mask_workspace]
+        mask_workspace_object_box = self.grid[y_grid_points, x_grid_points] >= self.outside_inflate
+        x_grid_points = x_grid_points[~mask_workspace_object_box]
+        y_grid_points = y_grid_points[~mask_workspace_object_box]
 
-        #filter out object values so they are not set as something else
-        mask_not_object_box = self.grid[y_grid_points, x_grid_points] != self.object_box
-        x_grid_points = x_grid_points[mask_not_object_box]
-        y_grid_points = y_grid_points[mask_not_object_box]
+        # #If value is free we dont want to overwrite occupied space, assume static environment
+        # if value == self.free:
+        #     mask_unknown = self.grid[y_grid_points, x_grid_points] == self.unknown
+        #     x_grid_points = x_grid_points[mask_unknown]
+        #     y_grid_points = y_grid_points[mask_unknown]
 
         return x_grid_points, y_grid_points
 

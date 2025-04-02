@@ -65,15 +65,22 @@ def generate_launch_description():
         output='screen'
     )
 
+    # workspace_perimeter = Node(
+    #     package='workspace_init',
+    #     executable='workspace_init',
+    #     output = 'screen'
+    # )
+
     return LaunchDescription([
         brain_exploration,
         drive_path,
-        #occupancy_grid_map,
+        occupancy_grid_map,
         local_obstacle_avoidance,
         planner,
         a_star,
-        # localization,
-        # icp_node,
-        perception,
-        object_mapping
+        localization,
+        icp_node,
+        # workspace_perimeter
+        # perception,
+        # object_mapping
     ])

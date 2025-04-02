@@ -25,6 +25,7 @@ class ObjectEnum(Enum):
     CUBE = 2
     SPHERE = 3
     BOX = 4
+
 class ObjectVoting:
     def __init__(self, label: ObjectEnum, x: float, y: float, angle: float):
         self.arr_label = np.array([label.value])
@@ -44,25 +45,29 @@ class ObjectVoting:
         self.arr_y = np.append(self.arr_y, y)
         self.arr_angle = np.append(self.arr_angle, angle)
         self._needs_update = True
-    
+        # Reset caches
+        self._cached_label = None
+        self._cached_x = None
+        self._cached_y = None
+        self._cached_angle = None
+
     def get_label(self):
         """Get the label most frequently occuring in the array"""
         if self._needs_update or self._cached_label is None:
             self._cached_label = ObjectEnum(np.bincount(self.arr_label).argmax())
             self._needs_update = False
         return self._cached_label
-    
+
     def get_x(self):
         """Get the mean x value of the object, filtering by label"""
         if self._needs_update or self._cached_x is None:
             label = self.get_label()
-            # Use the current label value for filtering
             mask = self.arr_label == label.value
             filtered_x = self.arr_x[mask]
             self._cached_x = float(np.mean(filtered_x)) if len(filtered_x) > 0 else 0.0
             self._needs_update = False
         return self._cached_x
-    
+
     def get_y(self):
         """Get the mean y value of the object, filtering by label"""
         if self._needs_update or self._cached_y is None:
@@ -72,7 +77,7 @@ class ObjectVoting:
             self._cached_y = float(np.mean(filtered_y)) if len(filtered_y) > 0 else 0.0
             self._needs_update = False
         return self._cached_y
-    
+
     def get_angle(self):
         """Get the mean angle value of the object, filtering by label"""
         if self._needs_update or self._cached_angle is None:
@@ -95,8 +100,8 @@ class ObjectMapping(Node):
 
         # Set margin for adding new object
         self.margin_object = 0.15
-        self.margin_box = 0.25
-        
+        self.margin_box = 0.20
+
         # Intialize map file
         self.filepath = '/home/group5/dd2419_ws/outputs/object_map.txt'
         with open(self.filepath, 'w') as file:
@@ -108,8 +113,8 @@ class ObjectMapping(Node):
 
         # Initialize the transform broadcaster
         self.tf_broadcaster = TransformBroadcaster(self)
-        
-        # Initialize the subscriber to the object poses 
+
+        # Initialize the subscriber to the object poses
         self.create_subscription(ObjectDetection1D, '/perception/object_poses', self.object_pose_callback, 10)
 
         # Initialize publisher to publish non-duplicate object poses
@@ -128,7 +133,7 @@ class ObjectMapping(Node):
         """Publish all detected objects"""
         marker_array = MarkerArray()
         idx = 0
-        
+
         # Write to file
         with open(self.filepath, 'w') as file:
             for obj in self.output_object_list:
@@ -137,7 +142,7 @@ class ObjectMapping(Node):
                 file_x = float(round(obj.get_x(), 2))
                 file_y = float(round(obj.get_y(), 2))
                 file.write(f"{file_label_str} {file_x} {file_y}\n")
-                
+
                 detection1D = ObjectDetection1D()
                 detection1D.pose.position.x = obj.get_x()
                 detection1D.pose.position.y = obj.get_y()
@@ -146,7 +151,7 @@ class ObjectMapping(Node):
                 detection1D.pose.orientation.w = 1.0  # Add orientation
 
                 self.object_pose_pub.publish(detection1D)
-                
+
                 marker = Marker()
                 marker.header.frame_id = 'map'
                 marker.header.stamp = self.get_clock().now().to_msg()
@@ -204,8 +209,8 @@ class ObjectMapping(Node):
             self.get_logger().info(
                 f'Could not transform {to_frame_rel} to {from_frame_rel}: {ex}')
             return
-        
-        # Transform the marker pose to map coordinates 
+
+        # Transform the marker pose to map coordinates
         pose = tf2_geometry_msgs.do_transform_pose(pose, t)
 
         label = ObjectEnum[msg.label.data]
@@ -221,6 +226,7 @@ class ObjectMapping(Node):
         # Vectorized distance calculation for all objects
         if self.output_object_list:
             # Create arrays of all object positions
+            # Skipping check on same label as we want this logic to filter out misclassifications!
             positions = np.array([(obj.get_x(), obj.get_y()) for obj in self.output_object_list])
             # labels = np.array([obj.get_label() for obj in self.output_object_list])
             
