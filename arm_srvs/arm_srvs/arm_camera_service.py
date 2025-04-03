@@ -150,7 +150,7 @@ class ArmCameraService(Node):
             Uses the image data from the arm camera to detect objects and their positions
         """
 
-        time.sleep(1.0)
+        time.sleep(0.5)
         
         cx, cy         = 0, 0  # No object found, set to 0, 0
         image          = self.image
@@ -164,6 +164,7 @@ class ArmCameraService(Node):
         # x, y, image     = self.find_objects(mask, image)  # Find object centers
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask
+        # contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         areas = [cv2.contourArea(c) for c in contours]
 
         if len(areas) < 1:
@@ -216,19 +217,20 @@ class ArmCameraService(Node):
         """
         
         # Define HSV ranges
-        lower_red1, upper_red1   = np.array([0, 120, 70]), np.array([10, 255, 255])
-        lower_red2, upper_red2   = np.array([170, 120, 70]), np.array([180, 255, 255])
+        # lower_red1, upper_red1   = np.array([0, 120, 70]), np.array([10, 255, 255])
+        # lower_red2, upper_red2   = np.array([170, 120, 70]), np.array([180, 255, 255])
         lower_green, upper_green = np.array([35, 100, 50]), np.array([85, 255, 255])
-        lower_blue, upper_blue   = np.array([100, 150, 50]), np.array([140, 255, 255])
+        # lower_blue, upper_blue   = np.array([100, 150, 50]), np.array([140, 255, 255])
 
         # Create masks for each color
-        mask_red1  = cv2.inRange(hsv_image, lower_red1, upper_red1)
-        mask_red2  = cv2.inRange(hsv_image, lower_red2, upper_red2)
-        red_mask   = mask_red1 | mask_red2  # Combine both red masks
+        # mask_red1  = cv2.inRange(hsv_image, lower_red1, upper_red1)
+        # mask_red2  = cv2.inRange(hsv_image, lower_red2, upper_red2)
+        # red_mask   = mask_red1 | mask_red2  # Combine both red masks
         green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
-        blue_mask  = cv2.inRange(hsv_image, lower_blue, upper_blue)
+        # blue_mask  = cv2.inRange(hsv_image, lower_blue, upper_blue)
 
-        return cv2.bitwise_or(red_mask, cv2.bitwise_or(green_mask, blue_mask))
+        # return cv2.bitwise_or(red_mask, cv2.bitwise_or(green_mask, blue_mask))
+        return green_mask
 
 
     def clean_mask(self, mask):
@@ -241,7 +243,7 @@ class ArmCameraService(Node):
             
         """
         
-        kernel = np.ones((5, 5), np.uint8)  # Define kernel for morphological operations
+        kernel = np.ones((3, 3), np.uint8)  # Define kernel for morphological operations
         mask   = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)  # Open to remove noise
         mask   = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)  # Close to fill holes
 
