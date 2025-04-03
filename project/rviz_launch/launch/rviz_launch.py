@@ -14,13 +14,13 @@ def generate_launch_description():
         'dd2419_ws', 'rviz', 'default_rviz.rviz'
     )
 
-    # # RViz Node
-    # rviz_node = Node(
-    #     package='rviz2',                
-    #     executable='rviz2',              
-    #     output='screen',               
-    #     arguments=['-d', rviz_config_file]  
-    # )
+    # RViz Node
+    rviz_node = Node(
+        package='rviz2',                
+        executable='rviz2',              
+        output='screen',               
+        arguments=['-d', rviz_config_file]  
+    )
 
     #  Start nodes
     localization = Node(
@@ -79,6 +79,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        rviz_node,
         drive_control,
         # occupancy_grid_map,
         planner,

@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'object_mapping = object_mapping.object_mapping:main'
+            'object_mapping = object_mapping.object_mapping:main',
+            'workspace_init = object_mapping.workspace_init:main'
         ],
     },
 )

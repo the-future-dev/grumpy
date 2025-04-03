@@ -12,6 +12,7 @@ from shapely.geometry.polygon import Polygon
 from shapely.geometry import Point
 import matplotlib.pyplot as plt
 from std_msgs.msg import Int16MultiArray, MultiArrayDimension
+from scipy.ndimage import binary_dilation
 
 class OccupancyGridMapNode(Node):
     
@@ -20,13 +21,11 @@ class OccupancyGridMapNode(Node):
         super().__init__('occupancy_grid_map_node') 
 
         #Choose if Exploration or Collecttion, could be implemented with argument later
-        self.workspace = np.array([[-220, 220, 450, 700, 700, 546, 546, -220],
-                                   [-130, -130, 66, 66, 284, 284, 130, 130]])
-        #self.workspace = np.array([[-220, 220, 220, -220],
-                                  #[-130, -130, 130, 130]])
+        self.workspace = np.array([[-50, 470, 750, 950, 950, 810, 810, -50],
+                                   [-50, -50, 154, 154, 376, 376, 220, 220]])
 
         self.polygon = Polygon(self.workspace.T)
-        self.inflate_polygon = self.polygon.buffer(-25)
+        self.inflate_polygon = self.polygon.buffer(-10)
 
         #Initial data
         self.frame_id = 'map'
@@ -38,9 +37,9 @@ class OccupancyGridMapNode(Node):
         self.unknown = -1
         self.free = 0
         self.obstacle = 1
-        self.object = 2
-        self.box = 3
-        self.outside = 4
+        self.outside_inflate = 2
+        self.outside = 3
+        self.object_box = 4
 
         #Create grid
         self.resolution = 3 #Can be changed 
@@ -58,9 +57,6 @@ class OccupancyGridMapNode(Node):
         #Fill outside grid with 
         self.fill_outside_grid()
 
-        #If collection, call function which maps a given file
-        #self.given_objects_boxes()
-
         #Subscribe to both lidar scan
         self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
 
@@ -77,36 +73,21 @@ class OccupancyGridMapNode(Node):
                 point = Point(x_ind, y_ind)
                 if not self.polygon.contains(point):
                     self.grid[j, i] = self.outside
-                if (not self.inflate_polygon.contains(point)) and (self.polygon.contains(point)):
-                    self.grid[j, i] = self.obstacle
+                elif self.polygon.contains(point) and not self.inflate_polygon.contains(point):
+                    self.grid[j, i] = self.outside_inflate
+
         return
-    
-    def given_objects_boxes(self):
-        #Function to set given objects from a map into grid map in collection
-        
-        B = 4
-        object_box_map = np.array([[1, 2, 3, B, 3],
-                               [-199, 206, 187, 16, -206],
-                               [-116, -100, 118, 122, 107]])
-        
-        mask_objects = object_box_map[0, :] < 4
-
-        object_map = object_box_map[:, mask_objects]
-        box_map = object_box_map[:, ~mask_objects]
-
-        self.map_to_grid(object_map[1:, :], self.object)
-        self.map_to_grid(box_map[1:, :], self.box)
 
     #Lidar callback calculates detected object from laser scan, would implement to only run every xth time
     def lidar_cb(self, msg:LaserScan):
 
         self.counter += 1
-        if self.counter % 10 != 0: #Only use every Xth scan 
-            return
+        # if self.counter % 5 != 0: #Only use every Xth scan 
+        #     return
         
         #Get data from message
         min_angle = msg.angle_min
-        lower_bound = 0.2
+        lower_bound = 0.35
         upper_bound = msg.range_max
         inc = msg.angle_increment
         ranges = np.array(msg.ranges)
@@ -123,10 +104,9 @@ class OccupancyGridMapNode(Node):
         lidar_y = ranges * np.sin(angles)
 
         self.point_to_map(msg, lidar_x, lidar_y, self.obstacle)
-        
         free_x, free_y = self.raytrace_float(lidar_x, lidar_y)
-        
         self.point_to_map(msg, free_x, free_y, self.free)
+        self.publish_grid()
 
     #Transform point from one message to map
     def point_to_map(self, msg, x_points, y_points, value):
@@ -166,51 +146,61 @@ class OccupancyGridMapNode(Node):
     #Convert map coordinate to grid indices and set as occupied or free
     def map_to_grid(self, map_points, value):
 
-        inflate = 0.3*100 #Scale to centimeters, introduce inflation to wokr in configuration space
         x_map = map_points[0, :]
         y_map = map_points[1, :]
 
         x_grid_points = np.floor((x_map + self.map_xlength/2)/self.resolution) #Convert to grid indices
         y_grid_points = np.floor((y_map + self.map_ylength/2)/self.resolution)
-        inflate = np.floor(inflate/self.resolution)
 
         x_grid_points = x_grid_points.astype(int) #Make sure int index
         y_grid_points = y_grid_points.astype(int)
-        inflate = inflate.astype(int)
 
         x_grid_points, y_grid_points = self.filter_points(x_grid_points, y_grid_points, value)
 
-        #Set indice to either occupied or free depending on bool
-    
         self.grid[y_grid_points, x_grid_points] = value
 
-        # cmap = plt.cm.get_cmap('viridis', 5)
-        # grid_values = {
-        #     self.unknown: 'gray',
-        #     self.free: 'white',
-        #     self.obstacle: 'black',
-        #     self.object: 'blue',
-        #     self.box: 'red',
-        #     self.outside: 'lightgray'
-        # }
+        if value != self.free:
+            self.inflate_grid(x_grid_points, y_grid_points, value)
 
-        # plt.figure(figsize=(10, 10))
-        # plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
-        # cbar = plt.colorbar()
-        # cbar.set_ticks([0, 1, 2, 3, 4])
-        # plt.savefig('fantastic_map')
-        # plt.close()
+    def inflate_grid(self, x_grid_points, y_grid_points, value):
+        #Function which inflated the new points and a new grid and then merges it with old grid
+
+        inflate_size = int(3/self.resolution)
+        inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
+        
+        new_grid = np.zeros_like(self.grid)
+        new_grid[y_grid_points, x_grid_points] = 1
+        new_grid = binary_dilation(new_grid, structure=inflate_matrix)*value
+
+        mask_zeros = new_grid == 0
+        new_grid[mask_zeros] = -1
+
+        self.grid = np.maximum(self.grid, new_grid)
+
+    def publish_grid(self):
 
         #Publish grid
         msg_grid = Int16MultiArray()
         msg_grid.data = self.grid.flatten().tolist()
+        
         dim1 = MultiArrayDimension()
         dim2 = MultiArrayDimension()
+        
         dim1.label = 'rows'
         dim2.label = 'columns'
+
         dim1.size = self.grid.shape[0]
         dim2.size = self.grid.shape[1]
+
         msg_grid.layout.dim = [dim1, dim2]
+
+        cmap = plt.cm.get_cmap('viridis', 5)
+        plt.figure(figsize=(10, 10))
+        plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
+        cbar = plt.colorbar()
+        cbar.set_ticks([0, 1, 2, 3, 4])
+        plt.savefig('/home/group5/dd2419_ws/outputs/fantastic_map')
+        plt.close()
 
         self.grid_pub.publish(msg_grid)
     
@@ -218,27 +208,23 @@ class OccupancyGridMapNode(Node):
 
         #Mask to filter out of bounds points
         mask_in_bounds = (x_grid_points < self.grid.shape[1]) & (y_grid_points < self.grid.shape[0])
-
         x_grid_points = x_grid_points[mask_in_bounds]
         y_grid_points = y_grid_points[mask_in_bounds]
+
+        #If placing an an object or box we do not want to care about where in workspace
+        if value == self.object_box:
+            return x_grid_points, y_grid_points
         
         #Mask to filter out grids outside workspace
-        mask_workspace = self.grid[y_grid_points, x_grid_points] == self.outside 
+        mask_workspace_object_box = self.grid[y_grid_points, x_grid_points] >= self.outside_inflate
+        x_grid_points = x_grid_points[~mask_workspace_object_box]
+        y_grid_points = y_grid_points[~mask_workspace_object_box]
 
-        x_grid_points = x_grid_points[~mask_workspace]
-        y_grid_points = y_grid_points[~mask_workspace]
-
-        #filter out object values so they are not set as something else
-
-        if (value != self.object) and (value != self.box):
-            mask_not_object = self.grid[y_grid_points, x_grid_points] != self.object
-            x_grid_points = x_grid_points[mask_not_object]
-            y_grid_points = y_grid_points[mask_not_object]
-            
-        if value == self.free:
-            mask_unknown = self.grid[y_grid_points, x_grid_points] == self.unknown
-            x_grid_points = x_grid_points[mask_unknown]
-            y_grid_points = y_grid_points[mask_unknown]
+        # #If value is free we dont want to overwrite occupied space, assume static environment
+        # if value == self.free:
+        #     mask_unknown = self.grid[y_grid_points, x_grid_points] == self.unknown
+        #     x_grid_points = x_grid_points[mask_unknown]
+        #     y_grid_points = y_grid_points[mask_unknown]
 
         return x_grid_points, y_grid_points
 
@@ -246,13 +232,15 @@ class OccupancyGridMapNode(Node):
     def raytrace_float(self, lidar_x, lidar_y):
 
         start = np.zeros_like(lidar_x)
-        x_line = np.linspace(start, lidar_x, 1000)
-        y_line = np.linspace(start, lidar_y, 1000)
+        x_line = np.linspace(start, lidar_x, 10000)
+        y_line = np.linspace(start, lidar_y, 10000)
     
         x_free = np.concatenate(x_line)
         y_free = np.concatenate(y_line)
+
+        mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.5) & (x_free > abs(y_free))  #Cone shape
+        #mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)  #Box shape
         
-        mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)
         x_free = x_free[mask_rgbd_scope]
         y_free = y_free[mask_rgbd_scope]
 
@@ -271,3 +259,21 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+######   IF PLOTTING    ########
+# cmap = plt.cm.get_cmap('viridis', 5)
+# grid_values = {
+#     self.unknown: 'gray',
+#     self.free: 'white',
+#     self.obstacle: 'black',
+#     self.object_box: 'blue',
+#     self.outside: 'lightgray'
+# }
+
+# plt.figure(figsize=(10, 10))
+# plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
+# cbar = plt.colorbar()
+# cbar.set_ticks([0, 1, 2, 3, 4])
+# plt.savefig('fantastic_map')
+# plt.close()

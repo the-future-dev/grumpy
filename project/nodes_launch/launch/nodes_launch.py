@@ -7,29 +7,57 @@ import os
 
 def generate_launch_description():
     # Start nodes
-    odometry = Node(
-        package='odometry',
-        executable='odometry',
-        output='screen'
-    )
-
-    lidar = Node(
-        package='lidar',
-        executable='lidar',
-        output='screen'
-    ) 
-
-    drive_control = Node(
-        package='drive_control',
-        executable='drive_control',
-        output='screen'
-    )
-
-    # perception = Node(
-    #     package='perception_pkg',
-    #     executable='detection_node',
+    # brain_exploration = Node(
+    #     package='brain',
+    #     executable='brain_exploration',
     #     output='screen'
     # )
+
+    localization = Node(
+        package='localization',
+        executable='localization',
+        output='screen'
+    )
+    icp_node = Node(
+        package='icp_node',
+        executable='icp_node',
+        output='screen'
+    )
+    # occupancy_grid_map = Node(
+    #     package='occupancy_grid_map',
+    #     executable='occupancy_grid_map',
+    #     output='screen'
+    # )
+
+    # local_obstacle_avoidance = Node(
+    #     package='drive_control',
+    #     executable='local_obstacle_avoidance',
+    #     output = 'screen'
+    # )
+
+    # planner = Node(
+    #     package='planner',
+    #     executable='planner_exploration',
+    #     output='screen'
+    # )
+
+    # a_star = Node(
+    #     package='planner',
+    #     executable='a_star_algorithm',
+    #     output='screen'
+    # )
+
+    drive_path = Node(
+        package='drive_control',
+        executable='drive_2',
+        output='screen'
+    )
+
+    perception = Node(
+        package='perception_pkg',
+        executable='detection_node',
+        output='screen'
+    )
 
     object_mapping = Node(
         package='object_mapping',
@@ -37,11 +65,10 @@ def generate_launch_description():
         output='screen'
     )
 
-
     return LaunchDescription([
-        drive_control,
-        odometry,
-        lidar,
+        drive_path,
+        localization,
+        icp_node,
         # perception,
         object_mapping
     ])

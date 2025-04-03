@@ -14,13 +14,13 @@ def generate_launch_description():
         'dd2419_ws', 'rviz', 'default_rviz.rviz'
     )
 
-    # RViz Node
-    rviz_node = Node(
-        package='rviz2',                
-        executable='rviz2',              
-        output='screen',               
-        arguments=['-d', rviz_config_file]  
-    )
+    # # RViz Node
+    # rviz_node = Node(
+    #     package='rviz2',                
+    #     executable='rviz2',              
+    #     output='screen',               
+    #     arguments=['-d', rviz_config_file]  
+    # )
 
 
     # Start nodes
@@ -42,7 +42,18 @@ def generate_launch_description():
     #     output='screen'
     # )
 
+    workspace_perimeter = Node(
+        package='object_mapping',
+        executable='workspace_init',
+        output = 'screen'
+    )
 
+
+    brain_exploration = Node(
+        package='brain',
+        executable='brain_exploration',
+        output = 'screen'
+    )
 
     # Static Transforms
     static_tf_base_lidar = Node(
@@ -61,9 +72,11 @@ def generate_launch_description():
 
 
     return LaunchDescription([
-        rviz_node,
+        # rviz_node,
+        brain_exploration,
         icp,
         localization,
         static_tf_base_lidar,
+        workspace_perimeter
         # static_tf_base_imu
     ])
