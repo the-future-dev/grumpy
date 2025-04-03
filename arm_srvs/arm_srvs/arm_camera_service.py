@@ -239,46 +239,6 @@ class ArmCameraService(Node):
         return mask
 
 
-    # def find_objects(self, mask, image):
-    #     """
-    #     Args:
-    #         mask: np.array, required, the mask to find objects in
-    #     Returns:
-    #         centers: list, the centers of the objects found
-    #     Other functions:
-            
-    #     """
-
-    #     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask
-    #     centers     = []
-    #     max_area    = 0  # Current max area of a found contour
-    #     cx, cy      = 0, 0  # Zero if no center was found
-
-    #     self._logger.info(f'find_objects: Found {len(contours)} of contours')
-
-    #     for contour in contours:  # Loop through all contours
-    #         if cv2.contourArea(contour) > max(max_area, 25):  # Uses the greatest found area 
-    #             self._logger.info(f'find_objects: The size of the area of the object was {cv2.contourArea(contour)}')
-    #             (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
-    #             cx, cy, radius = int(cx), int(cy), int(radius)
-    #             centers.append((cx, cy))
-    #             self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
-
-    #             # M = cv2.moments(contour)  # Calculate the moments of the contour
-    #             # if M["m00"] != 0:  # Avoid division by zero
-    #             #     cx = int(M["m10"] / M["m00"])  
-    #             #     cy = int(M["m01"] / M["m00"])
-    #             #     centers.append((cx, cy))
-    #             #     self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
-
-    #             cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
-    #             cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
-
-    #     self._logger.info(f'find_objects: Found {len(centers)} of centers')
-
-    #     return (cx, cy), image
-
-
     def pixel_to_base_link(self, x_pixel, y_pixel):
         """
         Args:
@@ -321,8 +281,6 @@ class ArmCameraService(Node):
         self.servo_angle_publisher.publish(msg)
 
         time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
-
-        self._logger.info(f'publish_angles: angles: {angles}, curr: {self.current_angles}')
 
         return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
     

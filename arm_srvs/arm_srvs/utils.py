@@ -23,7 +23,7 @@ theta_servo3_view = 90
 # Constants in the robot arm links:
 l_5_4     = 0.10048  # From joint of servo 5 to joint of servo 4:
 l_4_3     = 0.094714  # From joint of servo 4 to joint of servo 3:
-l_3_2_ee  = 0.05071 + 0.11260 + 0.005 # From joint of servo 3 to joint of servo 2 + from joint servo 2 to end effector
+l_3_2_ee  = 0.05071 + 0.11260 # From joint of servo 3 to joint of servo 2 + from joint servo 2 to end effector
 l_3_cam_z = 0.046483  # z-distance from joint of servo 3 to the arm camera
 l_3_cam_x = 0.042169  # x-distance from joint of servo 3 to the arm camera
 
@@ -46,7 +46,7 @@ servos_offset = 150 # Allowed offset for the servos to be considered at the corr
 cam_pos = Pose()
 cam_pos.position.x = x_origin_servo5 + l_5_4 * np.sin(np.deg2rad(theta_servo5_view)) + l_4_3 + l_3_cam_x
 cam_pos.position.y = y_origin_servo5
-cam_pos.position.z = z_origin_servo5 + l_5_4 * np.cos(np.deg2rad(theta_servo5_view)) - l_3_cam_z - 0.035
+cam_pos.position.z = z_origin_servo5 + l_5_4 * np.cos(np.deg2rad(theta_servo5_view)) - l_3_cam_z
 
 # Camera parameters for calibration and undistortion of the image
 intrinsic_mtx = np.array([[438.783367, 0.000000, 305.593336],
@@ -145,7 +145,7 @@ def changed_thetas_correctly(pub_angles, curr_angles):
     for i in range(1, len(pub_angles)):
         if pub_angles[i] == -1:
             continue
-        elif not np.isclose(curr_angles[i], pub_angles[i], servos_offset):
+        elif not np.isclose(curr_angles[i], pub_angles[i], atol=servos_offset):
             correct = False
               
     return correct
