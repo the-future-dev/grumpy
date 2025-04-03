@@ -150,7 +150,7 @@ class PickService(Node):
         """
         # The hypotenuse (rho) from the origin of servo 5 to the object position in the xy-plane minus the distance servo 4 has already moved
         rho_dist = np.sqrt(np.power(x - utils.x_origin_servo5, 2) + np.power(y - utils.y_origin_servo5, 2)) - utils.rho_origin_servo4
-        z_dist   = - utils.z_origin_servo4  # The combined distance to the grip point in the z direction
+        z_dist   = utils.z_oc_g - utils.z_origin_servo4  # The combined distance to the grip point in the z direction
         self._logger.info(f'inverse_kinematics: rho_dist: {rho_dist}, z_dist: {z_dist}')
 
         # Calculate the angles for servo 3 and 4 in radians
