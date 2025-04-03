@@ -3,6 +3,7 @@ from grumpy_interfaces.srv import ArmCameraDetection
 import rclpy
 import rclpy.logging
 from rclpy.node import Node
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_msgs.msg import Int16MultiArray
 from sensor_msgs.msg import JointState, CompressedImage, Image
 from geometry_msgs.msg import Pose
@@ -23,11 +24,15 @@ class ArmCameraService(Node):
 
         self.bridge = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
 
+        self.service_cb_group = MutuallyExclusiveCallbackGroup()
+        self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
+
         # Create the drop service
         self.srv = self.create_service(
             ArmCameraDetection, 
             '/arm_services/arm_camera', 
-            self.camera_sequence
+            self.camera_sequence,
+            callback_group=self.service_cb_group
         )
 
         # Create the publisher and subscriber for the angles of the servos
@@ -47,14 +52,16 @@ class ArmCameraService(Node):
             JointState,
             '/servo_pos_publisher',
             self.current_servos,
-            1
+            1,
+            callback_group=self.subscriber_cb_group
         )
 
         self.image_subscriber = self.create_subscription(
-            Image,
-            '/arm_camera/image_raw',
+            CompressedImage,
+            '/arm_camera/image_raw/compressed',
             self.get_image_data,
-            1
+            10,
+            callback_group=self.subscriber_cb_group
         )
 
     
@@ -135,8 +142,8 @@ class ArmCameraService(Node):
         Other functions:
             Listens to the image message from the arm camera and sets a self variable to this data
         """
-
-        self.image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
+        
+        self.image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
 
 
     def get_object_position(self):
@@ -150,57 +157,39 @@ class ArmCameraService(Node):
             Uses the image data from the arm camera to detect objects and their positions
         """
 
-        time.sleep(0.5)
+        time.sleep(1.0)
         
-        cx, cy         = 0, 0  # No object found, set to 0, 0
-        image          = self.image
+        cx, cy = 0, 0  # No object found, set to 0, 0
+        image  = self.image
 
         undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
         hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
 
-        mask            = self.create_masks(hsv_image)  # Create a combined mask for red, green, and blue objects
-        mask            = cv2.medianBlur(mask, 5)
-        mask            = self.clean_mask(mask)  # Clean each mask using morphological operations
-        # x, y, image     = self.find_objects(mask, image)  # Find object centers
+        mask = self.create_masks(hsv_image)  # Create a combined mask for red, green, and blue objects
+        mask = cv2.medianBlur(mask, 5)
+        mask = self.clean_mask(mask)  # Clean each mask using morphological operations
 
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask
         # contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         areas = [cv2.contourArea(c) for c in contours]
 
-        if len(areas) < 1:
-            self.publish_image(image)
-            return
+        if len(areas) > 0:
+            max_index = np.argmax(areas)
+            contour = contours[max_index]
 
-        max_index = np.argmax(areas)
-        contour = contours[max_index]
+            (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
+            cx, cy, radius = int(cx), int(cy), int(radius)
+            
+            cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
+            cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
 
-        ########################
-
-        # cx, cy, w, h = cv2.boundingRect(contour)
-        # cv2.rectangle(image, (cx, cy), (cx+w, cy+h), (0, 255, 0), 3)
-
-        ########################
-
-        (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
-        cx, cy, radius = int(cx), int(cy), int(radius)
-        
-        cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
-        cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
-
-        ########################
-
-        # M = cv2.moments(contour)  # Calculate the moments of the contour
-        # if M["m00"] != 0:  # Avoid division by zero
-        #     cx = int(M["m10"] / M["m00"])  
-        #     cy = int(M["m01"] / M["m00"])
-
-        ########################
-
-        self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
+            self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
+        else:
+            self._logger.info(f'get_object_position: NO OBJECTS FOUND')
+            
+        self.publish_image(image)
 
         x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
-
-        self.publish_image(image)
 
         return x, y
 
@@ -217,20 +206,20 @@ class ArmCameraService(Node):
         """
         
         # Define HSV ranges
-        # lower_red1, upper_red1   = np.array([0, 120, 70]), np.array([10, 255, 255])
-        # lower_red2, upper_red2   = np.array([170, 120, 70]), np.array([180, 255, 255])
+        lower_red1, upper_red1   = np.array([0, 120, 70]), np.array([10, 255, 255])
+        lower_red2, upper_red2   = np.array([170, 120, 70]), np.array([180, 255, 255])
         lower_green, upper_green = np.array([35, 100, 50]), np.array([85, 255, 255])
-        # lower_blue, upper_blue   = np.array([100, 150, 50]), np.array([140, 255, 255])
+        lower_blue, upper_blue   = np.array([100, 150, 50]), np.array([140, 255, 255])
 
         # Create masks for each color
-        # mask_red1  = cv2.inRange(hsv_image, lower_red1, upper_red1)
-        # mask_red2  = cv2.inRange(hsv_image, lower_red2, upper_red2)
-        # red_mask   = mask_red1 | mask_red2  # Combine both red masks
+        mask_red1  = cv2.inRange(hsv_image, lower_red1, upper_red1)
+        mask_red2  = cv2.inRange(hsv_image, lower_red2, upper_red2)
+        red_mask   = mask_red1 | mask_red2  # Combine both red masks
         green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
-        # blue_mask  = cv2.inRange(hsv_image, lower_blue, upper_blue)
+        blue_mask  = cv2.inRange(hsv_image, lower_blue, upper_blue)
 
-        # return cv2.bitwise_or(red_mask, cv2.bitwise_or(green_mask, blue_mask))
-        return green_mask
+        return cv2.bitwise_or(red_mask, cv2.bitwise_or(green_mask, blue_mask))
+        # return green_mask
 
 
     def clean_mask(self, mask):
@@ -250,44 +239,44 @@ class ArmCameraService(Node):
         return mask
 
 
-    def find_objects(self, mask, image):
-        """
-        Args:
-            mask: np.array, required, the mask to find objects in
-        Returns:
-            centers: list, the centers of the objects found
-        Other functions:
+    # def find_objects(self, mask, image):
+    #     """
+    #     Args:
+    #         mask: np.array, required, the mask to find objects in
+    #     Returns:
+    #         centers: list, the centers of the objects found
+    #     Other functions:
             
-        """
+    #     """
 
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask
-        centers     = []
-        max_area    = 0  # Current max area of a found contour
-        cx, cy      = 0, 0  # Zero if no center was found
+    #     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask
+    #     centers     = []
+    #     max_area    = 0  # Current max area of a found contour
+    #     cx, cy      = 0, 0  # Zero if no center was found
 
-        self._logger.info(f'find_objects: Found {len(contours)} of contours')
+    #     self._logger.info(f'find_objects: Found {len(contours)} of contours')
 
-        for contour in contours:  # Loop through all contours
-            if cv2.contourArea(contour) > max(max_area, 25):  # Uses the greatest found area 
-                self._logger.info(f'find_objects: The size of the area of the object was {cv2.contourArea(contour)}')
-                (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
-                cx, cy, radius = int(cx), int(cy), int(radius)
-                centers.append((cx, cy))
-                self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
+    #     for contour in contours:  # Loop through all contours
+    #         if cv2.contourArea(contour) > max(max_area, 25):  # Uses the greatest found area 
+    #             self._logger.info(f'find_objects: The size of the area of the object was {cv2.contourArea(contour)}')
+    #             (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
+    #             cx, cy, radius = int(cx), int(cy), int(radius)
+    #             centers.append((cx, cy))
+    #             self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
 
-                # M = cv2.moments(contour)  # Calculate the moments of the contour
-                # if M["m00"] != 0:  # Avoid division by zero
-                #     cx = int(M["m10"] / M["m00"])  
-                #     cy = int(M["m01"] / M["m00"])
-                #     centers.append((cx, cy))
-                #     self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
+    #             # M = cv2.moments(contour)  # Calculate the moments of the contour
+    #             # if M["m00"] != 0:  # Avoid division by zero
+    #             #     cx = int(M["m10"] / M["m00"])  
+    #             #     cy = int(M["m01"] / M["m00"])
+    #             #     centers.append((cx, cy))
+    #             #     self._logger.info(f'find_objects: cx = {cx} and cy = {cy}')
 
-                cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
-                cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
+    #             cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
+    #             cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
 
-        self._logger.info(f'find_objects: Found {len(centers)} of centers')
+    #     self._logger.info(f'find_objects: Found {len(centers)} of centers')
 
-        return (cx, cy), image
+    #     return (cx, cy), image
 
 
     def pixel_to_base_link(self, x_pixel, y_pixel):
@@ -305,8 +294,8 @@ class ArmCameraService(Node):
         fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
 
-        x = (y_pixel - cy) * (utils.cam_pos.position.z / fy) + utils.cam_pos.position.x
-        y = (x_pixel - cx) * (utils.cam_pos.position.z / fx) + utils.cam_pos.position.y
+        x = - (y_pixel - cy) * (utils.cam_pos.position.z / fy) + utils.cam_pos.position.x
+        y = - (x_pixel - cx) * (utils.cam_pos.position.z / fx) + utils.cam_pos.position.y
 
         return x, y
 
@@ -333,6 +322,8 @@ class ArmCameraService(Node):
 
         time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
 
+        self._logger.info(f'publish_angles: angles: {angles}, curr: {self.current_angles}')
+
         return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
     
 
@@ -343,16 +334,21 @@ class ArmCameraService(Node):
 
 def main(args=None):
     rclpy.init()
-    armCameraServie = ArmCameraService()
+    armCameraService = ArmCameraService()
+
+    # Use MultiThreadedExecutor to allow concurrent callbacks
+    executor = rclpy.executors.MultiThreadedExecutor()
+    executor.add_node(armCameraService)
 
     try:
-        rclpy.spin(armCameraServie)
-    except KeyboardInterrupt:
-        pass
+        executor.spin()
+    # except KeyboardInterrupt:
+    #     pass
+    finally:
+        armCameraService.destroy_node()
+        rclpy.shutdown()
 
-    armCameraServie.destroy_node()
-
-    rclpy.shutdown()
+    # rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

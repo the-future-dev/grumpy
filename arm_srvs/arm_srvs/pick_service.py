@@ -3,6 +3,7 @@ from grumpy_interfaces.srv import PickAndDropObject
 import rclpy
 import rclpy.logging
 from rclpy.node import Node
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_msgs.msg import Int16MultiArray
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import Pose
@@ -16,12 +17,16 @@ class PickService(Node):
         super().__init__('pick_srv')
 
         self.current_angles = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
+
+        self.service_cb_group = MutuallyExclusiveCallbackGroup()
+        self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
         
         # Create the pick service
         self.srv = self.create_service(
             PickAndDropObject, 
             '/arm_services/pick_object', 
-            self.pick_up_sequence
+            self.pick_up_sequence,
+            callback_group=self.service_cb_group
         )
 
         # Create the publisher and subscriber for the angles of the servos
@@ -35,7 +40,8 @@ class PickService(Node):
             JointState,
             '/servo_pos_publisher',
             self.current_servos,
-            1
+            1,
+            callback_group=self.subscriber_cb_group
         )
 
 
@@ -144,10 +150,12 @@ class PickService(Node):
         """
         # The hypotenuse (rho) from the origin of servo 5 to the object position in the xy-plane minus the distance servo 4 has already moved
         rho_dist = np.sqrt(np.power(x - utils.x_origin_servo5, 2) + np.power(y - utils.y_origin_servo5, 2)) - utils.rho_origin_servo4
-        z_dist = z - utils.z_origin_servo4  # The z position of the object minus the z position of servo 4
+        z_dist   = - utils.z_origin_servo4  # The combined distance to the grip point in the z direction
+        self._logger.info(f'inverse_kinematics: rho_dist: {rho_dist}, z_dist: {z_dist}')
 
         # Calculate the angles for servo 3 and 4 in radians
-        cos_d_t_servo3 = (rho_dist ** 2 + z_dist ** 2 - utils.l_4_3 ** 2 - utils.l_3_2_ee ** 2) / (2 * utils.l_4_3 * utils.l_3_2_ee)
+        cos_d_t_servo3     = (rho_dist ** 2 + z_dist ** 2 - utils.l_4_3 ** 2 - utils.l_3_2_ee ** 2) / (2 * utils.l_4_3 * utils.l_3_2_ee)
+        self._logger.info(f'inverse_kinematics: cos_d_t_servo3: {cos_d_t_servo3}')
         delta_theta_servo3 = - np.arctan2(np.sqrt(1 - cos_d_t_servo3 ** 2), cos_d_t_servo3)
         delta_theta_servo4 = (np.arctan2(z_dist, rho_dist) - 
                               np.arctan2(utils.l_3_2_ee * np.sin(delta_theta_servo3), utils.l_4_3 + (utils.l_3_2_ee * np.cos(delta_theta_servo3))))
@@ -181,6 +189,10 @@ class PickService(Node):
 
         time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
 
+        self._logger.info(f'publish_angles: angles: {angles}, curr: {self.current_angles}')
+
+        self._logger.info(f'publish_angles: changed_thetas_correctly: {utils.changed_thetas_correctly(angles, self.current_angles)}')
+
         return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
 
 
@@ -188,14 +200,19 @@ def main(args=None):
     rclpy.init()
     pickService = PickService()
 
+    # Use MultiThreadedExecutor to allow concurrent callbacks
+    executor = rclpy.executors.MultiThreadedExecutor()
+    executor.add_node(pickService)
+
     try:
-        rclpy.spin(pickService)
-    except KeyboardInterrupt:
-        pass
+        executor.spin()
+    # except KeyboardInterrupt:
+    #     pass
+    finally:
+        pickService.destroy_node()
+        rclpy.shutdown()
 
-    pickService.destroy_node()
-
-    rclpy.shutdown()
+    # rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
