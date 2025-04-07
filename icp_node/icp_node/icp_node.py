@@ -35,11 +35,14 @@ class ICP_node(Node):
         # Initialize subscriber pose from update step of EKF
         self.create_subscription(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', self.localization_pose_cb, 10)
 
+        # Initialize publisher that drive_2 can subscribe to
+        self.have_new_transform_pub = self.create_publisher(TransformStamped, 'ICP/have_new_transform', 1)
+
         # Initialize subscriber to brain
-        self.create_subscription(Bool, '/icp_node/get_new_reference_scan', self.get_new_ref_scan_cb, 1)
+        # self.create_subscription(Bool, '/icp_node/get_get_new_reference_scan', self.get_new_ref_scan_cb, 1)
 
         # Initialize publiher to brain
-        self.have_scan_pub = self.create_publisher(Bool, '/icp_node/have_scan', 1)
+        # self.have_scan_pub = self.create_publisher(Bool, '/icp_node/have_scan', 1)
 
         # Initialize the transform buffer
         self.tf_buffer = Buffer()
@@ -59,17 +62,19 @@ class ICP_node(Node):
         # Initialize reference cloud
         self.reference_clouds = []
 
-        # Initialize bool to handle getting new_reference_scan
-        self.new_reference_scan = True
+        # Initialize bool to handle getting get_new_reference_scan
+        self.get_new_reference_scan = True
 
         # intialize attribute for transform
         self.t = None
         self.t_mat_old = None
         self.outlier_margin = 0.5
 
-        # Initialize counter
+        # Initialize counters
         self.counter = 0
         self.N = 10
+        self.bad_scan_counter  = 0
+        self.threshold_new_scan = 5
 
         # Initialize the path publisher
         self._path_pub = self.create_publisher(Path, 'path', 10)
@@ -155,18 +160,18 @@ class ICP_node(Node):
         pointcloud = self.create_open3d_pointcloud(cloud_odom)
 
         # get new reference scan if bool is true, this is the case in the origin and when set by the brain
-        if self.new_reference_scan:
-            self.new_reference_scan = False
+        if self.get_new_reference_scan:
+            self.get_new_reference_scan = False
             pos = (self.x,self.y)
-            self.get_logger().info(f'Position from localization when getting new reference scan; x: {self.x}, y: {self.y}')
+            # self.get_logger().info(f'Position from localization when getting new reference scan; x: {self.x}, y: {self.y}')
 
             # append position of robot for the pointcloud and the pointcloud transformed to odom frame
             self.reference_clouds.append((pos, pointcloud))
 
             # publish message that new scan is added to brain
-            bool_msg = Bool()
-            bool_msg.data = True
-            self.have_scan_pub.publish(bool_msg)
+            # bool_msg = Bool()
+            # bool_msg.data = True
+            # self.have_scan_pub.publish(bool_msg)
 
             # set reference cloud
             self.ref_cloud = pointcloud
@@ -206,11 +211,14 @@ class ICP_node(Node):
             # self.get_logger().info(f'Not good enough conditions, fitness: {overlap}, rmse: {rmse}')
             self.t.header.stamp = msg.header.stamp
             self._tf_broadcaster.sendTransform(self.t)
+
+            self.bad_scan_counter += 1
+
+            if self.bad_scan_counter >= self.threshold_new_scan:
+                self.get_logger().info(f'{self.threshold_new_scan} insufficent scans in a row, getting new reference scan')
+                self.get_new_reference_scan = True 
+                self.bad_scan_counter = 0 # reset counter
             return
-        
-        self.get_logger().info('Updating map-odom tf')
-        # reset counter since an update is going to be processed
-        self.counter = self.N
 
         # copy result from icp, have to copy to be able to write to it
         transform_matrix = result_icp.transformation.copy()
@@ -231,6 +239,13 @@ class ICP_node(Node):
             self._tf_broadcaster.sendTransform(self.t)
             return 
 
+        # reset bad scan counter so that it is only when multiple scans are bad in a row that triggers a new reference scan
+        self.bad_scan_counter = 0
+        
+        self.get_logger().info('Updating map-odom tf')
+        
+        # reset counter since an update is going to be processed
+        self.counter = self.N
 
         self.t_mat_old = transform_matrix
 
@@ -252,12 +267,13 @@ class ICP_node(Node):
         self.t.transform.rotation.w = quat[3]
 
         self._tf_broadcaster.sendTransform(self.t)
+        self.have_new_transform_pub.publish(self.t)
 
-    def get_new_ref_scan_cb(self, msg:Bool):
-        """
-        Callback to set the bool variable get
-        """
-        self.new_reference_scan = msg.data
+    # def get_new_ref_scan_cb(self, msg:Bool):
+    #     """
+    #     Callback to set the bool variable get
+    #     """
+    #     self.get_new_reference_scan = msg.data
 
 
     def localization_pose_cb(self, msg: PoseWithCovarianceStamped):
