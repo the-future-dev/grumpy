@@ -33,14 +33,14 @@ rho_origin_servo4 = l_5_4 * np.cos(np.deg2rad(90) - np.deg2rad(theta_servo5_pick
     
 # Angles of the servos for different tasks:
 initial_thetas = [3000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around without object
-drive_thetas   = [-1, 12000, 9000, 12000, 12000, 12000]  # Arm pointing straight up, gripper tilted forward, used for driving around with object
+drive_thetas   = [-1, 12000, 7000, 12000, 12000, 12000]  # Arm pointing straight up, gripper tilted forward, used for driving around with object
 drop_thetas    = [-1 , -1, 3000, 14500, 9000, -1]  # Angles for droping objects into the bins
 view_thetas    = [-1, -1, 3000, 18000, 9500, -1]  # Angles when the arm camera has a view over the entire pick-up area
 still_thetas   = [-1] * 6 # Angles for when the arm should not move
 
 times = [1500] * 6  # Standard angle movement times to all positions
 
-servos_offset = 300 # Allowed offset for the servos to be considered at the correct position
+servos_offset = 150 # Allowed offset for the servos to be considered at the correct position
 
 # The position of the camera in the base_link frame when in view position
 cam_pos = Pose()
@@ -80,7 +80,7 @@ def extract_object_position(node, pose:Pose):
     return x, y, z
 
 
-def get_delta_theta_6(x, y):
+def get_theta_6(x, y):
     """
     Args:
         x: float, required, x-position of the object in base_link frame
@@ -91,11 +91,11 @@ def get_delta_theta_6(x, y):
 
     """
 
-    x_dist = x - x_origin_servo5
-    y_dist = y - y_origin_servo5
+    x_dist        = x - x_origin_servo5  # The distance from the origin of servo 5 to the object in the x direction
+    y_dist        = y - y_origin_servo5  # The distance from the origin of servo 5 to the object in the y direction
+    delta_theta_6 = np.rad2deg(np.arctan2(y_dist, x_dist))  # Calculate the angle for servo 6 in radians and convert to degrees
 
-    # Calculate the angle for servo 6 in radians and convert to degrees
-    return np.rad2deg(np.arctan2(y_dist, x_dist))
+    return round(initial_thetas[5] + delta_theta_6 * 100)  # New angle of servo 6, round and convert to int
 
 
 def check_angles_and_times(node, angles, times):
@@ -116,7 +116,7 @@ def check_angles_and_times(node, angles, times):
     assert all(isinstance(angle, int) for angle in angles), node._logger.error('angles was not of type int')
     assert all(isinstance(time, int) for time in times), node._logger.error('times was not of type int')
     assert all(1000 <= time <= 5000 for time in times), node._logger.error('times was not within the interval [1000, 5000]')
-    assert (0 <= angles[0] <= 11000) or (angles[0] == -1), node._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
+    assert (0 <= angles[0] <= 13000) or (angles[0] == -1), node._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
     assert (0 <= angles[1] <= 24000) or (angles[1] == -1), node._logger.error(f'servo 2 was not within the interval [0, 24000] or -1, got {angles[1]}')
     assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), node._logger.error(f'servo 3 was not within the interval [2500, 21000] or -1, got {angles[2]}')
     assert (3000 <= angles[3] <= 21500) or (angles[3] == -1), node._logger.error(f'servo 4 was not within the interval [3000, 21500] or -1, got {angles[3]}')
@@ -124,6 +124,39 @@ def check_angles_and_times(node, angles, times):
     assert (0 <= angles[5] <= 20000) or (angles[5] == -1), node._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
 
     node._logger.info('Checked the angles and times')
+
+
+def inverse_kinematics(x, y, z):
+    """
+    Args:
+        x: float, required, x-position of the object in base_link frame
+        y: float, required, y-position of the object in base_link frame
+        z: float, required, z-position of the object in base_link frame
+    Returns:
+        delta_theta_3: float, degrees that servo 3 has to rotate from its position
+        delta_theta_4: float, degrees that servo 4 has to rotate from its position
+    Other functions:
+
+    """
+    # The hypotenuse (rho) from the origin of servo 5 to the object position in the xy-plane minus the distance servo 4 has already moved
+    rho_dist = np.sqrt(np.power(x - x_origin_servo5, 2) + np.power(y - y_origin_servo5, 2)) - rho_origin_servo4
+    # z_dist   = utils.z_oc_g - utils.z_origin_servo4  # The combined distance to the grip point in the z direction
+    z_dist   = - z_origin_servo4  # The combined distance to the grip point in the z direction
+
+    # Calculate the angles for servo 3 and 4 in radians
+    cos_d_t_servo3     = (rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) / (2 * l_4_3 * l_3_2_ee)
+    delta_theta_servo3 = - np.arctan2(np.sqrt(1 - cos_d_t_servo3 ** 2), cos_d_t_servo3)
+    delta_theta_servo4 = (np.arctan2(z_dist, rho_dist) - 
+                            np.arctan2(l_3_2_ee * np.sin(delta_theta_servo3), l_4_3 + (l_3_2_ee * np.cos(delta_theta_servo3))))
+    
+    # Convert the angles to degrees and adjust for the initial angle of servo 5
+    delta_theta_servo3 = np.rad2deg(delta_theta_servo3)
+    delta_theta_servo4 = (- np.rad2deg(delta_theta_servo4)) + (90 - theta_servo5_pick)
+
+    theta_servo3 = round(initial_thetas[2] + delta_theta_servo3 * 100)  # New angle of servo 3, round and convert to int
+    theta_servo4 = round(initial_thetas[3] + delta_theta_servo4 * 100)  # New angle of servo 4, round and convert to int
+
+    return theta_servo3, theta_servo4
 
 
 def changed_thetas_correctly(pub_angles, curr_angles):
@@ -142,10 +175,10 @@ def changed_thetas_correctly(pub_angles, curr_angles):
     if len(pub_angles) != len(curr_angles):
         correct = False
     
-    # for i in range(1, len(pub_angles)):
-    #     if pub_angles[i] == -1:
-    #         continue
-    #     elif not np.isclose(curr_angles[i], pub_angles[i], atol=servos_offset):
-    #         correct = False
+    for i in range(1, len(pub_angles)):
+        if pub_angles[i] == -1:
+            continue
+        elif not np.isclose(curr_angles[i], pub_angles[i], atol=servos_offset):
+            correct = False
               
     return correct

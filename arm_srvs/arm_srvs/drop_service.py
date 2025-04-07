@@ -1,7 +1,7 @@
 from grumpy_interfaces.srv import PickAndDropObject
+from grumpy_interfaces.msg import ObjectDetection1D
 
 import rclpy
-import rclpy.logging
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_msgs.msg import Int16MultiArray
@@ -17,6 +17,9 @@ class DropService(Node):
         super().__init__('drop_srv')
 
         self.current_angles = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
+
+        self.box_pose = Pose()  # The position of the object in base_link frame
+        self.min_x    = 0.0  # The closest x-position of an object in base_link frame 
 
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
@@ -45,11 +48,20 @@ class DropService(Node):
             callback_group=self.subscriber_cb_group
         )
 
+        # Create the subscriber to the object detection
+        self.servo_subscriber = self.create_subscription(
+            ObjectDetection1D,
+            '/perception/object_poses',
+            self.get_object_pose,
+            10,
+            callback_group=self.subscriber_cb_group
+        )
+
     
     def drop_sequence(self, request, response):
         """
         Args:
-            request: Pose, required, the position and orientation of the box
+
         Returns:
             response: bool, if the drop was successful or not
         Other functions:
@@ -57,9 +69,9 @@ class DropService(Node):
             Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
         """
 
-        step        = "Start"
-        x, y, z     = 0, 0, 0
-        end_strings = ["Success", "Failure"]
+        step        = "Start"  # The current step in the FSM
+        x, y        = 0, 0  # The x and y position of the object
+        end_strings = ["Success", "Failure"]  # The end strings of the FSM
 
         while step not in end_strings:
             self._logger.info(f'{step}')  # Log the current step
@@ -68,14 +80,10 @@ class DropService(Node):
                 case "Start":  # Make sure the arm is in the initial position but does not drop the object
                     thetas    = utils.initial_thetas.copy()  # Copy the initial thetas
                     thetas[0] = -1  # Make sure the gripper does not move
-                    next_step = "GetPosition"  # Next step
-
-                case "GetPosition":  # Get the position of the box from the request
-                    x, y, _   = utils.extract_object_position(self, request.pose)  # Get the position of the box from the request
-                    thetas    = utils.still_thetas  # Do not move the arm
                     next_step = "RotateBase"  # Next step
 
                 case "RotateBase":  # Move servo 6/base to the correct angle
+                    x, y         = self.box_pose.position.x, self.box_pose.position.y  # Get the x and y position of the box
                     # Calculate the change of the angle for servo 6, then new angle of servo 6, round and convert to int
                     theta_servo6 = round(utils.initial_thetas[5] + utils.get_delta_theta_6(x, y) * 100)
                     thetas       = utils.still_thetas.copy()  # Move part of arm
@@ -104,6 +112,9 @@ class DropService(Node):
         
         self._logger.info(f'{step}')
         response.success = True if step == "Success" else False
+
+        self.box_pose = Pose()  # Reset the box pose
+        self.min_x    = 0.0  # Reset the minimum x-position of the object
         
         return response
 
@@ -125,6 +136,29 @@ class DropService(Node):
         # assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
 
         self.current_angles = current_angles
+
+    
+    def get_object_pose(self, msg:ObjectDetection1D):
+        """
+        Args:
+            msg: ObjectDetection1D, required, x, y and z coordinates of the object in base_link
+        Returns:
+
+        Other functions:
+            Updates the poisition of the object while the robot is alinging itself
+            Logic to choose the closest object
+        """
+
+        pose  = msg.pose
+
+        assert isinstance(pose.position.x, float), self._logger.error('x was not type float')
+        assert isinstance(pose.position.y, float), self._logger.error('y was not type float')
+
+        # If there are more than one object, choose the closest one, first seen object is used as the base line. 
+        # The allowed discrepancy is 0.01m for the object detection from the RGB-D camera 
+        if pose.position.x <= self.min_x + 0.01 or self.min_x == 0.0:
+            self.box_pose = pose
+            self.min_x    = pose.position.x  # Update the closest x-position of an object in base_link frame 
 
     
     def publish_angles(self, angles, times):
