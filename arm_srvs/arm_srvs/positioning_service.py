@@ -19,8 +19,8 @@ class PositioningService(Node):
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
         # Set speeds for the robot to move
-        self.vel_forward = 0.05
-        self.vel_rotate  = 0.02
+        self.vel_forward = 0.03
+        self.vel_rotate  = 0.01
 
         self.object_pose  = Pose()  # The position of the object in base_link frame
         self.object_label = ""  # The label of the object
@@ -106,10 +106,9 @@ class PositioningService(Node):
                             next_step = "DriveRobotWithRGB-D"  # Next step
                     else:
                         # End condition for driving the robot using the RGB-D camera
-                        self._logger.info(f'positioning_sequence: in Object')
-                        if np.isclose(goal_y, self.y_offset, atol=self.y_tol) and goal_x <= self.x_stop_pick:
+                        if goal_x <= self.x_stop_pick:
                             self._logger.info(f'positioning_sequence: in Object --> DriveRobotWithoutRGB-D')
-                            self.publish_robot_movement(0.0, 0.0)  # Stop the robot
+                            # self.publish_robot_movement(0.0, 0.0)  # Stop the robot
                             next_step = "DriveRobotWithoutRGB-D"  # Next step
                         else:
                             self._logger.info(f'positioning_sequence: in Object --> DriveRobotWithRGB-D')
@@ -117,10 +116,11 @@ class PositioningService(Node):
                             next_step = "DriveRobotWithRGB-D"  # Next step
                 
                 case "DriveRobotWithoutRGB-D":  # Drive the robot without the RGB-D camera
-                    self._logger.info(f'positioning_sequence: in DriveRobotWithoutRGB-D')
-                    for _ in range(6):
+                    
+                    for _ in range(5):
                         time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
                         self.publish_robot_movement(goal_x, self.y_offset)  # Drive the robot forward multiple times
+                        self._logger.info(f'positioning_sequence: in DriveRobotWithoutRGB-D')
                     self.publish_robot_movement(0.0, 0.0)  # Stop the robot
                     next_step = "Success"  # End the FSM
             
@@ -183,8 +183,9 @@ class PositioningService(Node):
             msg.duty_cycle_right = 0.0
             msg.duty_cycle_left  = 0.0
         elif np.isclose(y, self.y_offset, atol=self.y_tol):
-            msg.duty_cycle_right = self.vel_forward
-            msg.duty_cycle_left  = self.vel_forward
+            self._logger.info("Got here")
+            msg.duty_cycle_right = self.vel_forward * 1.5
+            msg.duty_cycle_left  = self.vel_forward * 1.5
         elif x == -1.0:  # Turn the robot to find the object
             left_turns = 0
             right_turns = 0

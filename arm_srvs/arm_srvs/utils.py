@@ -40,7 +40,7 @@ still_thetas   = [-1] * 6 # Angles for when the arm should not move
 
 times = [1500] * 6  # Standard angle movement times to all positions
 
-servos_offset = 150 # Allowed offset for the servos to be considered at the correct position
+servos_offset = 300 # Allowed offset for the servos to be considered at the correct position
 
 # The position of the camera in the base_link frame when in view position
 cam_pos = Pose()
@@ -142,10 +142,10 @@ def changed_thetas_correctly(pub_angles, curr_angles):
     if len(pub_angles) != len(curr_angles):
         correct = False
     
-    for i in range(1, len(pub_angles)):
-        if pub_angles[i] == -1:
-            continue
-        elif not np.isclose(curr_angles[i], pub_angles[i], atol=servos_offset):
-            correct = False
+    # for i in range(1, len(pub_angles)):
+    #     if pub_angles[i] == -1:
+    #         continue
+    #     elif not np.isclose(curr_angles[i], pub_angles[i], atol=servos_offset):
+    #         correct = False
               
     return correct

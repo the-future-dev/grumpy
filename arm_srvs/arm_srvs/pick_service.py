@@ -96,7 +96,7 @@ class PickService(Node):
                 
                 case "GraspObject":  # Grasp the object
                     thetas    = utils.still_thetas.copy()  # Move part of arm
-                    thetas[0] = 10000  # Close the gripper
+                    thetas[0] = 10500  # Close the gripper
                     times[0]  = 3000  # Set the time to slowly close the gripper
                     next_step = "DrivePosition"  # Next step
 

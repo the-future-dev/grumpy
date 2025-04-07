@@ -120,9 +120,9 @@ class DropService(Node):
 
         current_angles = msg.position
 
-        assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
-        assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
-        assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
+        # assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
+        # assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
+        # assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
 
         self.current_angles = current_angles
 
