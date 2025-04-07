@@ -21,11 +21,10 @@ class SampleDriveControlNode(Node):
         self.vel_forward = 0.13
         self.vel_rotate = 0.09
         self.vel_small_rotate = 0.015
-        self.vel_arrived = 0.05
+        self.vel_arrived = 0.0
 
         # stop variable
         self.stop = False
-        self.drive_to_free = False
 
         # Initialize map odom transform variable and subscribe to topic where tf is published
         self.tf_map_odom = None
@@ -40,22 +39,26 @@ class SampleDriveControlNode(Node):
         self.drive_feedback = self.create_publisher(Bool, 'drive/feedback', 1)
 
         self.create_subscription(Path, 'drive/path', self.path_cb, 1)
-        self.create_subscription(Bool, 'drive/stop', self.stop_cb, 1)
-        self.create_subscription(Path, 'avoidance/drive_free', self.drive_free_cb, 1)
-        
+        self.create_subscription(Bool, 'drive/stop', self.stop_cb, 2)        
 
     def map_odom_tf_cb(self, msg:TransformStamped):
         """
         Callback that sets the latest map-odom transform from ICP node
         """
-        self.get_logger().info('Updated map-odom transform from ICP node')
+        # self.get_logger().info('Updated map-odom transform from ICP node')
         self.tf_map_odom = msg
-    
     
     def path_cb(self, msg:Path):
         #Call back that iterates in poses and drives to them, can maybe implement offset if it is needed
 
-        self.drive_to_free = False
+        if self.stop == True:
+            self.get_logger().info(f'Stopping ')
+            msg_stop = DutyCycles()
+            msg_stop.duty_cycle_right = 0.0
+            msg_stop.duty_cycle_left = 0.0
+            self.motor_publisher.publish(msg_stop)
+            self.stop = False
+            return
 
         for pose in msg.poses:
           result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
@@ -75,27 +78,26 @@ class SampleDriveControlNode(Node):
         #Callback that sets stop variable to True if stop
         self.stop = msg.data
 
-    def drive_free_cb(self, msg:Path):
-        self.get_logger().info('In drive free callback')
+    # def drive_free_cb(self, msg:Path):
+    #     self.get_logger().info('In drive free callback')
 
-        self.drive_to_free = True 
-        self.stop = False
+    #     self.drive_to_free = True 
+    #     self.stop = False
         
-        for pose in msg.poses:
-            self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+    #     for pose in msg.poses:
+    #         self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
 
-        self.drive_to_free = False
-        msg_stop = DutyCycles()
-        msg_stop.duty_cycle_left = 0.0
-        msg_stop.duty_cycle_right = 0.0
-        self.motor_publisher.publish(msg_stop)
+    #     self.drive_to_free = False
+    #     msg_stop = DutyCycles()
+    #     msg_stop.duty_cycle_left = 0.0
+    #     msg_stop.duty_cycle_right = 0.0
+    #     self.motor_publisher.publish(msg_stop)
 
     def set_drive_input(self, x, y):
 
         msg = DutyCycles()
         sample_point = PointStamped()
-        from_frame = 'odom'
-
+        from_frame = 'map'
 
         sample_point.header.frame_id = 'map'
         sample_point.header.stamp = rclpy.time.Time()
@@ -110,8 +112,8 @@ class SampleDriveControlNode(Node):
             #     self.get_logger().info(f'Stopping, in occupied zone')
             #     return False
 
-            # tf_future = self.tf_buffer.wait_for_transform_async('base_link', from_frame, self.get_clock().now())
-            # rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+            tf_future = self.tf_buffer.wait_for_transform_async('base_link', from_frame, self.get_clock().now())
+            rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 
             try:
                 tf_odom_base_link = self.tf_buffer.lookup_transform('base_link', from_frame, rclpy.time.Time()) # get latest available transform
@@ -119,14 +121,14 @@ class SampleDriveControlNode(Node):
                 self.get_logger().info(f'could not transform{ex}')
                 continue
             
-            # tranform point from map to odom, using transform from callback or if it is not set yet, assume map-odom is the same
-            if self.tf_map_odom is None:
-                point_odom = sample_point
-            else:   
-                point_odom  = tf2_geometry_msgs.do_transform_point(sample_point, self.tf_map_odom)
+            # # tranform point from map to odom, using transform from callback or if it is not set yet, assume map-odom is the same
+            # if self.tf_map_odom is None:
+            #     point_odom = sample_point
+            # else:   
+            #     point_odom  = tf2_geometry_msgs.do_transform_point(sample_point, self.tf_map_odom)
 
             #Transform point from odom to base_link
-            point_base_link = tf2_geometry_msgs.do_transform_point(point_odom, tf_odom_base_link)
+            point_base_link = tf2_geometry_msgs.do_transform_point(sample_point, tf_odom_base_link)
             x = point_base_link.point.x
             y = point_base_link.point.y
         
@@ -154,8 +156,8 @@ class SampleDriveControlNode(Node):
             # if self.stop == True and self.drive_to_free == False:
             #     return False
             
-            # tf_future = self.tf_buffer.wait_for_transform_async('base_link', from_frame, self.get_clock().now())
-            # rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+            tf_future = self.tf_buffer.wait_for_transform_async('base_link', from_frame, self.get_clock().now())
+            rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 
             try:
                 tf_odom_base_link = self.tf_buffer.lookup_transform('base_link', from_frame, rclpy.time.Time()) # get latest available transform
@@ -163,14 +165,14 @@ class SampleDriveControlNode(Node):
                 self.get_logger().info(f'could not transform{ex}')
                 continue
             
-            # tranform point from map to odom, using transform from callback or if it is not set yet, assume map-odom is the same
-            if self.tf_map_odom is None:
-                point_odom = sample_point
-            else:   
-                point_odom  = tf2_geometry_msgs.do_transform_point(sample_point, self.tf_map_odom)
+            # # tranform point from map to odom, using transform from callback or if it is not set yet, assume map-odom is the same
+            # if self.tf_map_odom is None:
+            #     point_odom = sample_point
+            # else:   
+            #     point_odom  = tf2_geometry_msgs.do_transform_point(sample_point, self.tf_map_odom)
 
             #Transform point from odom to base_link
-            point_base_link = tf2_geometry_msgs.do_transform_point(point_odom, tf_odom_base_link)
+            point_base_link = tf2_geometry_msgs.do_transform_point(sample_point, tf_odom_base_link)
             x = point_base_link.point.x
             y = point_base_link.point.y
 

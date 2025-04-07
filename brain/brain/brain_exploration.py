@@ -12,7 +12,6 @@ from nav_msgs.msg import Path
 from std_msgs.msg import Bool
 from geometry_msgs.msg import PoseStamped
 
-
 # Behaviours
 class NoUnknownSpaceLeft(py_trees.behaviour.Behaviour):
     """
@@ -46,14 +45,15 @@ class GetPath(py_trees.behaviour.Behaviour):
         """
         Method that will be exectued when behaviour is ticked
         """
+        self.node.get_logger().info(f'\nhave_path = {self.node.have_path},\n get_path = {self.node.get_path},\n have_goal = {self.node.have_goal}\n, get_goal = {self.node.get_goal}\n')
         if self.node.have_path:
             # if we have a path we want to get path next time we go into this part of the behaviour
             self.node.get_path = True
-            self.node.get_logger().info('We have a path to pass on to DriveToGoal')
+            self.node.get_logger().debug('We have a path to pass on to DriveToGoal')
             return py_trees.common.Status.SUCCESS
 
         else:
-            self.node.get_logger().info('We do not have a path')
+            self.node.get_logger().debug('We do not have a path')
             if self.node.have_goal:
                 # if we have a goal we want to get goal next time we go into this part of the behaviour
                 self.node.get_goal = True
@@ -64,7 +64,7 @@ class GetPath(py_trees.behaviour.Behaviour):
                     self.node.get_logger().info('Publishing goal to A*')
                     self.node.send_goal_pub.publish(self.node.goal)
                 else:
-                    self.node.get_logger().info('Waiting for path from A*')    
+                    self.node.get_logger().debug('Waiting for path from A*')    
             else:
                 # only publish to get goal once
                 if self.node.get_goal:
@@ -76,7 +76,7 @@ class GetPath(py_trees.behaviour.Behaviour):
                     self.node.find_goal_pub.publish(msg)
 
                 else:
-                    self.node.get_logger().info('Waiting for goal from planner')
+                    self.node.get_logger().debug('Waiting for goal from planner')
 
             return py_trees.common.Status.RUNNING
 
@@ -103,20 +103,20 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
             if self.node.set_poses_list:
                 self.node.set_poses_list = False
                 self.poses_list = self.node.path.poses
-                self.node.get_logger().info(f'The goal pose from A*; x:{self.node.path.poses[-1].pose.position.x}, y: {self.node.path.poses[-1].pose.position.y}')
+                self.node.get_logger().debug(f'The goal pose from A*; x:{self.node.path.poses[-1].pose.position.x}, y: {self.node.path.poses[-1].pose.position.y}')
             else:
                 if not self.node.at_goal:
-                    self.node.get_logger().info('Waiting for drive control to reach point')
+                    self.node.get_logger().debug('Waiting for drive control to reach point')
                     return py_trees.common.Status.RUNNING
                 else:
                     if len(self.poses_list)==0:
                         self.empty_list = True
-                        self.node.get_logger().info(f'No poses left, should have reached goal')
+                        self.node.get_logger().debug(f'No poses left, should have reached goal')
                         return py_trees.common.Status.RUNNING
 
 
             self.node.at_goal = False    
-            self.node.get_logger().info(f'Poses List length: {len(self.poses_list)}')
+            self.node.get_logger().debug(f'Poses List length: {len(self.poses_list)}')
             
             path = self.node.path
             path.poses = self.poses_list
@@ -126,7 +126,7 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
                 pose = self.poses_list.pop(0)
 
             self.node.path.poses = [pose]
-            self.node.get_logger().info('Publishing next pose to drive_control')
+            self.node.get_logger().debug('Publishing next pose to drive_control')
             self.node.drive_to_goal_pub.publish(self.node.path)
 
             return py_trees.common.Status.RUNNING
@@ -144,7 +144,7 @@ class SetSelf(py_trees.behaviour.Behaviour):
         """
         Method that will be executed when behaviour is ticked
         """
-        self.node.have_scan = self.node.corner_ex_done
+        # self.node.have_scan = self.node.corner_ex_done
         self.node.have_path = False
         self.node.have_goal = False
         self.node.at_goal = False
@@ -158,7 +158,7 @@ class BrainExploration(Node):
 
         # initalize self values
         self.have_path = False
-        self.have_scan = False
+        # self.have_scan = False
         self.have_goal = False
         self.recalculate_path = True
 
@@ -175,7 +175,7 @@ class BrainExploration(Node):
         self.send_goal_pub = self.create_publisher(PoseStamped, 'Astar/next_goal', 1)
         self.find_goal_pub = self.create_publisher(Bool, 'planner_ex/find_goal', 1)
         self.stop_robot_pub = self.create_publisher(Bool, 'drive/stop', 1)
-        self.drive_to_free_pub = self.create_publisher(Bool, 'avoidance/drive_to_free', 1)
+        # self.drive_to_free_pub = self.create_publisher(Bool, 'avoidance/drive_to_free', 1)
         self.drive_to_goal_pub = self.create_publisher(Path, 'drive/path', 1)
         self.take_ref_scan_pub = self.create_publisher(Bool, '/icp_node/get_new_reference_scan', 1)
         self.path_list_pub = self.create_publisher(Path, '/brain/path_list', 1)
@@ -187,28 +187,40 @@ class BrainExploration(Node):
         self.tree.setup(node=self,timeout=5) 
 
         # Sleeping for 10 seconds so that all nodes are initalized properly
-        self.get_logger().info('Sleeping for 10 seconds before starting to tick')
-        sleep(10)
+        self.get_logger().debug('Sleeping for 10 seconds before starting to tick')
+        sleep(5)
 
         # Starting to tick the tree
-        self.get_logger().info('Starting to tick the tree')
+        self.get_logger().debug('Starting to tick the tree')
         self.tree.tick_tock(period_ms=500) 
 
     def free_path_cb(self, msg:Bool):
         """
         callback that sets the condition if the path is free
         """
-        self.get_logger().info(f'Avoidance node is telling us that path_free = {msg.data}')
+        self.get_logger().debug(f'Avoidance node is telling us that path_free = {msg.data}')
         self.free_path = msg.data
+    
         if not self.free_path:
              # only recalculate path once when path is not free
+
              if self.recalculate_path:
                 self.get_logger().info('Setting have_path to false so that A* calculates path again')
                 self.recalculate_path = False
                 self.have_path = False
-                self.set_poses_list = True 
+                self.have_goal = True
+                self.get_path = True 
+                self.set_poses_list = True
+                
+                stop_msg = Bool()
+                stop_msg.data = True
+                self.stop_robot_pub.publish(stop_msg)
+
+                stop_msg.data = False
+                self.stop_robot_pub.publish(stop_msg)
         else:
             self.recalculate_path = True
+
             
     
     def set_path_cb(self, msg:Path):
@@ -220,7 +232,7 @@ class BrainExploration(Node):
             self.have_goal = False
             self.get_path = True
         else:
-            self.get_logger().info('Have received a non-empty path from A*')
+            self.get_logger().debug('Have received a non-empty path from A*')
             self.path = msg
             self.have_path = True 
 
@@ -228,7 +240,7 @@ class BrainExploration(Node):
         """
         Callback that sets the goal that will be sent to A*
         """
-        self.get_logger().info('Have received goal from planner')
+        self.get_logger().debug('Have received goal from planner')
         self.goal = msg
         self.have_goal = True
         self.get_path = True
@@ -237,28 +249,28 @@ class BrainExploration(Node):
         """
         Callback that sets boolean, True if corner exploration is done, False otherwise
         """
-        self.get_logger().info(f'Planner telling us that corner exploration done = {msg.data}')
+        self.get_logger().debug(f'Planner telling us that corner exploration done = {msg.data}')
         self.corner_ex_done = msg.data
     
     def no_unknown_left_cb(self, msg:Bool):
         """
         Callback that sets boolean, True if all exploration is done, False otherwise
         """
-        self.get_logger().info(f'Planner telling us that no unknown space left = {msg.data}')
+        self.get_logger().debug(f'Planner telling us that no unknown space left = {msg.data}')
         self.no_unknown_left = msg.data        
 
     def at_goal_cb(self, msg: Bool):
         """
         Callback that sets boolean, True if drive control is at goal, False otherwise
         """
-        self.get_logger().info(f'Drive control telling us that reached_goal = {msg.data}')
+        self.get_logger().debug(f'Drive control telling us that reached_goal = {msg.data}')
         self.at_goal = msg.data
 
     def have_scan_cb(self, msg: Bool):
         """
         Callback that sets boolean, True if ICP have taken a scan, False otherwise
         """
-        self.get_logger().info(f'ICP node telling us that have_scan = {msg.data}')
+        self.get_logger().debug(f'ICP node telling us that have_scan = {msg.data}')
         self.have_scan = msg.data
 
     def create_behaviour_tree(self) -> py_trees_ros.trees.BehaviourTree:

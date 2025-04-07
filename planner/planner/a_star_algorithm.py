@@ -8,7 +8,7 @@ from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 import tf_transformations
 from tf2_ros import TransformException
-from std_msgs.msg import Int16MultiArray
+from std_msgs.msg import Int16MultiArray, MultiArrayDimension
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
 import heapq
@@ -19,6 +19,7 @@ from matplotlib.colors import BoundaryNorm
 from scipy.ndimage import binary_dilation
 from occupancy_grid_map.workspace_utils import Workspace
 from time import sleep
+from robp_interfaces.msg import DutyCycles
 
 class ANode:
     #Create a A-star Node for queueing
@@ -58,13 +59,16 @@ class AStarAlgorithmNode(Node):
         self.goal_pose_recieved = False
         self.ws_utils = Workspace()
 
+        self.obstacle = 1
+        self.outside = 3
+        self.object_box = 4
+
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self, spin_thread=True)
 
-        sleep(5)
-
         # Publisher to puclish path to follow
         self.path_pub = self.create_publisher(Path, 'Astar/path', 1)
+        self.inflate_grid_pub = self.create_publisher(Int16MultiArray, 'Astar/inflated_gridmap', 1)
 
         # Subscribe to grid and next goal topic
         self.create_subscription(PoseStamped, 'Astar/next_goal', self.next_goal_cb, 1)
@@ -84,48 +88,75 @@ class AStarAlgorithmNode(Node):
     def grid_cb(self, msg:Int16MultiArray):
         #Return array from message of grid
 
-        if self.grid_recieved == False:
+        rows = msg.layout.dim[0].size
+        columns = msg.layout.dim[1].size
+        data = msg.data
+        self.grid = np.array([data]).reshape(rows, columns)
 
-            rows = msg.layout.dim[0].size
-            columns = msg.layout.dim[1].size
-            data = msg.data
-            self.grid = np.array([data]).reshape(rows, columns)
-            self.get_logger().info(f'{self.grid}')
+        self.inflate_grid(self.obstacle)
+        self.inflate_grid(self.outside)
+        self.inflate_grid(self.object_box)
 
-            self.inflate_grid()
-            self.grid_recieved = True
+        self.publish_inflated_grid()
+        self.grid_recieved = True
+
+        # if self.grid_recieved == False:
+        #     self.grid_recieved = True
+        #     self.grid = self.updated_grid
         
-            self.publish_path()
+        self.publish_path()
 
-    def inflate_grid(self):
+    def publish_inflated_grid(self):
 
-        inflate_size_obs = int(35/self.ws_utils.resolution)
-        inflate_size_out = int(25/self.ws_utils.resolution)
-
-        inflate_matrix_obs = np.ones((2 * inflate_size_obs + 1, 2 * inflate_size_obs + 1))
-        inflate_matrix_out = np.ones((2 * inflate_size_out + 1, 2 * inflate_size_out + 1))
-
-        new_grid_obs = np.zeros_like(self.grid)
-        new_grid_out = np.zeros_like(self.grid)
+        #Publish grid
+        msg_grid = Int16MultiArray()
+        msg_grid.data = self.grid.flatten().tolist()
         
-        arg_obstacle = np.argwhere(self.grid == 1)
-        arg_outside_inflate = np.argwhere(self.grid == 3)
-
-        new_grid_obs[arg_obstacle[:, 0], arg_obstacle[:, 1]] = 1
-        new_grid_out[arg_outside_inflate[:, 0], arg_outside_inflate[:, 1]] = 1
-
-        new_grid_obs = binary_dilation(new_grid_obs, structure=inflate_matrix_obs)*1
-        new_grid_out = binary_dilation(new_grid_out, structure=inflate_matrix_out)*2
-
-        mask_zeros_obs = new_grid_obs == 0
-        mask_zeros_out = new_grid_out == 0
+        dim1 = MultiArrayDimension()
+        dim2 = MultiArrayDimension()
         
-        new_grid_obs[mask_zeros_obs] = -1
-        new_grid_out[mask_zeros_out] = -1
+        dim1.label = 'rows'
+        dim2.label = 'columns'
 
-        self.grid = np.maximum(self.grid, new_grid_obs)
-        self.grid = np.maximum(self.grid, new_grid_out)
-    
+        dim1.size = self.grid.shape[0]
+        dim2.size = self.grid.shape[1]
+
+        msg_grid.layout.dim = [dim1, dim2]
+
+        cmap = plt.cm.get_cmap('Paired', 8)
+        norm = BoundaryNorm([-2, -1, 0, 1, 2, 3, 4, 5, 6], cmap.N)
+        plt.figure(figsize=(10, 10))
+        plt.imshow(self.grid, cmap=cmap, norm=norm, interpolation='nearest', origin='lower')
+        cbar = plt.colorbar()
+        cbar.set_ticks([-2, -1, 0, 1, 2, 3, 4, 5])
+        plt.savefig('/home/group5/dd2419_ws/outputs/local_obstacle_map')
+        plt.close()
+
+        self.inflate_grid_pub.publish(msg_grid)
+
+    def inflate_grid(self, item):
+
+        if item == self.obstacle:
+            size = 30
+        if item == self.outside:
+            size = 30
+        if item == self.object_box:
+            size = 25
+
+        inflate_size = int(size/self.ws_utils.resolution)
+        inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
+        
+        new_grid = np.zeros_like(self.grid)
+        arg_item = np.argwhere(self.grid == item)
+
+        new_grid[arg_item[:, 0], arg_item[:, 1]] = 1
+        new_grid = binary_dilation(new_grid, structure=inflate_matrix)*item
+
+        mask_zeros = new_grid == 0
+        new_grid[mask_zeros] = -1
+
+        self.grid = np.maximum(self.grid, new_grid)
+
     def publish_path(self):
         #Function whihc finally publish un simplified path
 
@@ -158,6 +189,7 @@ class AStarAlgorithmNode(Node):
     
     def solve_path_points(self):
         #Function which takes the Q and decides whether to go to next item in Q or if at endpoint
+        sleep(4)
 
         #Take grid current pose
         self.grid_rob_x, self.grid_rob_y = self.current_pos()
@@ -165,7 +197,7 @@ class AStarAlgorithmNode(Node):
         if self.grid[self.grid_rob_y, self.grid_rob_x] > 0:
             self.get_logger().info('Not in free space so takes closest free cell to start with')
 
-            free_indices = np.argwhere(self.grid == -1)
+            free_indices = np.argwhere(self.grid <= 0)
 
             grid_free_x = free_indices[:, 1]
             grid_free_y = free_indices[:, 0]
@@ -332,7 +364,7 @@ class AStarAlgorithmNode(Node):
     
     def reduce_poses(self, x_list, y_list):
 
-        N = len(x_list) // 5
+        N = len(x_list) // 10
 
         cs = interp1d(x_list, y_list)
 

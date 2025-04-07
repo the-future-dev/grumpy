@@ -119,16 +119,16 @@ class ObjectMapping(Node):
         self.create_subscription(ObjectDetection1D, '/perception/object_poses', self.object_pose_callback, 10)
 
         # Initialize publisher to publish non-duplicate object poses
-        self.object_pose_pub = self.create_publisher(ObjectDetection1DArray, '/object_mapping/object_poses', 10)
+        self.object_pose_pub = self.create_publisher(ObjectDetection1DArray, '/object_mapping/object_poses', 1)
         self.marker_publisher = self.create_publisher(MarkerArray, '/object_mapping/object_names_marker', 10)
 
         # self.create_timer(3000, self.check_and_publish_updates)
 
-    def check_and_publish_updates(self):
-        """Check if we need to publish updates and do so if needed"""
-        if self.needs_update:
-            self.publish_object_list()
-            self.needs_update = False
+    # def check_and_publish_updates(self):
+    #     """Check if we need to publish updates and do so if needed"""
+    #     if self.needs_update:
+    #         self.publish_object_list()
+    #         self.needs_update = False
 
     def publish_object_list(self):
         """Publish all detected objects"""
@@ -183,6 +183,7 @@ class ObjectMapping(Node):
                 idx += 1
 
         self.marker_publisher.publish(marker_array)
+        self.get_logger().info(f'Publishing object detection')
         self.object_pose_pub.publish(object_detection_array)
 
     def object_pose_callback(self, msg: ObjectDetection1D):
@@ -226,17 +227,13 @@ class ObjectMapping(Node):
         if not self.is_within_workspace(x, y):
             return
 
-        # Vectorized distance calculation for all objects
         if self.output_object_list:
             # Create arrays of all object positions
             # Skipping check on same label as we want this logic to filter out misclassifications!
             positions = np.array([(obj.get_x(), obj.get_y()) for obj in self.output_object_list])
             # labels = np.array([obj.get_label() for obj in self.output_object_list])
             
-            # Calculate distances to all objects
             distances = np.sqrt(np.sum((positions - np.array([x, y]))**2, axis=1))
-            
-            # Find matching objects based on distance
             if label == ObjectEnum.BOX:
                 matches = (distances < self.margin_box)
             else:
@@ -257,8 +254,8 @@ class ObjectMapping(Node):
             self.output_object_list.append(ObjectVoting(label, x, y, angle))
             self.needs_update = True
         
-        if self.needs_update:
-            self.check_and_publish_updates()
+        # if self.needs_update:
+        self.publish_object_list()
 
     def is_within_workspace(self, x: float, y: float) -> bool:
         """Check if a point is within the workspace boundaries"""

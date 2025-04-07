@@ -168,6 +168,10 @@ class Detection(Node):
             if bbox_dims[2] < 3: # object at least 3 cm high
                 continue
 
+
+            if len(cluster_points) > 10000:
+                continue
+
             # Neural Network Train: save data Locally ##########################################################################
             # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             # self.object_data_list.append(cluster)

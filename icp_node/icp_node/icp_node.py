@@ -242,7 +242,7 @@ class ICP_node(Node):
         # reset bad scan counter so that it is only when multiple scans are bad in a row that triggers a new reference scan
         self.bad_scan_counter = 0
         
-        self.get_logger().info('Updating map-odom tf')
+        self.get_logger().debug('Updating map-odom tf')
         
         # reset counter since an update is going to be processed
         self.counter = self.N
