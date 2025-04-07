@@ -22,15 +22,16 @@ class PositioningService(Node):
         self.vel_forward = 0.05
         self.vel_rotate  = 0.02
 
-        # Goal object position and label:
-        self.object_pose  = Pose()
-        self.object_label = ""
+        self.object_pose  = Pose()  # The position of the object in base_link frame
+        self.object_label = ""  # The label of the object
+        self.object_found = False
 
         # Target distance-parameters to the goal object/box
         self.x_stop_pick =  0.35  # The x-position where the robot should stop when driving with the RGB-D camera to an object
         self.x_stop_drop =  0.15  # The x-position where the robot should stop when driving with the RGB-D camera to a box
         self.y_offset    = -0.075  # The y-position where the robot should stop rotating with the RGB-D camera
         self.y_tol       =  0.02  # The tolerance for the y-position when driving with the RGB-D camera
+        self.min_x       =  0.0  # The minimum x-position of the object
 
         # Create the positioning service
         self.srv = self.create_service(
@@ -52,7 +53,7 @@ class PositioningService(Node):
             ObjectDetection1D,
             '/perception/object_poses',
             self.get_object_pose,
-            1,
+            10,
             callback_group=self.subscriber_cb_group
         )
 
@@ -69,18 +70,28 @@ class PositioningService(Node):
             Calls the publishing function which publishes the velocities to the wheel motors for each step in the sequence
         """
 
-        step = "Start"
+        step        = "Start"
         end_strings = ["Success", "Failure"]
 
         while step not in end_strings:
-            time.sleep(1.0) # Sleep for 0.1 second to give the robot time to move
+
+            time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
             self._logger.info(f'{step}')  # Log the current step
+
             goal_x = self.object_pose.position.x
             goal_y = self.object_pose.position.y
+
             match step:
                 case "Start":  # Ask if we see an/the goal object
-                    # self.check_object(request.label.data, request.pose)  # Check if the object could be the correct one
-                    next_step = "DriveRobotWithRGB-D"  # Next step
+                    if goal_x == 0.0 and goal_y == 0.0:  # If the object pose is not available
+                        self.publish_robot_movement(-1.0, 0.0)  # Turn the robot to find the object
+                        if self.object_found:
+                            self._logger.info(f'positioning_sequence: in Start --> DriveRobotWithRGB-D')
+                            next_step = "DriveRobotWithRGB-D"
+                        else:
+                            next_step = "Failure"  # End the FSM
+                    else:
+                        next_step = "DriveRobotWithRGB-D"  # Move to next step
 
                 case "DriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback
                     if request.label.data == 'B':
@@ -108,7 +119,7 @@ class PositioningService(Node):
                 case "DriveRobotWithoutRGB-D":  # Drive the robot without the RGB-D camera
                     self._logger.info(f'positioning_sequence: in DriveRobotWithoutRGB-D')
                     for _ in range(6):
-                        time.sleep(1.0)  
+                        time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
                         self.publish_robot_movement(goal_x, self.y_offset)  # Drive the robot forward multiple times
                     self.publish_robot_movement(0.0, 0.0)  # Stop the robot
                     next_step = "Success"  # End the FSM
@@ -116,7 +127,11 @@ class PositioningService(Node):
             step = next_step
             
         self._logger.info(f'{step}')
-        response.success = True if step == "Success" else False
+        response.success  = True if step == "Success" else False
+        self.min_x        = 0.0  # Reset the minimum x-position of the object
+        self.object_pose  = Pose()  # Reset the object pose
+        self.object_label = ""  # Reset the object label
+        self.object_found = False  # Reset the object found flag
         
         return response
 
@@ -129,6 +144,7 @@ class PositioningService(Node):
 
         Other functions:
             Updates the poisition of the object while the robot is alinging itself
+            Logic to choose the closest object
         """
 
         pose  = msg.pose
@@ -136,35 +152,15 @@ class PositioningService(Node):
 
         assert isinstance(pose.position.x, float), self._logger.error('x was not type float')
         assert isinstance(pose.position.y, float), self._logger.error('y was not type float')
-        assert isinstance(pose.position.z, float), self._logger.error('z was not type float')
         assert isinstance(label, str), self._logger.error('label was not type str')
 
-        self.object_pose  = pose
-        self.object_label = label
-
-
-    def check_object(self, label, pose):
-        """
-        Args:
-            label: String, required, the class of the requested goal object
-            pose: Pose, required, the position and orientation of the requested goal object
-        Returns:
-            goal_object: bool, if the object is the requested goal object
-        Other functions:
-
-        """
-
-        assert isinstance(label, str), self._logger.error('label was not type str')
-        assert isinstance(pose, Pose), self._logger.error('pose was not type Pose')
-
-        # Check if the object from perception is the requested goal object
-        goal_object = (label == self.object_label and
-                       np.isclose(self.object_pose.position.x, pose.position.x, atol=0.10) and
-                       np.isclose(self.object_pose.position.y, pose.position.y, atol=0.10) and
-                       np.isclose(self.object_pose.position.z, pose.position.z, atol=0.10)
-                       )
-
-        return goal_object
+        # If there are more than one object, choose the closest one, first seen object is used as the base line. 
+        # The allowed discrepancy is 0.01m for the object detection from the RGB-D camera 
+        if pose.position.x <= self.min_x + 0.01 or self.min_x == 0.0:
+            self.object_pose  = pose
+            self.object_label = label
+            self.min_x        = pose.position.x  # Update the minimum x-position of the object
+            self.object_found = True
 
     
     def publish_robot_movement(self, x, y):
@@ -185,10 +181,35 @@ class PositioningService(Node):
 
         if x == 0 and y == 0:  # Stop the robot
             msg.duty_cycle_right = 0.0
-            msg.duty_cycle_left = 0.0
+            msg.duty_cycle_left  = 0.0
         elif np.isclose(y, self.y_offset, atol=self.y_tol):
             msg.duty_cycle_right = self.vel_forward
             msg.duty_cycle_left  = self.vel_forward
+        elif x == -1.0:  # Turn the robot to find the object
+            left_turns = 0
+            right_turns = 0
+            left_object = None
+            rigtht_object = None
+
+            # Turn left until the an object is found
+            while self.object_pose.position.x == 0.0 and self.object_pose.position.y == 0.0:
+                if left_turns < 10:
+                    msg.duty_cycle_right = self.vel_rotate
+                    msg.duty_cycle_left  = -self.vel_rotate
+                    left_turns += 1
+                elif right_turns < 20:
+                    msg.duty_cycle_right = -self.vel_rotate
+                    msg.duty_cycle_left  = self.vel_rotate
+                    left_turns += 1
+                else:
+                    self._logger.info('publish_robot_movement: No object found')
+                    break
+                time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
+            
+            msg.duty_cycle_right = 0
+            msg.duty_cycle_left  = 0
+
+
         else:
             # The robot should not turn faster than the maximum turn velocity and should turn slower the lower the y-value is
             turn_vel = min(self.vel_rotate, abs(y - self.y_offset))
@@ -203,8 +224,6 @@ class PositioningService(Node):
 
         self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
 
-        # time.sleep(1.0) # Sleep for 0.1 second to give the robot time to move
-
 
 def main(args=None):
     rclpy.init()
@@ -216,13 +235,13 @@ def main(args=None):
 
     try:
         executor.spin()
-    # except KeyboardInterrupt:
-    #     pass
+    except KeyboardInterrupt:
+        positioningService.destroy_node()
     finally:
         positioningService.destroy_node()
         rclpy.shutdown()
 
-    # rclpy.shutdown()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

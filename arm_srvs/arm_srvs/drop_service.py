@@ -3,6 +3,7 @@ from grumpy_interfaces.srv import PickAndDropObject
 import rclpy
 import rclpy.logging
 from rclpy.node import Node
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_msgs.msg import Int16MultiArray
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import Pose
@@ -17,11 +18,16 @@ class DropService(Node):
 
         self.current_angles = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
 
+        # Create group for the service and subscriber that will run on different threads
+        self.service_cb_group    = MutuallyExclusiveCallbackGroup()
+        self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
+
         # Create the drop service
         self.srv = self.create_service(
             PickAndDropObject, 
             '/arm_services/drop_object', 
-            self.drop_sequence
+            self.drop_sequence,
+            callback_group=self.service_cb_group
         )
 
         # Create the publisher and subscriber for the angles of the servos
@@ -35,7 +41,8 @@ class DropService(Node):
             JointState,
             '/servo_pos_publisher',
             self.current_servos,
-            1
+            1,
+            callback_group=self.subscriber_cb_group
         )
 
     
@@ -50,8 +57,8 @@ class DropService(Node):
             Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
         """
 
-        step = "Start"
-        x, y, z = 0, 0, 0
+        step        = "Start"
+        x, y, z     = 0, 0, 0
         end_strings = ["Success", "Failure"]
 
         while step not in end_strings:
@@ -59,7 +66,7 @@ class DropService(Node):
             times = utils.times  # Set the times to the standard times
             match step:
                 case "Start":  # Make sure the arm is in the initial position but does not drop the object
-                    thetas = utils.initial_thetas.copy()  # Copy the initial thetas
+                    thetas    = utils.initial_thetas.copy()  # Copy the initial thetas
                     thetas[0] = -1  # Make sure the gripper does not move
                     next_step = "GetPosition"  # Next step
 
@@ -104,7 +111,7 @@ class DropService(Node):
     def current_servos(self, msg:JointState):
         """
         Args:
-            msg: JointState, required, information about the servos
+            msg: JointState, required, information about the servos positions, velocities and efforts
         Returns:
 
         Other functions:
@@ -113,9 +120,9 @@ class DropService(Node):
 
         current_angles = msg.position
 
-        # assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
-        # assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
-        # assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
+        assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
+        assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
+        assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
 
         self.current_angles = current_angles
 
@@ -131,11 +138,7 @@ class DropService(Node):
             Publishes the angles of the servos to the arm in the correct format
         """
 
-        # Initializes the message with required informaiton
-        msg = Int16MultiArray()
-        # msg.layout.dim[0] = {'label':'', 'size': 0, 'stride': 0}
-        # msg.layout.data_offset = 0
-
+        msg      = Int16MultiArray()  # Initializes the message
         msg.data = angles + times  # Concatenates the angles and times
 
         self.servo_angle_publisher.publish(msg)
@@ -148,13 +151,18 @@ def main(args=None):
     rclpy.init()
     dropServie = DropService()
 
+    # Use MultiThreadedExecutor to allow concurrent callbacks
+    executor = rclpy.executors.MultiThreadedExecutor()
+    executor.add_node(dropServie)
+
     try:
-        rclpy.spin(dropServie)
+        executor.spin()
     except KeyboardInterrupt:
-        pass
-
-    dropServie.destroy_node()
-
+        dropServie.destroy_node()
+    finally:
+        dropServie.destroy_node()
+        rclpy.shutdown()
+    
     rclpy.shutdown()
 
 if __name__ == '__main__':

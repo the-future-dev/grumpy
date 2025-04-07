@@ -19,12 +19,11 @@ class ArmCameraService(Node):
         super().__init__('arm_camera_srv')
 
         self.current_angles = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
+        self.image          = None  # The image data from the arm camera
+        self.bridge         = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
 
-        self.image = None  # The image data from the arm camera
-
-        self.bridge = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
-
-        self.service_cb_group = MutuallyExclusiveCallbackGroup()
+        # Create group for the service and subscriber that will run on different threads
+        self.service_cb_group    = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
         # Create the drop service
@@ -77,7 +76,7 @@ class ArmCameraService(Node):
             Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
         """
 
-        step = "Start"
+        step        = "Start"
         end_strings = ["Success", "Failure"]
 
         while step not in end_strings:
@@ -117,7 +116,7 @@ class ArmCameraService(Node):
     def current_servos(self, msg:JointState):
         """
         Args:
-            msg: JointState, required, information about the servos
+            msg: JointState, required, information about the servos positions, velocities and efforts
         Returns:
 
         Other functions:
@@ -126,9 +125,9 @@ class ArmCameraService(Node):
 
         current_angles = msg.position
 
-        # assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
-        # assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
-        # assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
+        assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
+        assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
+        assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
 
         self.current_angles = current_angles
 
@@ -140,7 +139,7 @@ class ArmCameraService(Node):
         Returns:
 
         Other functions:
-            Listens to the image message from the arm camera and sets a self variable to this data
+            Gets the image data from the arm camera and converts it to an OpenCV image
         """
         
         self.image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
@@ -154,40 +153,40 @@ class ArmCameraService(Node):
             x: float, the x-coordinate of the object in the base_link frame
             y: float, the y-coordinate of the object in the base_link frame
         Other functions:
-            Uses the image data from the arm camera to detect objects and their positions
+            Uses the image data from the arm camera to detect object(s) and its/their position(s)
         """
 
-        time.sleep(1.0)
+        time.sleep(1.0)  # Wait for the arm camera image to stabilize after arm movement
         
         cx, cy = 0, 0  # No object found, set to 0, 0
-        image  = self.image
+        image  = self.image  # Makes sure the same image is used for the whole function
 
         undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
-        hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for color-based object detection
+        hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for eaiser color-based object detection
 
         mask = self.create_masks(hsv_image)  # Create a combined mask for red, green, and blue objects
-        mask = cv2.medianBlur(mask, 5)
+        mask = cv2.medianBlur(mask, 5)  # Apply a median blur to the mask to reduce salt and pepper noise
         mask = self.clean_mask(mask)  # Clean each mask using morphological operations
 
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask
-        # contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        areas = [cv2.contourArea(c) for c in contours]
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, only external contours
+        # contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
+        areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
 
-        if len(areas) > 0:
-            max_index = np.argmax(areas)
-            contour = contours[max_index]
+        if len(areas) > 0:  # If there are any contours found
+            max_index = np.argmax(areas)  # Get the index of the largest contour
+            contour   = contours[max_index]  # Choose the largest contour
 
             (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
-            cx, cy, radius = int(cx), int(cy), int(radius)
+            cx, cy, radius   = int(cx), int(cy), int(radius)  # Convert to integers
             
-            cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)
-            cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)
+            cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)  # Draw the enclosing circle in the image
+            cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)  # Draw the center of the circle in the image
 
             self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
         else:
             self._logger.info(f'get_object_position: NO OBJECTS FOUND')
             
-        self.publish_image(image)
+        self.publish_image(image)  # Publish the image with the detected object(s) to the image topic
 
         x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
 
@@ -199,10 +198,9 @@ class ArmCameraService(Node):
         Args:
             hsv_image: np.array, required, the image in HSV format
         Returns:
-            x: float, the x-coordinate of the object in the base_link frame
-            y: float, the y-coordinate of the object in the base_link frame
+            mask: np.array, the combined mask for red, green, and blue colors
         Other functions:
-            Uses the image data from the arm camera to detect objects and their positions
+
         """
         
         # Define HSV ranges
@@ -218,8 +216,7 @@ class ArmCameraService(Node):
         green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
         blue_mask  = cv2.inRange(hsv_image, lower_blue, upper_blue)
 
-        return cv2.bitwise_or(red_mask, cv2.bitwise_or(green_mask, blue_mask))
-        # return green_mask
+        return cv2.bitwise_or(red_mask, cv2.bitwise_or(green_mask, blue_mask))  # Combine all masks
 
 
     def clean_mask(self, mask):
@@ -254,6 +251,8 @@ class ArmCameraService(Node):
         fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
 
+        # Calculate the x and y coordinates in the base_link frame, inverted (minus) because the rows and columns increase opposite 
+        # to the base_link frame
         x = - (y_pixel - cy) * (utils.cam_pos.position.z / fy) + utils.cam_pos.position.x
         y = - (x_pixel - cx) * (utils.cam_pos.position.z / fx) + utils.cam_pos.position.y
 
@@ -271,22 +270,27 @@ class ArmCameraService(Node):
             Publishes the angles of the servos to the arm in the correct format
         """
 
-        # Initializes the message with required informaiton
-        msg = Int16MultiArray()
-        # msg.layout.dim[0] = {'label':'', 'size': 0, 'stride': 0}
-        # msg.layout.data_offset = 0
-
+        msg      = Int16MultiArray()  # Initializes the message
         msg.data = angles + times  # Concatenates the angles and times
 
         self.servo_angle_publisher.publish(msg)
 
-        time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
+        time.sleep(np.max(times) / 1000 + 0.5)  # Wait until the arm has had the time to move to the given angles
 
         return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
     
 
-    def publish_image(self, frame):
-        image_message = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+    def publish_image(self, image):
+        """
+        Args:
+            image: np.array, required, the image with the object(s) drawn to be published
+        Returns:
+        
+        Other functions:
+            Publishes the image to an image topic
+        """
+         
+        image_message = self.bridge.cv2_to_imgmsg(image, encoding='bgr8')  # Convert the image to a ROS message
         self.image_publisher_.publish(image_message)
 
 
@@ -300,13 +304,13 @@ def main(args=None):
 
     try:
         executor.spin()
-    # except KeyboardInterrupt:
-    #     pass
+    except KeyboardInterrupt:
+        armCameraService.destroy_node()
     finally:
         armCameraService.destroy_node()
         rclpy.shutdown()
 
-    # rclpy.shutdown()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

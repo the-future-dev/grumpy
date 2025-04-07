@@ -18,6 +18,7 @@ class PickService(Node):
 
         self.current_angles = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
 
+        # Create group for the service and subscriber that will run on different threads
         self.service_cb_group = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
         
@@ -56,8 +57,8 @@ class PickService(Node):
             Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
         """
 
-        step = "Start"
-        x, y, z = 0, 0, 0
+        step        = "Start"
+        x, y, z     = 0, 0, 0
         end_strings = ["Success", "Failure"]
 
         while step not in end_strings:

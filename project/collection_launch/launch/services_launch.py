@@ -35,5 +35,6 @@ def generate_launch_description():
     return LaunchDescription([
         arm_camera,
         drop,
-        pick
+        pick #,
+        # positioning,
     ])
