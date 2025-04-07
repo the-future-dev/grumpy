@@ -44,6 +44,14 @@ class SampleDriveControlNode(Node):
         self.create_subscription(Path, 'avoidance/drive_free', self.drive_free_cb, 1)
         
 
+    def map_odom_tf_cb(self, msg:TransformStamped):
+        """
+        Callback that sets the latest map-odom transform from ICP node
+        """
+        self.get_logger().info('Updated map-odom transform from ICP node')
+        self.tf_map_odom = msg
+    
+    
     def path_cb(self, msg:Path):
         #Call back that iterates in poses and drives to them, can maybe implement offset if it is needed
 
@@ -190,12 +198,7 @@ class SampleDriveControlNode(Node):
                 self.motor_publisher.publish(msg)
 
 
-def map_odom_tf_cb(self, msg:TransformStamped):
-    """
-    Callback that sets the latest map-odom transform from ICP node
-    """
-    self.get_logger().info('Updated map-odom transform from ICP node')
-    self.tf_map_odom = msg
+    
 
 
 def main():
