@@ -78,17 +78,19 @@ class PickService(Node):
         step        = "Start"  # Start step of the FSM
         end_strings = ["Success", "Failure"]  # End strings for the FSM
         x, y, z     = 0, 0, 0  # The x, y and z position of the object
-        label       = ""  # The label of the object to be picked up    
+        label       = ""  # The label of the object to be picked up
+        first_grasp = True  # If it is the first try to grasp the object
 
         while step not in end_strings:
             self._logger.info(f'{step}')  # Log the current step
             times = utils.times  # Set the times to the standard times
+
             match step:
                 case "Start":  # Make sure the arm is in the initial position
                     thetas    = utils.initial_thetas
                     next_step = "PositonRobot"  # Next step
 
-                case "PositonRobot":  # Call the position robot service to get the position of the object
+                case "PositonRobot":  # Call the position robot service to get to the position of the object
                     thetas     = utils.still_thetas  # Do not move the arm
                     req        = PositionRobot.Request()  # Create the an empty request, robot will position to pick up an object
                     positioned = self.position_client.call_async(req)
@@ -108,7 +110,6 @@ class PickService(Node):
                 case "GetPosition":  # Call the arm camera service to get the position of the object
                     thetas      = utils.still_thetas  # Do not move the arm
                     req         = ArmCameraDetection.Request()  # Create the request, no information is needed
-
                     object_pose = self.arm_cam_client.call_async(req)
                     rclpy.spin_until_future_complete(self, object_pose)
 
@@ -121,7 +122,7 @@ class PickService(Node):
                         next_step = "Failure"  # End the FSM
 
                 case "PickUp":  # Move the arm to the pick up position
-                    thetas = utils.still_thetas.copy()  # Move part of arm
+                    thetas = utils.still_thetas.copy()  # Move part of the arm
 
                     theta_servo6               = utils.get_theta_6(x, y)  # Calculate the new angle for servo 6
                     theta_servo5               = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
@@ -132,7 +133,7 @@ class PickService(Node):
                     next_step                                  = "GraspObject"  # Next step
                 
                 case "GraspObject":  # Grasp the object
-                    thetas    = utils.still_thetas.copy()  # Move part of arm
+                    thetas    = utils.still_thetas.copy()  # Move part of the arm
                     # Close the gripper to different degrees depending on the object
                     if label == "CUBE":
                         thetas[0] = 10500
@@ -143,16 +144,25 @@ class PickService(Node):
                     else:
                         self._logger.error(f'Unknown object label: {label}')
                         thetas[0] = 11000  # Default value for the gripper
+
+                    if first_grasp:
+                        first_grasp = False  # Tried to drop the object once, should make it on the second try at least
+                        next_step  = "GraspObject"  # Next step
+                    else:
+                        next_step  = "DrivePosition"  # Next step
                     
                     times[0]  = 3000  # Set the time to slowly close the gripper
-
-                    ################  TODO: Create a topic that publishes that an object is in the gripper  ################
-
-                    next_step = "DrivePosition"  # Next step
 
                 case "DrivePosition":  # Finish the pick up sequence by going back to the initial position, but not for the gripper
                     thetas    = utils.drive_thetas
                     times     = [2000] * 6  # Longer time might be needed to move the arm back a far distance
+                    next_step = "CheckObject"  # End the FSM
+
+                case "CheckObject":  # Check if the object is in the gripper
+                    thetas    = utils.still_thetas  # Do not move the arm
+
+                    ################  TODO: Create a topic that publishes that an object is in the gripper  ################
+
                     next_step = "Success"  # End the FSM
             
             utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format and intervals
@@ -163,7 +173,7 @@ class PickService(Node):
             elif step == "PickUp":  # To get to the grasping position, the arm has to be in an allowed initial position
                 self._logger.error('Move error PickUp: The arm did not move to the correct angles, trying again') 
                 for _ in range(3):  # Try to move the arm to the initial angles a maximum of 3 times
-                    if self.publish_angles(utils.initial_thetas, utils.times * 1.5):  
+                    if self.publish_angles(utils.initial_thetas, [2000] * 6):  
                         break  # Break when the arm has moved to the initial angles and try PickUp again
 
             else:  # If the arm did not move to the correct angles, try to move the arm to the same angles again
@@ -212,8 +222,7 @@ class PickService(Node):
         if angles == utils.still_thetas:  # If the arm is not moving, there is no need to publish the angles
             return True
 
-        # Initializes the message with required informaiton
-        msg      = Int16MultiArray()
+        msg      = Int16MultiArray()  # Initializes the message
         msg.data = angles + times  # Concatenates the angles and times
 
         self.servo_angle_publisher.publish(msg)

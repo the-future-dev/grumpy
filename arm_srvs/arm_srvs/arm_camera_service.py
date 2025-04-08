@@ -4,8 +4,7 @@ import rclpy
 import rclpy.logging
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from std_msgs.msg import Int16MultiArray
-from sensor_msgs.msg import JointState, CompressedImage, Image
+from sensor_msgs.msg import CompressedImage, Image
 from geometry_msgs.msg import Pose
 import cv2
 import cv_bridge
@@ -18,15 +17,14 @@ class ArmCameraService(Node):
     def __init__(self):
         super().__init__('arm_camera_srv')
 
-        self.current_angles = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
-        self.image          = None  # The image data from the arm camera
-        self.bridge         = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
+        self.image  = None  # The image data from the arm camera
+        self.bridge = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
 
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
-        # Create the drop service
+        # Create the arm camera service
         self.srv = self.create_service(
             ArmCameraDetection, 
             '/arm_services/arm_camera', 
@@ -34,25 +32,11 @@ class ArmCameraService(Node):
             callback_group=self.service_cb_group
         )
 
-        # Create the publisher and subscriber for the angles of the servos
-        self.servo_angle_publisher = self.create_publisher(
-            Int16MultiArray,
-            '/multi_servo_cmd_sub',
-            1
-        )
-
+        # Create a publisher and subscriber for images from the arm camera
         self.image_publisher_ = self.create_publisher(
             Image, 
             '/arm_services/object_tracking/image_raw', 
             10
-        )
-        
-        self.servo_subscriber = self.create_subscription(
-            JointState,
-            '/servo_pos_publisher',
-            self.current_servos,
-            1,
-            callback_group=self.subscriber_cb_group
         )
 
         self.image_subscriber = self.create_subscription(
@@ -72,64 +56,23 @@ class ArmCameraService(Node):
             response.pose   : Pose, the position of the object in the base_link frame
             response.success: bool, if the camera sequence was successful or not
         Other functions:
-            Controlls the camera sequence
-            Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
+            
         """
 
-        step        = "Start"
-        end_strings = ["Success", "Failure"]
+        found_object = False  # Flag to check if an object was found
+        x, y         = 0, 0  # The x and y position of the object
 
-        while step not in end_strings:
-            self._logger.info(f'{step}')  # Log the current step
-            times = utils.times  # Set the times to the standard times
-            match step:
-                case "Start":  # Make sure the arm is in the initial position
-                    thetas    = utils.initial_thetas
-                    next_step = "ViewPosition"  # Next step
+        for _ in range(3):  # Try to get the object position a maximum of 3 times
+            x, y = self.get_object_position()  # Get the position of the object
+            if x != 0:
+                found_object = True  # If the object was found, set the flag to true
+                break
 
-                case "ViewPosition":  # Set the arm to the view position
-                    thetas    = utils.view_thetas  # Set the goal angles to the view thetas
-                    next_step = "GetObjectPosition"  # Next step
-
-                case "GetObjectPosition":  # Extract the position of the object from the arm camera
-                    response.pose.position.x, response.pose.position.y = self.get_object_position()  # Get the position of the object
-                    thetas    = utils.still_thetas  # Do not move the arm servos
-                    next_step = "DrivePosition"  # Next step
-
-                case "DrivePosition":  # Finish the viewing sequence by going back to the initial position
-                    thetas    = utils.initial_thetas
-                    next_step = "Success"  # End the FSM
-            
-            utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format
-            
-            if self.publish_angles(thetas, times):  # Publish the angles to the arm and check if the arm has moved to the correct angles
-                step = next_step
-            else:
-                step = "Failure"
-        
-        self._logger.info(f'{step}')
-        response.success = True if step == "Success" else False
+        response.success         = found_object  # Set the success flag to true if the object was found
+        response.pose.position.x = x  # Set the position of the object in the response
+        response.pose.position.y = y  # Set the position of the object in the response
         
         return response
-
-
-    def current_servos(self, msg:JointState):
-        """
-        Args:
-            msg: JointState, required, information about the servos positions, velocities and efforts
-        Returns:
-
-        Other functions:
-            Listens to what the angles of the servos currently are and sets a self variable to these angles
-        """
-
-        current_angles = msg.position
-
-        # assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
-        # assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
-        # assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
-
-        self.current_angles = current_angles
 
     
     def get_image_data(self, msg:CompressedImage):
@@ -156,7 +99,7 @@ class ArmCameraService(Node):
             Uses the image data from the arm camera to detect object(s) and its/their position(s)
         """
 
-        time.sleep(1.0)  # Wait for the arm camera image to stabilize after arm movement
+        # time.sleep(1.0)  # Wait for the arm camera image to stabilize after arm movement
         
         cx, cy = 0, 0  # No object found, set to 0, 0
         image  = self.image  # Makes sure the same image is used for the whole function
@@ -183,12 +126,13 @@ class ArmCameraService(Node):
             cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)  # Draw the center of the circle in the image
 
             self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
+
+            x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
         else:
             self._logger.info(f'get_object_position: NO OBJECTS FOUND')
+            x, y = 0, 0  # No object found, set to 0, 0
             
-        self.publish_image(image)  # Publish the image with the detected object(s) to the image topic
-
-        x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
+        self.publish_image(image)  # Publish the image with or without the detected object(s)
 
         return x, y
 
@@ -257,27 +201,6 @@ class ArmCameraService(Node):
         y = - (x_pixel - cx) * (utils.cam_pos.position.z / fx) + utils.cam_pos.position.y
 
         return x, y
-
-    
-    def publish_angles(self, angles, times):
-        """
-        Args:
-            angles: list, required, the angles for each servo to be set to
-            times : list, required, the times for each servo to get to the given angle
-        Returns:
-        
-        Other functions:
-            Publishes the angles of the servos to the arm in the correct format
-        """
-
-        msg      = Int16MultiArray()  # Initializes the message
-        msg.data = angles + times  # Concatenates the angles and times
-
-        self.servo_angle_publisher.publish(msg)
-
-        time.sleep(np.max(times) / 1000 + 0.5)  # Wait until the arm has had the time to move to the given angles
-
-        return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
     
 
     def publish_image(self, image):

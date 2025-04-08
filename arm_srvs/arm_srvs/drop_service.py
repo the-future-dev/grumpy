@@ -1,4 +1,4 @@
-from grumpy_interfaces.srv import PickAndDropObject
+from grumpy_interfaces.srv import PickAndDropObject, PositionRobot
 from grumpy_interfaces.msg import ObjectDetection1D
 
 import rclpy
@@ -33,6 +33,15 @@ class DropService(Node):
             callback_group=self.service_cb_group
         )
 
+        # Create clients for the used services and wait for them to be available
+        self.position_client = self.create_client(
+            PositionRobot, 
+            '/arm_services/position_robot'
+        )
+
+        while not self.position_client.wait_for_service(timeout_sec=1.0):
+            self._logger.info('Waiting for /arm_services/position_robot...')
+
         # Create the publisher and subscriber for the angles of the servos
         self.servo_angle_publisher = self.create_publisher(
             Int16MultiArray,
@@ -48,15 +57,6 @@ class DropService(Node):
             callback_group=self.subscriber_cb_group
         )
 
-        # Create the subscriber to the object detection
-        self.servo_subscriber = self.create_subscription(
-            ObjectDetection1D,
-            '/perception/object_poses',
-            self.get_object_pose,
-            10,
-            callback_group=self.subscriber_cb_group
-        )
-
     
     def drop_sequence(self, request, response):
         """
@@ -66,38 +66,58 @@ class DropService(Node):
             response: bool, if the drop was successful or not
         Other functions:
             Controlls the drop sequence
+            Calls on the positioning service for the robot to put it in the correct position for droping an object
             Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
         """
 
         step        = "Start"  # The current step in the FSM
-        x, y        = 0, 0  # The x and y position of the object
+        x, y        = 0, 0  # The x and y position of the box
+        z           = utils.z_origin_servo4 - 0.05  # The height at which the object is dropped
         end_strings = ["Success", "Failure"]  # The end strings of the FSM
+        first_drop  = True  # If it is the first try to drop the object
 
         while step not in end_strings:
             self._logger.info(f'{step}')  # Log the current step
             times = utils.times  # Set the times to the standard times
+
             match step:
-                case "Start":  # Make sure the arm is in the initial position but does not drop the object
-                    thetas    = utils.initial_thetas.copy()  # Copy the initial thetas
-                    thetas[0] = -1  # Make sure the gripper does not move
-                    next_step = "RotateBase"  # Next step
+                case "Start":  # Make sure the arm is in the drive position with an object in the gripper
+                    thetas    = utils.drive_thetas
+                    next_step = "PositonRobot"  # Next step
 
-                case "RotateBase":  # Move servo 6/base to the correct angle
-                    x, y         = self.box_pose.position.x, self.box_pose.position.y  # Get the x and y position of the box
-                    # Calculate the change of the angle for servo 6, then new angle of servo 6, round and convert to int
-                    theta_servo6 = round(utils.initial_thetas[5] + utils.get_delta_theta_6(x, y) * 100)
-                    thetas       = utils.still_thetas.copy()  # Move part of arm
-                    thetas[5]    = theta_servo6  # Only servo 6 is moved
-                    next_step    = "DropAngles"  # Next step
+                case "PositonRobot":  # Call the position robot service to get to the position and the position of the box
+                    thetas         = utils.still_thetas  # Do not move the arm
+                    req            = PositionRobot.Request()  # Create a request for the position robot service
+                    req.label.data = "BOX"  # Position the robot for the box
+                    positioned = self.position_client.call_async(req)
+                    rclpy.spin_until_future_complete(self, positioned)
 
-                case "DropAngles":  # Sets the angles for the arm to drop the object
-                    thetas    = utils.drop_thetas
-                    next_step = "DropObject"  # Next step
+                    if positioned.success:
+                        x, y      = positioned.response.pose.position.x, positioned.response.pose.position.y  # x and y position of the object
+                        next_step = "DropPosition"  # Next step
+                    else:
+                        self._logger.error('Positioning service call failed')
+                        next_step = "Failure"  # End the FSM
+
+                case "DropPosition":  # Move servo 6/base to the correct angle
+                    thetas = utils.still_thetas.copy()  # Move part of the arm
+
+                    theta_servo6               = utils.get_theta_6(x, y)  # Calculate the new angle for servo 6
+                    theta_servo5               = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
+                    theta_servo3, theta_servo4 = utils.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
+
+                    thetas[2], thetas[3], thetas[4], thetas[6] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
+                    next_step                                  = "DropObject"  # Next step
 
                 case "DropObject":  # Drops the object
-                    thetas    = utils.still_thetas.copy()  # Move part of arm
-                    thetas[0] = 1000  # Only move and open the gripper
-                    next_step = "DrivePosition"  # Next step
+                    thetas    = utils.still_thetas.copy()  # Move part of the arm
+                    thetas[0] = 3000  # Only move and open the gripper
+
+                    if first_drop:
+                        first_drop = False  # Tried to drop the object once, should make it on the second try at least
+                        next_step  = "DropObject"  # Next step
+                    else:
+                        next_step  = "DrivePosition"  # Next step
 
                 case "DrivePosition":  # Finish the drop sequence by going back to the initial position
                     thetas    = utils.initial_thetas
@@ -107,8 +127,9 @@ class DropService(Node):
             
             if self.publish_angles(thetas, times):  # Publish the angles to the arm and check if the arm has moved to the correct angles
                 step = next_step
-            else:
-                step = "Failure"
+
+            else:  # If the arm did not move to the correct angles, try to move the arm to the same angles again
+                self._logger.error('Move error All: The arm did not move to the correct angles, trying again') 
         
         self._logger.info(f'{step}')
         response.success = True if step == "Success" else False
@@ -138,29 +159,6 @@ class DropService(Node):
         self.current_angles = current_angles
 
     
-    def get_object_pose(self, msg:ObjectDetection1D):
-        """
-        Args:
-            msg: ObjectDetection1D, required, x, y and z coordinates of the object in base_link
-        Returns:
-
-        Other functions:
-            Updates the poisition of the object while the robot is alinging itself
-            Logic to choose the closest object
-        """
-
-        pose  = msg.pose
-
-        assert isinstance(pose.position.x, float), self._logger.error('x was not type float')
-        assert isinstance(pose.position.y, float), self._logger.error('y was not type float')
-
-        # If there are more than one object, choose the closest one, first seen object is used as the base line. 
-        # The allowed discrepancy is 0.01m for the object detection from the RGB-D camera 
-        if pose.position.x <= self.min_x + 0.01 or self.min_x == 0.0:
-            self.box_pose = pose
-            self.min_x    = pose.position.x  # Update the closest x-position of an object in base_link frame 
-
-    
     def publish_angles(self, angles, times):
         """
         Args:
@@ -172,12 +170,15 @@ class DropService(Node):
             Publishes the angles of the servos to the arm in the correct format
         """
 
+        if angles == utils.still_thetas:  # If the arm is not moving, there is no need to publish the angles
+            return True
+
         msg      = Int16MultiArray()  # Initializes the message
         msg.data = angles + times  # Concatenates the angles and times
 
         self.servo_angle_publisher.publish(msg)
 
-        time.sleep(np.max(times) / 1000 + 0.5)  # Makes the code wait until the arm has had the time to move to the given angles
+        time.sleep(np.max(times) / 1000 + 0.75)  # Makes the code wait until the arm has had the time to move to the given angles
 
         return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
 

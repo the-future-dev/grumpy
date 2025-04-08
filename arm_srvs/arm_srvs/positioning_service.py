@@ -72,7 +72,7 @@ class PositioningService(Node):
         step        = "Start"  # The current step in the FSM
         end_strings = ["Success", "Failure"]  # The end strings of the FSM
 
-        if request.label.data == 'BOX':
+        if request.label.data == "BOX":
             self._logger.info(f'positioning_sequence: Looking for a box')
             self.look_for_box = True
 
@@ -95,7 +95,7 @@ class PositioningService(Node):
                             step = "Failure"  # End the FSM
                             break
                     
-                    if request.label.data == 'BOX':
+                    if request.label.data == "BOX":
                         step = "BoxDriveRobotWithRGB-D"  # Next step
                     else:
                         step = "DriveRobotWithRGB-D"  # Next step

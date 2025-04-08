@@ -141,7 +141,7 @@ def inverse_kinematics(x, y, z):
     # The hypotenuse (rho) from the origin of servo 5 to the object position in the xy-plane minus the distance servo 4 has already moved
     rho_dist = np.sqrt(np.power(x - x_origin_servo5, 2) + np.power(y - y_origin_servo5, 2)) - rho_origin_servo4
     # z_dist   = utils.z_oc_g - utils.z_origin_servo4  # The combined distance to the grip point in the z direction
-    z_dist   = - z_origin_servo4  # The combined distance to the grip point in the z direction
+    z_dist   = z - z_origin_servo4  # The combined distance to the grip point in the z direction
 
     # Calculate the angles for servo 3 and 4 in radians
     cos_d_t_servo3     = (rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) / (2 * l_4_3 * l_3_2_ee)
