@@ -28,7 +28,7 @@ class PositioningService(Node):
         self.look_for_box = False  # Flag to check if the robot should only look for a box
 
         # Target distance-parameters to the goal object/box
-        self.x_stop_pick =  0.35  # The x-position where the robot should stop when driving with the RGB-D camera to an object
+        self.x_stop_pick =  0.375  # The x-position where the robot should stop when driving with the RGB-D camera to an object
         self.x_stop_drop =  0.20  # The x-position where the robot should stop when driving with the RGB-D camera to a box
         self.y_offset    = -0.075  # The y-position where the robot should stop rotating with the RGB-D camera
         self.y_tol       =  0.02  # The tolerance for the y-position when driving with the RGB-D camera
@@ -75,6 +75,9 @@ class PositioningService(Node):
         if request.label.data == "BOX":
             self._logger.info(f'positioning_sequence: Looking for a box')
             self.look_for_box = True
+        else:
+            self._logger.info(f'positioning_sequence: Looking for an object')
+            self.look_for_box = False
 
         while step not in end_strings:
 
@@ -236,6 +239,7 @@ class PositioningService(Node):
             msg.duty_cycle_right += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
             msg.duty_cycle_left  += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
 
+        msg.duty_cycle_right = msg.duty_cycle_right * 1.075  # Adjust the right wheel speed to compensate for it moving slower
         self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
 
 

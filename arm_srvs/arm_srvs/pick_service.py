@@ -77,7 +77,7 @@ class PickService(Node):
 
         step        = "Start"  # Start step of the FSM
         end_strings = ["Success", "Failure"]  # End strings for the FSM
-        x, y, z     = 0, 0, 0  # The x, y and z position of the object
+        x, y, z     = 0, 0, -0.02  # The x, y and z position of the object, z is set to -0.02 becasue the object is always on the ground
         label       = ""  # The label of the object to be picked up
         first_grasp = True  # If it is the first try to grasp the object
 
@@ -143,10 +143,10 @@ class PickService(Node):
                         thetas[0] = 13000
                     else:
                         self._logger.error(f'Unknown object label: {label}')
-                        thetas[0] = 11000  # Default value for the gripper
+                        thetas[0] = 10500  # Default value for the gripper
 
                     if first_grasp:
-                        first_grasp = False  # Tried to drop the object once, should make it on the second try at least
+                        first_grasp = False  # Tried to pick the object once, should make it on the second try at least
                         next_step  = "GraspObject"  # Next step
                     else:
                         next_step  = "DrivePosition"  # Next step
@@ -172,7 +172,7 @@ class PickService(Node):
 
             elif step == "PickUp":  # To get to the grasping position, the arm has to be in an allowed initial position
                 self._logger.error('Move error PickUp: The arm did not move to the correct angles, trying again') 
-                for _ in range(3):  # Try to move the arm to the initial angles a maximum of 3 times
+                for _ in range(2):  # Try to move the arm to the initial angles a maximum of 2 times
                     if self.publish_angles(utils.initial_thetas, [2000] * 6):  
                         break  # Break when the arm has moved to the initial angles and try PickUp again
 

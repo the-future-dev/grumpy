@@ -38,7 +38,7 @@ drop_thetas    = [-1 , -1, 3000, 14500, 9000, -1]  # Angles for droping objects 
 view_thetas    = [-1, -1, 3000, 18000, 9500, -1]  # Angles when the arm camera has a view over the entire pick-up area
 still_thetas   = [-1] * 6 # Angles for when the arm should not move
 
-times = [1500] * 6  # Standard angle movement times to all positions
+times = [1500] * 6  # Standard angle movement times to all servos
 
 servos_offset = 150 # Allowed offset for the servos to be considered at the correct position
 
