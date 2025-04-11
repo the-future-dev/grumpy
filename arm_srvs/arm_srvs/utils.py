@@ -139,15 +139,16 @@ def inverse_kinematics(x, y, z):
 
     """
     # The hypotenuse (rho) from the origin of servo 5 to the object position in the xy-plane minus the distance servo 4 has already moved
-    rho_dist = np.sqrt(np.power(x - x_origin_servo5, 2) + np.power(y - y_origin_servo5, 2)) - rho_origin_servo4
+    rho_dist = np.sqrt((x - x_origin_servo5) ** 2 + (y - y_origin_servo5) ** 2) - rho_origin_servo4
     # z_dist   = utils.z_oc_g - utils.z_origin_servo4  # The combined distance to the grip point in the z direction
     z_dist   = z - z_origin_servo4  # The combined distance to the grip point in the z direction
 
     # Calculate the angles for servo 3 and 4 in radians
-    cos_d_t_servo3     = (rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) / (2 * l_4_3 * l_3_2_ee)
-    delta_theta_servo3 = - np.arctan2(np.sqrt(1 - cos_d_t_servo3 ** 2), cos_d_t_servo3)
+    # cos_d_t_servo3     = (rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) / (2 * l_4_3 * l_3_2_ee)
+    # delta_theta_servo3 = - np.arctan2(np.sqrt(1 - cos_d_t_servo3 ** 2), cos_d_t_servo3)
+    delta_theta_servo3 = - np.arccos((rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) /  (2 * l_4_3 * l_3_2_ee))
     delta_theta_servo4 = (np.arctan2(z_dist, rho_dist) - 
-                            np.arctan2(l_3_2_ee * np.sin(delta_theta_servo3), l_4_3 + (l_3_2_ee * np.cos(delta_theta_servo3))))
+                          np.arctan2(l_3_2_ee * np.sin(delta_theta_servo3), l_4_3 + (l_3_2_ee * np.cos(delta_theta_servo3))))
     
     # Convert the angles to degrees and adjust for the initial angle of servo 5
     delta_theta_servo3 = np.rad2deg(delta_theta_servo3)
