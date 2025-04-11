@@ -58,7 +58,6 @@ class OccupancyGridMapNode(Node):
         self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
         self.obstacle_subscription = self.create_subscription(ObjectDetection1DArray, 'object_mapping/object_poses', self.object_cb, 1)
 
-        self.rviz_grid_pub = self.create_publisher(OccupancyGrid, 'map/gridmap_rviz', 10)
 
     #Function which fills the space outside workspace as occupied, very slow now but have not succeded with other
     def fill_outside_grid(self):
@@ -88,8 +87,7 @@ class OccupancyGridMapNode(Node):
         points = np.array([x_list,
                             y_list])
 
-        self.get_logger().info(f'{points}')
-        
+
         self.map_to_grid(points, value)
         self.publish_grid()
 
@@ -103,7 +101,7 @@ class OccupancyGridMapNode(Node):
         
         #Get data from message
         min_angle = msg.angle_min
-        lower_bound = 0.35
+        lower_bound = 0.30
         upper_bound = msg.range_max
         inc = msg.angle_increment
         ranges = np.array(msg.ranges)
@@ -225,14 +223,14 @@ class OccupancyGridMapNode(Node):
         x_grid_points = x_grid_points[mask_in_bounds]
         y_grid_points = y_grid_points[mask_in_bounds]
 
-        #If placing an object or box we do not want to care about where in workspace
-        if value == self.object_box:
-            return x_grid_points, y_grid_points
-        
         #Mask to filter object and boxes and outside workspace
-        mask_workspace_object_box = self.grid[y_grid_points, x_grid_points] >= self.outside_inflate
+        mask_workspace_object_box = self.grid[y_grid_points, x_grid_points] >= self.outside
         x_grid_points = x_grid_points[~mask_workspace_object_box]
         y_grid_points = y_grid_points[~mask_workspace_object_box]
+
+        # #If placing an object or box we do not want to care about where in workspace
+        # if value == self.object_box:
+        #     return x_grid_points, y_grid_points
 
         #Mask to filter out free space when we want o set unknown space
         if value == self.unknown:
@@ -249,13 +247,13 @@ class OccupancyGridMapNode(Node):
         x_line = np.linspace(start, lidar_x, 10000)
         y_line = np.linspace(start, lidar_y, 10000)
 
-        x_line = x_line[:-50, :]
-        y_line = y_line[:-50, :]
+        x_line = x_line[:-100, :]
+        y_line = y_line[:-100, :]
 
         x_free = np.concatenate(x_line)
         y_free = np.concatenate(y_line)
 
-        mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.5) & (x_free > abs(y_free))  #Cone shape
+        mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.4) & (x_free > abs(0.7*y_free))  #Cone shape
         #mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)  #Box shape
         
         x_unknown = x_free[~mask_rgbd_scope]

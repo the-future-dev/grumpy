@@ -81,7 +81,7 @@ class AStarAlgorithmNode(Node):
         goal_y = msg.pose.position.y
         self.grid_xg, self.grid_yg = self.ws_utils.convert_map_to_grid(goal_x, goal_y)
         self.goal_pose_recieved = True
-        self.get_logger().info(f'{self.grid_xg}hej')
+        #self.get_logger().info(f'{self.grid_xg}hej')
 
         self.publish_path()
 
@@ -141,7 +141,7 @@ class AStarAlgorithmNode(Node):
         if item == self.outside:
             size = 30
         if item == self.object_box:
-            size = 25
+            size = 30
 
         inflate_size = int(size/self.ws_utils.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
@@ -189,7 +189,7 @@ class AStarAlgorithmNode(Node):
     
     def solve_path_points(self):
         #Function which takes the Q and decides whether to go to next item in Q or if at endpoint
-        sleep(4)
+        #sleep(3)
 
         #Take grid current pose
         self.grid_rob_x, self.grid_rob_y = self.current_pos()
@@ -364,7 +364,7 @@ class AStarAlgorithmNode(Node):
     
     def reduce_poses(self, x_list, y_list):
 
-        N = len(x_list) // 10
+        N = len(x_list) // 2
 
         cs = interp1d(x_list, y_list)
 

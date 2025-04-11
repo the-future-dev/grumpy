@@ -65,30 +65,22 @@ class LocalObstacleAvoidanceNode(Node):
         free_path = True
         _x,_y = self.get_current_pos()
 
-        N = 1
-        idx = 0
-        for next_pose in self.current_pose_list:
-            idx+= 1
-            if not free_path:
-                break
-            x, y = next_pose.pose.position.x, next_pose.pose.position.y
-            delta_x, delta_y = x - _x, y - _y
-            for i in range(N+1):
-                x_i = _x + i / N * delta_x
-                y_i = _y + i / N * delta_y
-                grid_xi, grid_yi = self.ws_utils.convert_map_to_grid(100*x_i, 100*y_i)
-                if self.grid[grid_yi, grid_xi] > 0:
-                    free_path = False
-                    break
-
-            _x, _y = x, y
+        x = np.array([pose.pose.position.x for pose in self.current_pose_list]) * 100
+        y = np.array([pose.pose.position.y for pose in self.current_pose_list]) * 100
+        grid_xi, grid_yi = self.ws_utils.convert_map_to_grid(x, y)
+        
+        if np.any(self.grid[grid_yi, grid_xi] > 0):
+            free_path = False
+            self.get_logger().info("Obstacle detected in path")
             
         if not free_path:
             msg_free.data = False
             self.free_zone_pub.publish(msg_free)
+            self.get_logger().info("Publishing: Path is not free")
         else:
             msg_free.data = True
-            self.free_zone_pub.publish(msg_free) 
+            self.free_zone_pub.publish(msg_free)
+            # self.get_logger().info("Publishing: Path is free")
 
     def get_current_pos(self):
         #Getting current pose of robot. 

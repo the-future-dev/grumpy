@@ -69,7 +69,7 @@ class Detection(Node):
             self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
             package_share_directory = packages.get_package_share_directory('perception_pkg')
-            model_path = os.path.join(package_share_directory, 'models', '05.pth')
+            model_path = os.path.join(package_share_directory, 'models', '06.pth')
 
             self.classification_model = DGCNNClassifier(
                 input_dims=6,  # XYZ + RGB
@@ -175,7 +175,7 @@ class Detection(Node):
             # Neural Network Train: save data Locally ##########################################################################
             # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             # self.object_data_list.append(cluster)
-            # data_save_path = "/home/group5/dd2419_ws/src/perception_pkg/trials/object_data/milestone3_cube2"
+            # data_save_path = os.path.join(os.path.expanduser('~'), 'dd2419_ws', 'src', 'perception_pkg', 'trials', 'object_data', 'milestone3_shit')
             # arrays_to_save = {}
             # for i, item in enumerate(self.object_data_list):
             #     arrays_to_save[f'cluster_{i}'] = item

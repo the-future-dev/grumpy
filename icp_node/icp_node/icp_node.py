@@ -30,13 +30,13 @@ class ICP_node(Node):
         self.y = 0.0
 
         # Subscribe to lidar
-        self.create_subscription(LaserScan,'/scan',self.lidar_callback,10)
+        self.create_subscription(LaserScan,'/scan',self.lidar_callback,1) # CHANGED
 
         # Initialize subscriber pose from update step of EKF
         self.create_subscription(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', self.localization_pose_cb, 10)
 
         # Initialize publisher that drive_2 can subscribe to
-        self.have_new_transform_pub = self.create_publisher(TransformStamped, 'ICP/have_new_transform', 1)
+        # self.have_new_transform_pub = self.create_publisher(TransformStamped, 'ICP/have_new_transform', 1)
 
         # Initialize subscriber to brain
         # self.create_subscription(Bool, '/icp_node/get_get_new_reference_scan', self.get_new_ref_scan_cb, 1)
@@ -44,7 +44,7 @@ class ICP_node(Node):
         # Initialize publiher to brain
         # self.have_scan_pub = self.create_publisher(Bool, '/icp_node/have_scan', 1)
 
-        # Initialize the transform buffer
+        # Initialize the transform buffer§
         self.tf_buffer = Buffer()
 
         # Initialize the transform listener
@@ -120,11 +120,11 @@ class ICP_node(Node):
             return
 
         # only process every nth scan
-        if self.counter > 0:
-            self.counter -= 1
-            self.t.header.stamp = msg.header.stamp
-            self._tf_broadcaster.sendTransform(self.t)
-            return
+        # if self.counter > 0:                                  # CHANGED SO THAT EVERY SCAN IS PROCESSED
+        #     self.counter -= 1
+        #     self.t.header.stamp = msg.header.stamp
+        #     self._tf_broadcaster.sendTransform(self.t)
+        #     return
 
         # Get transform between odom and frame_id
         to_frame_rel = 'odom'
@@ -178,13 +178,13 @@ class ICP_node(Node):
         
         # if there is two or more reference scans in the list compare which one is closest and use that as reference cloud when doing ICP algorithm
         if len(self.reference_clouds) >= 2:
-            # self.get_logger().info('Have more than one reference clouds')
+            self.get_logger().debug('Have more than one reference cloud')
             min_distance = np.inf
             for pos_cloud, cloud in self.reference_clouds:
                 distance = math.hypot(self.x-pos_cloud[0], self.y-pos_cloud[1])
 
                 if distance < min_distance:
-                    # self.get_logger().info('setting new reference cloud')
+                    self.get_logger().debug('setting new reference cloud')
                     self.ref_cloud = cloud
 
         # if this it the first transform set the initial guess to be an indentity matrix, otherwise use the old transform as guess
@@ -216,7 +216,7 @@ class ICP_node(Node):
 
             if self.bad_scan_counter >= self.threshold_new_scan:
                 self.get_logger().info(f'{self.threshold_new_scan} insufficent scans in a row, getting new reference scan')
-                self.get_new_reference_scan = True 
+                # self.get_new_reference_scan = True 
                 self.bad_scan_counter = 0 # reset counter
             return
 
@@ -233,7 +233,7 @@ class ICP_node(Node):
         comp_transforms = np.array([[self.t.transform.translation.x - transform_matrix[0, 3]], 
                                     [self.t.transform.translation.y - transform_matrix[1, 3]]])
 
-        if np.linalg.norm(comp_transforms) > 0.2:
+        if np.linalg.norm(comp_transforms) > 0.1:
             # self.get_logger().info(f'The norm was too high: {np.linalg.norm(comp_transforms)}')
             self.t.header.stamp = msg.header.stamp
             self._tf_broadcaster.sendTransform(self.t)
@@ -267,7 +267,7 @@ class ICP_node(Node):
         self.t.transform.rotation.w = quat[3]
 
         self._tf_broadcaster.sendTransform(self.t)
-        self.have_new_transform_pub.publish(self.t)
+        # self.have_new_transform_pub.publish(self.t)
 
     # def get_new_ref_scan_cb(self, msg:Bool):
     #     """

@@ -22,6 +22,7 @@ class SampleDriveControlNode(Node):
         self.vel_rotate = 0.09
         self.vel_small_rotate = 0.015
         self.vel_arrived = 0.0
+        self.right_extra = 1.05
 
         # stop variable
         self.stop = False
@@ -51,14 +52,14 @@ class SampleDriveControlNode(Node):
     def path_cb(self, msg:Path):
         #Call back that iterates in poses and drives to them, can maybe implement offset if it is needed
 
-        if self.stop == True:
-            self.get_logger().info(f'Stopping ')
-            msg_stop = DutyCycles()
-            msg_stop.duty_cycle_right = 0.0
-            msg_stop.duty_cycle_left = 0.0
-            self.motor_publisher.publish(msg_stop)
-            self.stop = False
-            return
+        # if self.stop == True:
+        #     self.get_logger().info(f'Stopping ')
+        #     msg_stop = DutyCycles()
+        #     msg_stop.duty_cycle_right = 0.0
+        #     msg_stop.duty_cycle_left = 0.0
+        #     self.motor_publisher.publish(msg_stop)
+        #     self.stop = False
+        #     return
 
         for pose in msg.poses:
           result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
@@ -135,18 +136,18 @@ class SampleDriveControlNode(Node):
             #If y is zero and x > 0 means perfect alignment otherwise turning
             if x >= 0.0 and abs(y) < 0.05:
                 #Stop turning
-                msg.duty_cycle_right = self.vel_arrived
+                msg.duty_cycle_right = self.vel_arrived*self.right_extra
                 msg.duty_cycle_left = self.vel_arrived
                 self.motor_publisher.publish(msg)
                 break
             elif y >= 0.0:
                 #Turn left
-                msg.duty_cycle_right = self.vel_rotate
+                msg.duty_cycle_right = self.vel_rotate*self.right_extra
                 msg.duty_cycle_left = -self.vel_rotate
                 self.motor_publisher.publish(msg)
             elif y < 0.0:
                 #Turn right
-                msg.duty_cycle_right = -self.vel_rotate
+                msg.duty_cycle_right = -self.vel_rotate*self.right_extra
                 msg.duty_cycle_left = self.vel_rotate
                 self.motor_publisher.publish(msg)
  
@@ -178,24 +179,24 @@ class SampleDriveControlNode(Node):
 
             if abs(x) < 0.05:
                 #Stop driving
-                msg.duty_cycle_right = self.vel_arrived
+                msg.duty_cycle_right = self.vel_arrived*self.right_extra
                 msg.duty_cycle_left = self.vel_arrived
                 self.motor_publisher.publish(msg)
                 self.get_logger().info(f'SUCCESS, point reached')
                 return True
             elif y > 0.05:
                 #Small turn left
-                msg.duty_cycle_right = self.vel_forward + self.vel_small_rotate
+                msg.duty_cycle_right = (self.vel_forward + self.vel_small_rotate)*self.right_extra
                 msg.duty_cycle_left = self.vel_forward - self.vel_small_rotate
                 self.motor_publisher.publish(msg)
             elif y < 0.05:
                 #Small turn right
-                msg.duty_cycle_right = self.vel_forward - self.vel_small_rotate
+                msg.duty_cycle_right = (self.vel_forward - self.vel_small_rotate)*self.right_extra
                 msg.duty_cycle_left = self.vel_forward + self.vel_small_rotate
                 self.motor_publisher.publish(msg)
             else:
                 #Drive forward
-                msg.duty_cycle_right = self.vel_forward
+                msg.duty_cycle_right = self.vel_forward*self.right_extra
                 msg.duty_cycle_left = self.vel_forward
                 self.motor_publisher.publish(msg)
 

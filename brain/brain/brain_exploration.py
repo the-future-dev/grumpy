@@ -45,7 +45,7 @@ class GetPath(py_trees.behaviour.Behaviour):
         """
         Method that will be exectued when behaviour is ticked
         """
-        self.node.get_logger().info(f'\nhave_path = {self.node.have_path},\n get_path = {self.node.get_path},\n have_goal = {self.node.have_goal}\n, get_goal = {self.node.get_goal}\n')
+        # self.node.get_logger().debug(f'Booleans: at_goal={self.node.at_goal}, recalculate_path={self.node.recalculate_path}, get_path={self.node.get_path}, get_goal={self.node.get_goal}, have_path={self.node.have_path}, have_goal={self.node.have_goal}')
         if self.node.have_path:
             # if we have a path we want to get path next time we go into this part of the behaviour
             self.node.get_path = True
@@ -60,6 +60,10 @@ class GetPath(py_trees.behaviour.Behaviour):
                 
                 # if we have a goal send it to A* but only do it once
                 if self.node.get_path:
+                    if not self.node.at_goal and self.node.recalculate_path:
+                        self.node.get_logger().info('We are waiting for the robot to reach goal')
+                        return py_trees.common.Status.RUNNING
+
                     self.node.get_path = False
                     self.node.get_logger().info('Publishing goal to A*')
                     self.node.send_goal_pub.publish(self.node.goal)
@@ -96,9 +100,13 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
         Method that will be executed when behaviour is ticked
         """
         if self.empty_list:
-            self.empty_list = False
-            self.node.set_poses_list = True
-            return py_trees.common.Status.SUCCESS
+            if not self.node.at_goal:
+                self.node.get_logger().debug('Waiting for drive control to reach point')
+                return py_trees.common.Status.RUNNING
+            else:
+                self.empty_list = False
+                self.node.set_poses_list = True
+                return py_trees.common.Status.SUCCESS
         else:
             if self.node.set_poses_list:
                 self.node.set_poses_list = False
@@ -111,7 +119,7 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
                 else:
                     if len(self.poses_list)==0:
                         self.empty_list = True
-                        self.node.get_logger().debug(f'No poses left, should have reached goal')
+                        self.node.get_logger().info(f'No poses left, should have reached goal')
                         return py_trees.common.Status.RUNNING
 
 
@@ -146,7 +154,9 @@ class SetSelf(py_trees.behaviour.Behaviour):
         """
         # self.node.have_scan = self.node.corner_ex_done
         self.node.have_path = False
+        self.node.get_path = True
         self.node.have_goal = False
+        self.node.get_goal = True
         self.node.at_goal = False
 
         return py_trees.common.Status.RUNNING
@@ -160,7 +170,7 @@ class BrainExploration(Node):
         self.have_path = False
         # self.have_scan = False
         self.have_goal = False
-        self.recalculate_path = True
+        self.recalculate_path = False
 
         self.at_goal = True
         self.corner_ex_done = False
@@ -188,7 +198,7 @@ class BrainExploration(Node):
 
         # Sleeping for 10 seconds so that all nodes are initalized properly
         self.get_logger().debug('Sleeping for 10 seconds before starting to tick')
-        sleep(5)
+        sleep(10)
 
         # Starting to tick the tree
         self.get_logger().debug('Starting to tick the tree')
@@ -203,25 +213,27 @@ class BrainExploration(Node):
     
         if not self.free_path:
              # only recalculate path once when path is not free
-
-             if self.recalculate_path:
+            self.get_logger().info('Path is not free')
+            if not self.recalculate_path:
                 self.get_logger().info('Setting have_path to false so that A* calculates path again')
-                self.recalculate_path = False
+                self.recalculate_path = True
                 self.have_path = False
-                self.have_goal = True
-                self.get_path = True 
+                self.get_path = True
+                self.have_goal = False
+                self.get_goal = True 
                 self.set_poses_list = True
                 
-                stop_msg = Bool()
-                stop_msg.data = True
-                self.stop_robot_pub.publish(stop_msg)
+                # stop_msg = Bool()
+                # stop_msg.data = True
+                # self.stop_robot_pub.publish(stop_msg)
 
-                stop_msg.data = False
-                self.stop_robot_pub.publish(stop_msg)
+                # stop_msg.data = False
+                # self.stop_robot_pub.publish(stop_msg)
         else:
-            self.recalculate_path = True
+            self.get_logger().debug('Path is free')
+            self.recalculate_path = False
 
-            
+    
     
     def set_path_cb(self, msg:Path):
         """
@@ -234,7 +246,8 @@ class BrainExploration(Node):
         else:
             self.get_logger().debug('Have received a non-empty path from A*')
             self.path = msg
-            self.have_path = True 
+            self.have_path = True
+            self.recalculate_path = False 
 
     def set_goal_cb(self, msg:PoseStamped):
         """

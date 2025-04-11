@@ -16,7 +16,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
 
         (os.path.join('share', package_name, 'models'),
-         glob(os.path.join('weights', '05.pth'))),
+         glob(os.path.join('weights', '06.pth'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
