@@ -25,16 +25,15 @@ def generate_launch_description():
         output='screen'
     )
 
-    # For later integration
-    # positioning = Node(
-    #     package=pkg_name_arm_services,
-    #     executable='positioning_service',
-    #     output='screen'
-    # )
+    positioning = Node(
+        package=pkg_name_arm_services,
+        executable='position_service',
+        output='screen'
+    )
 
     return LaunchDescription([
         arm_camera,
         drop,
-        pick #,
-        # positioning,
+        pick,
+        positioning,
     ])

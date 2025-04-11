@@ -82,7 +82,7 @@ class PickService(Node):
         first_grasp = True  # If it is the first try to grasp the object
 
         while step not in end_strings:
-            self._logger.info(f'{step}')  # Log the current step
+            self._logger.info(f'Pick Service: {step}')  # Log the current step
             times = utils.times  # Set the times to the standard times
 
             match step:
@@ -179,7 +179,7 @@ class PickService(Node):
             else:  # If the arm did not move to the correct angles, try to move the arm to the same angles again
                 self._logger.error('Move error Other: The arm did not move to the correct angles, trying again') 
         
-        self._logger.info(f'{step}')
+        self._logger.info(f'Pick Service: {step}')
         response.success = True if step == "Success" else False
         
         return response
@@ -196,10 +196,6 @@ class PickService(Node):
         """
 
         current_angles = msg.position
-
-        self._logger.info(f'Current angles: {current_angles}')  # Log the current angles of the servos
-        self._logger.info(f'Current angles: {type(current_angles)}')  # Log the current angles of the servos
-        self._logger.info(f'Current angles: {len(current_angles)}')  # Log the current angles of the servos
 
         # assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
         # assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
