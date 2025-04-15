@@ -95,7 +95,7 @@ class DropService(Node):
                     res            = positioned.result()  # Get the result of the service call
 
                     if res.success:
-                        x, y, _   = utils.extract_object_position(res.pose)  # x and y position of the box
+                        x, y, _   = utils.extract_object_position(self, res.pose)  # x and y position of the box
                         next_step = "DropPosition"  # Next step
                     else:
                         self._logger.error('Positioning service call failed')
@@ -108,7 +108,7 @@ class DropService(Node):
                     theta_servo5               = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
                     theta_servo3, theta_servo4 = utils.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
 
-                    thetas[2], thetas[3], thetas[4], thetas[6] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
+                    thetas[2], thetas[3], thetas[4], thetas[5] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
                     next_step                                  = "DropObject"  # Next step
 
                 case "DropObject":  # Drops the object

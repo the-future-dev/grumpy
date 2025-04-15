@@ -57,11 +57,11 @@ class ArmCameraService(Node):
         """
 
         found_object = False  # Flag to check if an object was found
-        x, y         = 0, 0  # The x and y position of the object
+        x, y         = 0.0, 0.0  # The x and y position of the object
 
         for _ in range(3):  # Try to get the object position a maximum of 3 times
             x, y = self.get_object_position()  # Get the position of the object
-            if x != 0:
+            if x != 0.0:
                 found_object = True  # If the object was found, set the flag to true
                 break
 
@@ -127,7 +127,7 @@ class ArmCameraService(Node):
             x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
         else:
             self._logger.info(f'get_object_position: NO OBJECTS FOUND')
-            x, y = 0, 0  # No object found, set to 0, 0
+            x, y = 0.0, 0.0  # No object found, set to 0, 0
             
         self.publish_image(image)  # Publish the image with or without the detected object(s)
 

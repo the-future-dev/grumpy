@@ -79,7 +79,7 @@ class PickService(Node):
 
         step        = "Start"  # Start step of the FSM
         end_strings = ["Success", "Failure"]  # End strings for the FSM
-        x, y, z     = 0, 0, -0.02  # The x, y and z position of the object, z is set to -0.02 becasue the object is always on the ground
+        x, y, z     = 0, 0, 0  # The x, y and z position of the object, z is set to -0.02 becasue the object is always on the ground
         label       = ""  # The label of the object to be picked up
         first_grasp = True  # If it is the first try to grasp the object
 
@@ -100,7 +100,7 @@ class PickService(Node):
                     res    = future.result()  # The response of the service call
 
                     if res.success:
-                        label     = res.response.label.data  # Get the label of the object
+                        label     = res.label.data  # Get the label of the object
                         next_step = "ViewPosition"  # Next step
                     else:
                         self._logger.error('Positioning service call failed')
@@ -118,9 +118,8 @@ class PickService(Node):
                     res    = future.result()  # The response of the service call
 
                     if res.success:
-                        x, y, _   = utils.extract_object_position(res.pose)  # Get the x and y position of the detected object
+                        x, y, _   = utils.extract_object_position(self, res.pose)  # Get the x and y position of the detected object
                         next_step = "PickUp"  # Next step
-                        break
                     else:
                         self._logger.error('Arm camera service call failed')
                         next_step = "Failure"  # End the FSM
@@ -132,7 +131,7 @@ class PickService(Node):
                     theta_servo5               = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
                     theta_servo3, theta_servo4 = utils.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
 
-                    thetas[2], thetas[3], thetas[4], thetas[6] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
+                    thetas[2], thetas[3], thetas[4], thetas[5] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
                     times[2], times[3], times[4], times[5]     = 2000, 2000, 1000, 1000  # Set the time for the servos to move to the new angles
                     next_step                                  = "GraspObject"  # Next step
                 
@@ -140,7 +139,7 @@ class PickService(Node):
                     thetas    = utils.still_thetas.copy()  # Move part of the arm
                     # Close the gripper to different degrees depending on the object
                     if label == "CUBE":
-                        thetas[0] = 10500
+                        thetas[0] = 14000
                     elif label == "SPHERE":
                         thetas[0] = 9500
                     elif label == "PUPPY":

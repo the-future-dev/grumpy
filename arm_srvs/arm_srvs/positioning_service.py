@@ -125,7 +125,7 @@ class PositioningService(Node):
                 
                 case "DriveRobotWithoutRGB-D":  # Drive the robot without the RGB-D camera
                     self._logger.info(f'positioning_sequence: in DriveRobotWithoutRGB-D --> Success')
-                    for _ in range(5):
+                    for _ in range(6):
                         time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
                         self.publish_robot_movement(goal_x, self.y_offset)  # Drive the robot forward multiple times
                     step = "Success"  # End the FSM

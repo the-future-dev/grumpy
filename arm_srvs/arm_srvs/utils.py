@@ -40,7 +40,7 @@ still_thetas   = [-1] * 6 # Angles for when the arm should not move
 
 times = [1500] * 6  # Standard angle movement times to all servos
 
-servos_offset = 150 # Allowed offset for the servos to be considered at the correct position
+servos_offset = 350 # Allowed offset for the servos to be considered at the correct position
 
 # The position of the camera in the base_link frame when in view position
 cam_pos = Pose()
@@ -139,7 +139,7 @@ def inverse_kinematics(x, y, z):
 
     """
     # The hypotenuse (rho) from the origin of servo 5 to the object position in the xy-plane minus the distance servo 4 has already moved
-    rho_dist = np.sqrt((x - x_origin_servo5) ** 2 + (y - y_origin_servo5) ** 2) - rho_origin_servo4
+    rho_dist = (np.sqrt((x - x_origin_servo5) ** 2 + (y - y_origin_servo5) ** 2) - rho_origin_servo4) * 1.03
     # z_dist   = utils.z_oc_g - utils.z_origin_servo4  # The combined distance to the grip point in the z direction
     z_dist   = z - z_origin_servo4  # The combined distance to the grip point in the z direction
 
