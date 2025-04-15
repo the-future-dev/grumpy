@@ -44,7 +44,7 @@ class ICP_node(Node):
         # Initialize publiher to brain
         # self.have_scan_pub = self.create_publisher(Bool, '/icp_node/have_scan', 1)
 
-        # Initialize the transform buffer§
+        # Initialize the transform buffer
         self.tf_buffer = Buffer()
 
         # Initialize the transform listener
