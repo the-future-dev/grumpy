@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'arm_srvs'
+package_name = 'detection_arm_cam'
 
 setup(
     name=package_name,
@@ -15,15 +15,12 @@ setup(
     zip_safe=True,
     maintainer='Philip Linderoth',
     maintainer_email='phlinde@kth.se',
-    description='Services for the hiwonder servo arm to pick up and drop objects',
+    description='A package for the arm camera to detect if an object is in the gripper',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'pick_service = arm_srvs.pick_service:main',
-            'drop_service = arm_srvs.drop_service:main',
-            'arm_camera_service = arm_srvs.arm_camera_service:main',
-            'position_service = arm_srvs.positioning_service:main'
+            'detection_arm_cam = detection_arm_cam.detection_arm_cam:main'
         ],
     },
 )
