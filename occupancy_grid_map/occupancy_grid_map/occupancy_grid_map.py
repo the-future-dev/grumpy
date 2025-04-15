@@ -253,7 +253,7 @@ class OccupancyGridMapNode(Node):
         x_free = np.concatenate(x_line)
         y_free = np.concatenate(y_line)
 
-        mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.4) & (x_free > abs(0.7*y_free))  #Cone shape
+        mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.4) & (x_free > abs(0.85*y_free))  #Cone shape
         #mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)  #Box shape
         
         x_unknown = x_free[~mask_rgbd_scope]

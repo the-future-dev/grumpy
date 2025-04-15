@@ -19,10 +19,10 @@ class SampleDriveControlNode(Node):
         super().__init__('sample_drive_control_node')
 
         self.vel_forward = 0.13
-        self.vel_rotate = 0.09
+        self.vel_rotate = 0.07 # 0.09 before
         self.vel_small_rotate = 0.015
         self.vel_arrived = 0.0
-        self.right_extra = 1.05
+        self.right_extra = 1.075
 
         # stop variable
         self.stop = False
@@ -134,7 +134,7 @@ class SampleDriveControlNode(Node):
             y = point_base_link.point.y
         
             #If y is zero and x > 0 means perfect alignment otherwise turning
-            if x >= 0.0 and abs(y) < 0.05:
+            if x >= 0.0 and abs(y) < 0.1:
                 #Stop turning
                 msg.duty_cycle_right = self.vel_arrived*self.right_extra
                 msg.duty_cycle_left = self.vel_arrived
