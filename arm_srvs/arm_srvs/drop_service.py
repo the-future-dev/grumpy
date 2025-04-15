@@ -23,6 +23,7 @@ class DropService(Node):
 
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
+        self.client_cb_group     = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
         # Create the drop service
@@ -36,7 +37,8 @@ class DropService(Node):
         # Create clients for the used services and wait for them to be available
         self.position_client = self.create_client(
             PositionRobot, 
-            '/arm_services/position_robot'
+            '/arm_services/position_robot',
+            callback_group=self.client_cb_group
         )
 
         while not self.position_client.wait_for_service(timeout_sec=1.0):
@@ -89,11 +91,12 @@ class DropService(Node):
                     thetas         = utils.still_thetas  # Do not move the arm
                     req            = PositionRobot.Request()  # Create a request for the position robot service
                     req.label.data = "BOX"  # Position the robot for the box
-                    positioned = self.position_client.call_async(req)
+                    positioned     = self.position_client.call_async(req)
                     rclpy.spin_until_future_complete(self, positioned)
+                    res            = positioned.result()  # Get the result of the service call
 
-                    if positioned.success:
-                        x, y      = positioned.response.pose.position.x, positioned.response.pose.position.y  # x and y position of the object
+                    if res.success:
+                        x, y, _   = utils.extract_object_position(res.pose)  # x and y position of the box
                         next_step = "DropPosition"  # Next step
                     else:
                         self._logger.error('Positioning service call failed')

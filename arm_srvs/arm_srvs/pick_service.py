@@ -18,7 +18,8 @@ class PickService(Node):
         self.current_angles = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
 
         # Create group for the service and subscriber that will run on different threads
-        self.service_cb_group = MutuallyExclusiveCallbackGroup()
+        self.service_cb_group    = MutuallyExclusiveCallbackGroup()
+        self.client_cb_group     = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
         
         # Create the pick service
@@ -32,12 +33,14 @@ class PickService(Node):
         # Create clients for the used services and wait for them to be available
         self.position_client = self.create_client(
             PositionRobot, 
-            '/arm_services/position_robot'
+            '/arm_services/position_robot',
+            callback_group=self.client_cb_group
         )
 
         self.arm_cam_client = self.create_client(
             ArmCameraDetection, 
-            '/arm_services/arm_camera'
+            '/arm_services/arm_camera',
+            callback_group=self.client_cb_group
         )
 
         while not self.position_client.wait_for_service(timeout_sec=1.0):
@@ -95,9 +98,10 @@ class PickService(Node):
                     req        = PositionRobot.Request()  # Create the an empty request, robot will position to pick up an object
                     positioned = self.position_client.call_async(req)
                     rclpy.spin_until_future_complete(self, positioned)
+                    res        = positioned.result()  # The response of the service call
 
-                    if positioned.success:
-                        label     = positioned.response.label.data  # Get the label of the object
+                    if res.success:
+                        label     = res.response.label.data  # Get the label of the object
                         next_step = "ViewPosition"  # Next step
                     else:
                         self._logger.error('Positioning service call failed')
@@ -112,9 +116,10 @@ class PickService(Node):
                     req         = ArmCameraDetection.Request()  # Create the request, no information is needed
                     object_pose = self.arm_cam_client.call_async(req)
                     rclpy.spin_until_future_complete(self, object_pose)
+                    res         = object_pose.result()  # The response of the service call
 
-                    if object_pose.success:
-                        x, y      = utils.extract_object_position(object_pose.pose)  # Get the x and y position of the detected object
+                    if res.success:
+                        x, y, _   = utils.extract_object_position(res.pose)  # Get the x and y position of the detected object
                         next_step = "PickUp"  # Next step
                         break
                     else:
