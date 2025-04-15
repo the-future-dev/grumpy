@@ -39,8 +39,10 @@ class ReadyForPickDrop(py_trees.behaviour.Behaviour):
     
     def update(self):
         if self.node.at_goal:
+            self.node.get_logger().info('Ready for pick/drop')
             return py_trees.common.Status.SUCCESS
         else:
+            self.node.get_logger().info('Not ready for pick/drop')
             return py_trees.common.Status.FAILURE
 
 
@@ -105,7 +107,11 @@ class GetPath(py_trees.behaviour.Behaviour):
 
                     self.node.get_path = False
                     self.node.get_logger().info('Publishing goal to A*')
-                    self.node.send_goal_pub.publish(self.node.goal)
+                    msg = PoseStamped()
+                    msg.pose = self.node.goal.pose
+
+
+                    self.node.send_goal_pub.publish(msg)
                 else:
                     self.node.get_logger().debug('Waiting for path from A*')    
             else:
@@ -119,7 +125,7 @@ class GetPath(py_trees.behaviour.Behaviour):
                     self.node.find_goal_pub.publish(msg)
 
                 else:
-                    self.node.get_logger().debug('Waiting for goal from planner')
+                    self.node.get_logger().info('Waiting for goal from planner')
 
             return py_trees.common.Status.RUNNING
 
@@ -294,11 +300,13 @@ class BrainCollection(Node):
         """
         Callback that sets the goal that will be sent to A*
         """
-        self.get_logger().debug('Have received goal from planner')
+        self.get_logger().info('Have received goal from planner')
 
         if msg.label.data == 'Near':
+            self.get_logger().info('Goal close to robot go directly to pick/drop')
             self.at_goal = True
         else:
+            self.get_logger().info('Goal not close, getting path')
             self.goal = msg
             self.have_goal = True
             self.get_path = True
@@ -359,7 +367,7 @@ class BrainCollection(Node):
         root.add_children([NoObjectsLeft(self), collection])
 
         # return ros-wrapping of py_trees behaviour tree
-        return py_trees_ros.trees.BehaviourTree(root=root, unicode_tree_debug=True)
+        return py_trees_ros.trees.BehaviourTree(root=root, unicode_tree_debug=False)
 
 
 def main():

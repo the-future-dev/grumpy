@@ -18,9 +18,9 @@ class PositioningService(Node):
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
         # Set speeds for the robot to move
-        self.vel_forward   = 0.03
-        self.vel_rotate    = 0.02
-        self.multi_forward = 2.0
+        self.vel_forward   = 0.075 # 0.03 before
+        self.vel_rotate    = 0.06 # 0.02 before
+        self.multi_forward = 1.0 # 2.0 before
 
         self.object_pose  = Pose()  # The position of the object in base_link frame
         self.object_label = ""  # The label of the object

@@ -13,6 +13,7 @@ class Workspace:
 
         self.workspace = ws.to_numpy().transpose()
         self.map = mp[[1, 2]].to_numpy().transpose()
+        self.objects_boxes = mp[[0,1,2]].to_numpy().transpose()
 
         self.map_min_x = np.min(self.workspace[0])
         self.map_min_y = np.min(self.workspace[1])

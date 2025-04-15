@@ -60,12 +60,6 @@ def generate_launch_description():
         output='screen'
     )
 
-    object_mapping = Node(
-        package='object_mapping',
-        executable='object_mapping',
-        output='screen'
-    )
-
     workspace_perimeter = Node(
         package='object_mapping',
         executable='workspace_init',
@@ -83,5 +77,4 @@ def generate_launch_description():
         icp_node,
         workspace_perimeter,
         perception,
-        object_mapping
     ])

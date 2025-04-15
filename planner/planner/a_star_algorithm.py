@@ -141,7 +141,7 @@ class AStarAlgorithmNode(Node):
         if item == self.outside:
             size = 30
         if item == self.object_box:
-            size = 30
+            size = 15
 
         inflate_size = int(size/self.ws_utils.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
@@ -219,7 +219,7 @@ class AStarAlgorithmNode(Node):
             grid_x = node_curr.grid_x
             grid_y = node_curr.grid_y
 
-            if abs(self.grid_xg - grid_x) < 8 and abs(self.grid_yg - grid_y) < 8: #limits can be changed
+            if abs(self.grid_xg - grid_x) < 10 and abs(self.grid_yg - grid_y) < 10: #limits can be changed
                 pose_list, time = self.end_point(node_curr)
                 if not pose_list:
                     return None, time
