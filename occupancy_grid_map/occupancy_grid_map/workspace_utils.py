@@ -6,10 +6,13 @@ class Workspace:
 
     def __init__(self):
 
-        self.file_path = '/home/group5/dd2419_ws/outputs/workspace_exploration.csv'
-        ws = pd.read_csv(self.file_path)
+        self.file_path_ws = '/home/group5/dd2419_ws/outputs/workspace_exploration.csv'
+        self.file_path_map = '/home/group5/dd2419_ws/outputs/map_collection.csv'
+        ws = pd.read_csv(self.file_path_ws)
+        mp = pd.read_csv(self.file_path_map, header=None)
 
         self.workspace = ws.to_numpy().transpose()
+        self.map = mp[[1, 2]].to_numpy().transpose()
 
         self.map_min_x = np.min(self.workspace[0])
         self.map_min_y = np.min(self.workspace[1])

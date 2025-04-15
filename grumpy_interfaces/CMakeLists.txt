@@ -17,6 +17,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ObjectDetection1D.msg"
   "msg/ObjectDetection1DArray.msg"
   "srv/PickAndDropObject.srv"
+  "srv/ArmCameraDetection.srv"
+  "srv/PositionRobot.srv"
   DEPENDENCIES std_msgs
   DEPENDENCIES geometry_msgs
 )

@@ -25,12 +25,10 @@ class OccupancyGridMapNode(Node):
     def __init__(self):
         super().__init__('occupancy_grid_map_node') 
 
+        #Inititalize workspace
         self.ws_utils = Workspace()
-
         self.workspace = self.ws_utils.workspace
-
         self.polygon = Polygon(self.workspace.T)
-        #self.inflate_polygon = self.polygon.buffer()
         
         #Values for grid cells
         self.unknown = -1
@@ -41,8 +39,8 @@ class OccupancyGridMapNode(Node):
         self.object_box = 4
 
         self.grid = self.ws_utils.create_grid()
-
         self.counter = 0
+        self.phase = 'collection'  ###############    PHASE    ##########
 
         #Transfrom between lidar link and map
         self.tf_buffer = Buffer()
@@ -54,9 +52,14 @@ class OccupancyGridMapNode(Node):
         #Fill outside grid with 
         self.fill_outside_grid()
 
+        if self.phase == 'collection':
+            self.map = self.ws_utils.map
+            self.map_to_grid(self.map, self.object_box)
+        elif self.phase == 'exploration':
+            self.obstacle_subscription = self.create_subscription(ObjectDetection1DArray, 'object_mapping/object_poses', self.object_cb, 1)
+
         #Subscribe to both lidar scan
         self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
-        self.obstacle_subscription = self.create_subscription(ObjectDetection1DArray, 'object_mapping/object_poses', self.object_cb, 1)
 
 
     #Function which fills the space outside workspace as occupied, very slow now but have not succeded with other
@@ -120,6 +123,7 @@ class OccupancyGridMapNode(Node):
         self.point_to_map(msg, lidar_x, lidar_y, self.obstacle)
         free_x, free_y, unknown_x, unknown_y = self.raytrace_float(lidar_x, lidar_y)
         self.point_to_map(msg, free_x, free_y, self.free)
+
         self.point_to_map(msg, unknown_x, unknown_y, self.unknown)
         self.publish_grid()
 
@@ -176,7 +180,7 @@ class OccupancyGridMapNode(Node):
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
 
-        inflate_size = int(9/self.ws_utils.resolution)
+        inflate_size = int(6/self.ws_utils.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
         
         new_grid = np.zeros_like(self.grid)

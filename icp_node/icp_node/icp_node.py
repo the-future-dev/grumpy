@@ -35,7 +35,7 @@ class ICP_node(Node):
         # Initialize subscriber pose from update step of EKF
         self.create_subscription(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', self.localization_pose_cb, 1)
 
-        # Initialize the transform buffer§
+        # Initialize the transform buffer
         self.tf_buffer = Buffer()
 
         # Initialize the transform listener
