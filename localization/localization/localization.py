@@ -34,7 +34,7 @@ class Localization(Node):
         self._tf_broadcaster = TransformBroadcaster(self)
 
         # Initalize publisher to publish pose after update step of EKF
-        self.pose_with_cov_pub = self.create_publisher(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', 10)
+        self.pose_with_cov_pub = self.create_publisher(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', 1)
 
         # Initialize the path publisher
         self._path_pub = self.create_publisher(Path, 'path', 10)

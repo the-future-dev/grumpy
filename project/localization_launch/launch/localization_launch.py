@@ -73,7 +73,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         # rviz_node,
-        brain_exploration,
+        # brain_exploration,
         icp,
         localization,
         static_tf_base_lidar,
