@@ -18,8 +18,9 @@ class PositioningService(Node):
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
         # Set speeds for the robot to move
-        self.vel_forward = 0.05
-        self.vel_rotate  = 0.07
+        self.vel_forward   = 0.03
+        self.vel_rotate    = 0.02
+        self.multi_forward = 2.0
 
         self.object_pose  = Pose()  # The position of the object in base_link frame
         self.object_label = ""  # The label of the object
@@ -29,7 +30,7 @@ class PositioningService(Node):
 
         # Target distance-parameters to the goal object/box
         self.x_stop_pick =  0.375  # The x-position where the robot should stop when driving with the RGB-D camera to an object
-        self.x_stop_drop =  0.20  # The x-position where the robot should stop when driving with the RGB-D camera to a box
+        self.x_stop_drop =  0.25  # The x-position where the robot should stop when driving with the RGB-D camera to a box
         self.y_offset    = -0.075  # The y-position where the robot should stop rotating with the RGB-D camera
         self.y_tol       =  0.02  # The tolerance for the y-position when driving with the RGB-D camera
         
@@ -81,11 +82,12 @@ class PositioningService(Node):
 
         while step not in end_strings:
 
-            time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move and object detection time to update
+            time.sleep(0.75)  # Sleep for 0.5 second to give the robot time to move and object detection time to update
             self._logger.info(f'{step}')  # Log the current step
 
             goal_x = self.object_pose.position.x  # The x-position of the object in base_link frame from perception
             goal_y = self.object_pose.position.y  # The y-position of the object in base_link frame from perception
+            self._logger.info(f'x: {goal_x}, y: {goal_y}')
 
             match step:
                 case "Start":  # Check if an object was found
@@ -199,8 +201,8 @@ class PositioningService(Node):
             msg.duty_cycle_left  = 0.0
 
         elif np.isclose(y, self.y_offset, atol=self.y_tol):
-            msg.duty_cycle_right = self.vel_forward * 1.5
-            msg.duty_cycle_left  = self.vel_forward * 1.5
+            msg.duty_cycle_right = self.vel_forward * self.multi_forward
+            msg.duty_cycle_left  = self.vel_forward * self.multi_forward
 
         elif x == -1.0:  # Turn the robot to find the object
             left_turns = 0
@@ -240,6 +242,7 @@ class PositioningService(Node):
             msg.duty_cycle_left  += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
 
         msg.duty_cycle_right = msg.duty_cycle_right * 1.075  # Adjust the right wheel speed to compensate for it moving slower
+        self._logger.info(f'left: {msg.duty_cycle_left}, right: {msg.duty_cycle_right}')
         self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
 
 

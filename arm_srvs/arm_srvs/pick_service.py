@@ -19,7 +19,6 @@ class PickService(Node):
 
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
-        self.client_cb_group     = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
         
         # Create the pick service
@@ -33,14 +32,12 @@ class PickService(Node):
         # Create clients for the used services and wait for them to be available
         self.position_client = self.create_client(
             PositionRobot, 
-            '/arm_services/position_robot',
-            callback_group=self.client_cb_group
+            '/arm_services/position_robot'
         )
 
         self.arm_cam_client = self.create_client(
             ArmCameraDetection, 
-            '/arm_services/arm_camera',
-            callback_group=self.client_cb_group
+            '/arm_services/arm_camera'
         )
 
         while not self.position_client.wait_for_service(timeout_sec=1.0):
