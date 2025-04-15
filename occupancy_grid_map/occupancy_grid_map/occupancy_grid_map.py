@@ -22,7 +22,7 @@ from nav_msgs.msg import OccupancyGrid
 class OccupancyGridMapNode(Node):
     
     #Initialzie oppucancy grid node
-    def __init__(self, phase):
+    def __init__(self):
         super().__init__('occupancy_grid_map_node') 
 
         #Inititalize workspace
@@ -40,7 +40,7 @@ class OccupancyGridMapNode(Node):
 
         self.grid = self.ws_utils.create_grid()
         self.counter = 0
-        self.phase = phase
+        self.phase = 'collection'  ###############    PHASE    ##########
 
         #Transfrom between lidar link and map
         self.tf_buffer = Buffer()
