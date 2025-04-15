@@ -1,5 +1,4 @@
 from grumpy_interfaces.srv import PickAndDropObject, PositionRobot
-from grumpy_interfaces.msg import ObjectDetection1D
 
 import rclpy
 from rclpy.node import Node

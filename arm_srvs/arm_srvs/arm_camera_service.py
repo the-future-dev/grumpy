@@ -1,15 +1,12 @@
 from grumpy_interfaces.srv import ArmCameraDetection
 
 import rclpy
-import rclpy.logging
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from sensor_msgs.msg import CompressedImage, Image
-from geometry_msgs.msg import Pose
 import cv2
 import cv_bridge
 import numpy as np
-import time
 import arm_srvs.utils as utils
 
 class ArmCameraService(Node):

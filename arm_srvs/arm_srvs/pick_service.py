@@ -5,7 +5,6 @@ from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_msgs.msg import Int16MultiArray
 from sensor_msgs.msg import JointState
-from geometry_msgs.msg import Pose
 import numpy as np
 import time
 import arm_srvs.utils as utils
@@ -20,6 +19,9 @@ class PickService(Node):
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
+
+        self.position_node       = rclpy.create_node('position_node')  # Create a node for the position service
+        self.arm_cam_node        = rclpy.create_node('arm_camera_node')  # Create a node for the arm camera service
         
         # Create the pick service
         self.srv = self.create_service(
@@ -30,12 +32,12 @@ class PickService(Node):
         )
 
         # Create clients for the used services and wait for them to be available
-        self.position_client = self.create_client(
+        self.position_client = self.position_node.create_client(
             PositionRobot, 
             '/arm_services/position_robot'
         )
 
-        self.arm_cam_client = self.create_client(
+        self.arm_cam_client = self.arm_cam_node.create_client(
             ArmCameraDetection, 
             '/arm_services/arm_camera'
         )
@@ -91,11 +93,11 @@ class PickService(Node):
                     next_step = "PositonRobot"  # Next step
 
                 case "PositonRobot":  # Call the position robot service to get to the position of the object
-                    thetas     = utils.still_thetas  # Do not move the arm
-                    req        = PositionRobot.Request()  # Create the an empty request, robot will position to pick up an object
-                    positioned = self.position_client.call_async(req)
-                    rclpy.spin_until_future_complete(self, positioned)
-                    res        = positioned.result()  # The response of the service call
+                    thetas = utils.still_thetas  # Do not move the arm
+                    req    = PositionRobot.Request()  # Create the an empty request, robot will position to pick up an object
+                    future = self.position_client.call_async(req)
+                    rclpy.spin_until_future_complete(self.position_node, future)
+                    res    = future.result()  # The response of the service call
 
                     if res.success:
                         label     = res.response.label.data  # Get the label of the object
@@ -109,11 +111,11 @@ class PickService(Node):
                     next_step = "GetPosition"  # Next step
 
                 case "GetPosition":  # Call the arm camera service to get the position of the object
-                    thetas      = utils.still_thetas  # Do not move the arm
-                    req         = ArmCameraDetection.Request()  # Create the request, no information is needed
-                    object_pose = self.arm_cam_client.call_async(req)
-                    rclpy.spin_until_future_complete(self, object_pose)
-                    res         = object_pose.result()  # The response of the service call
+                    thetas = utils.still_thetas  # Do not move the arm
+                    req    = ArmCameraDetection.Request()  # Create the request, no information is needed
+                    future = self.arm_cam_client.call_async(req)
+                    rclpy.spin_until_future_complete(self.arm_cam_node, future)
+                    res    = future.result()  # The response of the service call
 
                     if res.success:
                         x, y, _   = utils.extract_object_position(res.pose)  # Get the x and y position of the detected object

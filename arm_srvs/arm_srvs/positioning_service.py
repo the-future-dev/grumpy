@@ -87,7 +87,7 @@ class PositioningService(Node):
 
             goal_x = self.object_pose.position.x  # The x-position of the object in base_link frame from perception
             goal_y = self.object_pose.position.y  # The y-position of the object in base_link frame from perception
-            self._logger.info(f'x: {goal_x}, y: {goal_y}')
+            # self._logger.info(f'x: {goal_x}, y: {goal_y}')
 
             match step:
                 case "Start":  # Check if an object was found
@@ -241,8 +241,8 @@ class PositioningService(Node):
             msg.duty_cycle_right += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
             msg.duty_cycle_left  += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
 
-        msg.duty_cycle_right = msg.duty_cycle_right * 1.075  # Adjust the right wheel speed to compensate for it moving slower
-        self._logger.info(f'left: {msg.duty_cycle_left}, right: {msg.duty_cycle_right}')
+        msg.duty_cycle_right *= 1.075  # Adjust the right wheel speed to compensate for it moving slower
+        # self._logger.info(f'left: {msg.duty_cycle_left}, right: {msg.duty_cycle_right}')
         self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
 
 
