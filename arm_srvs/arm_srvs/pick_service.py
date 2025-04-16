@@ -228,6 +228,8 @@ class PickService(Node):
 
         time.sleep(np.max(times) / 1000 + 0.75)  # Makes the code wait until the arm has had the time to move to the given angles
 
+        self._logger.info(f'current: {self.current_angles}, sent: {angles}')
+
         return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
 
 

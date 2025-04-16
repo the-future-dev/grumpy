@@ -141,7 +141,7 @@ class AStarAlgorithmNode(Node):
         if item == self.outside:
             size = 30
         if item == self.object_box:
-            size = 15
+            size = 30
 
         inflate_size = int(size/self.ws_utils.resolution)
         inflate_matrix = np.ones((2 * inflate_size + 1, 2 * inflate_size + 1))
@@ -219,7 +219,7 @@ class AStarAlgorithmNode(Node):
             grid_x = node_curr.grid_x
             grid_y = node_curr.grid_y
 
-            if abs(self.grid_xg - grid_x) < 13 and abs(self.grid_yg - grid_y) < 13: #limits can be changed, 10 worked good with objects, 13 seems okay with boxes
+            if abs(self.grid_xg - grid_x) <= 8 and abs(self.grid_yg - grid_y) <= 8: #limits can be changed, 10 worked good with objects, 13 seems okay with boxes
                 pose_list, time = self.end_point(node_curr)
                 if not pose_list:
                     return None, time
@@ -363,6 +363,9 @@ class AStarAlgorithmNode(Node):
             return True
     
     def reduce_poses(self, x_list, y_list):
+
+        if len(x_list) <= 3:
+            return x_list, y_list
 
         N = len(x_list) // 2
 

@@ -27,6 +27,7 @@ class NoObjectsLeft(py_trees.behaviour.Behaviour):
         Method that will be executed when behaviour is ticked
         """
         if self.node.no_objects_left:
+            self.node.get_logger().info('No objects left, behaviour tree done')
             return py_trees.common.Status.SUCCESS
         else:
             return py_trees.common.Status.FAILURE
@@ -54,10 +55,31 @@ class PickDrop(py_trees.behaviour.Behaviour):
     def update(self):
         req = PickAndDropObject.Request()
         if self.node.action == 'Pick':
-            self.node.pick_client.call(req)
+            self.node.get_logger().info('Calling pickup service')
+            future = self.node.pick_client.call_async(req)
+            rclpy.spin_until_future_complete(self.node, future)
+            res = future.result()
         else:
-            self.node.drop_client.call(req)
-
+            self.node.get_logger().info('Calling drop service')
+            future = self.node.drop_client.call_async(req)
+            rclpy.spin_until_future_complete(self.node, future)
+            res = future.result()
+        
+        if res.success:
+            self.node.get_logger().info('Pick/Drop Success')
+            self.node.picked_dropped = True
+        else:
+            self.node.get_logger().info('Pick/Drop Failure')
+            self.node.picked_dropped = False
+            self.node.have_path = False
+            self.node.have_goal = False
+            self.node.get_path = True
+            self.node.get_goal = True
+            self.node.at_goal = False
+            self.node.at_sub_goal = False
+            if self.node.action == 'Drop':
+                self.node.action = 'Pick' # if drop fails try to pick up new object
+          
         return py_trees.common.Status.RUNNING
 
 
@@ -151,6 +173,7 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
             else:
                 self.empty_list = False
                 self.node.set_poses_list = True
+                self.node.at_goal = True # have reached the final goal
                 return py_trees.common.Status.SUCCESS
         else:
             if self.node.set_poses_list:
@@ -232,7 +255,7 @@ class BrainCollection(Node):
         self.goal = None
         self.path = None
 
-        self.action = 'Drop'
+        self.action = 'Pick'
 
         self.picked_dropped = False
         

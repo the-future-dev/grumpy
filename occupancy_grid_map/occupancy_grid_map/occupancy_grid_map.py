@@ -174,8 +174,8 @@ class OccupancyGridMapNode(Node):
 
         self.grid[y_grid_points, x_grid_points] = value
 
-        if value == self.object_box:
-            self.inflate_grid(x_grid_points, y_grid_points, value)
+        # if value == self.object_box:
+        #     self.inflate_grid(x_grid_points, y_grid_points, value)
 
     def inflate_grid(self, x_grid_points, y_grid_points, value):
         #Function which inflated the new points and a new grid and then merges it with old grid
