@@ -51,36 +51,49 @@ class PickDrop(py_trees.behaviour.Behaviour):
     def __init__(self, node:Node):
         super(PickDrop, self).__init__('PickDrop')
         self.node = node
+        self.future = None
 
     def update(self):
-        req = PickAndDropObject.Request()
-        if self.node.action == 'Pick':
-            self.node.get_logger().info('Calling pickup service')
-            future = self.node.pick_client.call_async(req)
-            rclpy.spin_until_future_complete(self.node, future)
-            res = future.result()
-        else:
-            self.node.get_logger().info('Calling drop service')
-            future = self.node.drop_client.call_async(req)
-            rclpy.spin_until_future_complete(self.node, future)
-            res = future.result()
+        if self.future is None:
+            req = PickAndDropObject.Request()
+            if self.node.action == 'Pick':
+                self.node.get_logger().info('Calling pickup service')
+                self.future = self.node.pick_client.call_async(req)
+                # rclpy.spin_until_future_complete(self.node.pick, future)
+                # res = future.result()
+            else:
+                self.node.get_logger().info('Calling drop service')
+                self.future = self.node.drop_client.call_async(req)
+                
+                # rclpy.spin_until_future_complete(self.node.drop, future)
+                # res = future.result()
+            return py_trees.common.Status.RUNNING
         
-        if res.success:
-            self.node.get_logger().info('Pick/Drop Success')
-            self.node.picked_dropped = True
+        if self.future.done():
+            res = self.future.result()
+
+            if res.success:
+                self.node.get_logger().info('Pick/Drop Success')
+                self.node.picked_dropped = True
+            else:
+                self.node.get_logger().info('Pick/Drop Failure')
+                self.node.picked_dropped = False
+                self.node.have_path = False
+                self.node.have_goal = False
+                self.node.get_path = True
+                self.node.get_goal = True
+                self.node.at_goal = False
+                self.node.at_sub_goal = False
+                if self.node.action == 'Drop':
+                    self.node.action = 'Pick' # if drop fails try to pick up new object
+                    
+            self.future = None
+            self.node._logger.info(f'PickDrop result: {res.success}')
+            return py_trees.common.Status.RUNNING
         else:
-            self.node.get_logger().info('Pick/Drop Failure')
-            self.node.picked_dropped = False
-            self.node.have_path = False
-            self.node.have_goal = False
-            self.node.get_path = True
-            self.node.get_goal = True
-            self.node.at_goal = False
-            self.node.at_sub_goal = False
-            if self.node.action == 'Drop':
-                self.node.action = 'Pick' # if drop fails try to pick up new object
-          
-        return py_trees.common.Status.RUNNING
+            self.node.get_logger().info('Waiting for pick/drop service')
+            return py_trees.common.Status.RUNNING
+            
 
 
 class PickedDroppedObject(py_trees.behaviour.Behaviour):
@@ -266,8 +279,11 @@ class BrainCollection(Node):
         self.path_list_pub = self.create_publisher(Path, '/brain/path_list', 1)
 
         # initialize clients
-        self.pick_client = self.create_client(PickAndDropObject, '/arm_services/pick_object')
-        self.drop_client = self.create_client(PickAndDropObject, '/arm_services/drop_object')
+        self.pick = rclpy.create_node('pick_brain_node')
+        self.drop = rclpy.create_node('drop_brain_node')
+
+        self.pick_client = self.pick.create_client(PickAndDropObject, '/arm_services/pick_object')
+        self.drop_client = self.drop.create_client(PickAndDropObject, '/arm_services/drop_object')
 
         # Create ROS 2 behaviour tree
         self.tree = self.create_behaviour_tree()

@@ -18,9 +18,9 @@ class PositioningService(Node):
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
         # Set speeds for the robot to move
-        self.vel_forward   = 0.075 # 0.03 before
-        self.vel_rotate    = 0.06 # 0.02 before
-        self.multi_forward = 1.0 # 2.0 before
+        self.vel_forward   = 0.07 # 0.03 before
+        self.vel_rotate    = 0.04 # 0.02 before
+        self.multi_forward = 1.1 # 2.0 before
 
         self.object_pose  = Pose()  # The position of the object in base_link frame
         self.object_label = ""  # The label of the object
@@ -196,50 +196,50 @@ class PositioningService(Node):
 
         msg = DutyCycles()
 
-        if x == 0 and y == 0:  # Stop the robot
-            msg.duty_cycle_right = 0.0
-            msg.duty_cycle_left  = 0.0
+        # if x == 0 and y == 0:  # Stop the robot
+        #     msg.duty_cycle_right = 0.0
+        #     msg.duty_cycle_left  = 0.0
 
-        elif np.isclose(y, self.y_offset, atol=self.y_tol):
-            msg.duty_cycle_right = self.vel_forward * self.multi_forward
-            msg.duty_cycle_left  = self.vel_forward * self.multi_forward
+        # elif np.isclose(y, self.y_offset, atol=self.y_tol):
+        #     msg.duty_cycle_right = self.vel_forward * self.multi_forward
+        #     msg.duty_cycle_left  = self.vel_forward * self.multi_forward
 
-        elif x == -1.0:  # Turn the robot to find the object
-            left_turns = 0
-            right_turns = 0
+        # elif x == -1.0:  # Turn the robot to find the object
+        #     left_turns = 0
+        #     right_turns = 0
 
-            # Turn left until the an object is found
-            while self.object_pose.position.x == 0.0 and self.object_pose.position.y == 0.0:
-                if left_turns < 10:
-                    msg.duty_cycle_right = self.vel_rotate
-                    msg.duty_cycle_left  = -self.vel_rotate
-                    left_turns += 1
-                elif right_turns < 20:
-                    msg.duty_cycle_right = -self.vel_rotate
-                    msg.duty_cycle_left  = self.vel_rotate
-                    left_turns += 1
-                else:
-                    self._logger.info('publish_robot_movement: No object found')
-                    break
+        #     # Turn left until the an object is found
+        #     while self.object_pose.position.x == 0.0 and self.object_pose.position.y == 0.0:
+        #         if left_turns < 10:
+        #             msg.duty_cycle_right = self.vel_rotate
+        #             msg.duty_cycle_left  = -self.vel_rotate
+        #             left_turns += 1
+        #         elif right_turns < 20:
+        #             msg.duty_cycle_right = -self.vel_rotate
+        #             msg.duty_cycle_left  = self.vel_rotate
+        #             left_turns += 1
+        #         else:
+        #             self._logger.info('publish_robot_movement: No object found')
+        #             break
                 
-                self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
+        #         self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
 
-                time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
+        #         time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
             
-            msg.duty_cycle_right = 0
-            msg.duty_cycle_left  = 0
+        #     msg.duty_cycle_right = 0
+        #     msg.duty_cycle_left  = 0
 
-        else:
-            # The robot should not turn faster than the maximum turn velocity and should turn slower the lower the y-value is
-            turn_vel = min(self.vel_rotate, abs(y - self.y_offset))
+        # else:
+        #     # The robot should not turn faster than the maximum turn velocity and should turn slower the lower the y-value is
+        #     turn_vel = min(self.vel_rotate, abs(y - self.y_offset))
 
-            # Turn left if y > y_offset, otherwise turn right
-            msg.duty_cycle_right = turn_vel if y > self.y_offset else -turn_vel
-            msg.duty_cycle_left  = -turn_vel if y > self.y_offset else turn_vel  
+        #     # Turn left if y > y_offset, otherwise turn right
+        #     msg.duty_cycle_right = turn_vel if y > self.y_offset else -turn_vel
+        #     msg.duty_cycle_left  = -turn_vel if y > self.y_offset else turn_vel  
 
-            # Also drive forward while turning but depending on how much turning is needed and maximum the forward velocity
-            msg.duty_cycle_right += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
-            msg.duty_cycle_left  += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
+        #     # Also drive forward while turning but depending on how much turning is needed and maximum the forward velocity
+        #     msg.duty_cycle_right += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
+        #     msg.duty_cycle_left  += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
 
         msg.duty_cycle_right *= 1.075  # Adjust the right wheel speed to compensate for it moving slower
         # self._logger.info(f'left: {msg.duty_cycle_left}, right: {msg.duty_cycle_right}')
