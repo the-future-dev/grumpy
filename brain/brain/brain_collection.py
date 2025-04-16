@@ -232,7 +232,7 @@ class BrainCollection(Node):
         self.goal = None
         self.path = None
 
-        self.action = 'Pick'
+        self.action = 'Drop'
 
         self.picked_dropped = False
         

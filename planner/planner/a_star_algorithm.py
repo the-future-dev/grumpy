@@ -219,7 +219,7 @@ class AStarAlgorithmNode(Node):
             grid_x = node_curr.grid_x
             grid_y = node_curr.grid_y
 
-            if abs(self.grid_xg - grid_x) < 10 and abs(self.grid_yg - grid_y) < 10: #limits can be changed
+            if abs(self.grid_xg - grid_x) < 13 and abs(self.grid_yg - grid_y) < 13: #limits can be changed, 10 worked good with objects, 13 seems okay with boxes
                 pose_list, time = self.end_point(node_curr)
                 if not pose_list:
                     return None, time
