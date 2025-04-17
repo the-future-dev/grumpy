@@ -37,14 +37,15 @@ def generate_launch_description():
 
     drive_control = Node(
         package='drive_control',
-        executable='drive_control',
+        executable='drive_2',
         output='screen'
     )
 
     perception = Node(
         package='perception_pkg',
         executable='detection_node',
-        output='screen'
+        output='screen',
+        parameters=[{'mode': 'collection'}]
     )
 
     object_mapping = Node(
