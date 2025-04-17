@@ -58,7 +58,10 @@ def generate_launch_description():
             package='perception_pkg',
             executable='detection_node',
             name='detection',
-            output='screen'
+            output='screen',
+            parameters=[{
+                'mode': 'collection'
+            }]
         ),
         
         # Start lidar node
