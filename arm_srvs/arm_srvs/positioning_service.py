@@ -18,9 +18,11 @@ class PositioningService(Node):
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
         # Set speeds for the robot to move
-        self.vel_forward   = 0.07 # 0.03 before
-        self.vel_rotate    = 0.04 # 0.02 before
-        # self.multi_forward = 1.1 # 2.0 before
+        self.vel_forward       = 0.07  # 0.03 before
+        self.vel_rotate        = 0.06  # 0.02 before
+        self.correct_right     = 1.05  # Correction of the right wheel
+        self.rotation_per_turn = 6.00  # Degrees of rotation per turn msg with vel_rotate = 0.06 and correct_right = 1.08
+        self.movement_per_forw = 0.026  # Moved distance per forward msg with vel_forward = 0.07 and correct_right = 1.08
 
         self.object_pose  = Pose()  # The position of the object in base_link frame
         self.object_label = ""  # The label of the object
@@ -29,10 +31,11 @@ class PositioningService(Node):
         self.look_for_box = False  # Flag to check if the robot should only look for a box
 
         # Target distance-parameters to the goal object/box
-        self.x_stop_pick =  0.375  # The x-position where the robot should stop when driving with the RGB-D camera to an object
-        self.x_stop_drop =  0.25  # The x-position where the robot should stop when driving with the RGB-D camera to a box
-        self.y_offset    = -0.075  # The y-position where the robot should stop rotating with the RGB-D camera
-        self.y_tol       =  0.02  # The tolerance for the y-position when driving with the RGB-D camera
+        self.unrealistic_x =  0.30
+        self.x_stop_pick   =  0.20  # The x-position where the robot should stop when driving with the RGB-D camera to an object
+        self.x_stop_drop   =  0.20  # The x-position where the robot should stop when driving with the RGB-D camera to a box
+        self.y_offset      = -0.05  # The y-position where the robot should stop rotating with the RGB-D camera
+        self.y_tol         =  0.02  # The tolerance for the y-position when driving with the RGB-D camera
         
         # Create the positioning service
         self.srv = self.create_service(
@@ -186,7 +189,7 @@ class PositioningService(Node):
                 self.object_found = True
             else: # If the object is not a box, ignore it
                 self._logger.info(f'get_object_pose: Ignoring object {label}')
-        elif pose.position.x <= self.min_x + 0.01 or self.min_x == 0.0:
+        elif self.unrealistic_x < pose.position.x <= self.min_x or self.min_x == 0.0:
             self.object_pose  = pose
             self.object_label = label
             self.min_x        = pose.position.x  # Update the minimum x-position of the object
@@ -217,18 +220,18 @@ class PositioningService(Node):
         #     msg.duty_cycle_right = self.vel_forward * self.multi_forward
         #     msg.duty_cycle_left  = self.vel_forward * self.multi_forward
 
-        if x == -1.0:  # Turn the robot to find the object
+        if x < 0.0:  # Turn the robot to find the object
             left_turns = 0
             right_turns = 0
 
             # Turn left until the an object is found
             while not self.object_found:
                 if left_turns < 10:
-                    msg.duty_cycle_right = self.vel_rotate * 1.075
+                    msg.duty_cycle_right = self.vel_rotate * self.correct_right
                     msg.duty_cycle_left  = -self.vel_rotate
                     left_turns += 1
                 elif right_turns < 20:
-                    msg.duty_cycle_right = -self.vel_rotate * 1.075
+                    msg.duty_cycle_right = -self.vel_rotate * self.correct_right
                     msg.duty_cycle_left  = self.vel_rotate
                     right_turns += 1
                 else:
@@ -242,19 +245,21 @@ class PositioningService(Node):
 
                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
         else:
-            turns   = round(abs(self.y_offset - y) * 10)  # Calculate the number of turns needed to align the robot with the object
-            forward = round(x - (self.x_stop_drop if self.look_for_box else self.x_stop_pick) * 10) # Calculate the number of forward movements needed to get to the object
+            self._logger.info('publish_robot_movement: Driving to object')
+            turns   = abs(round(np.rad2deg(np.arctan(abs(y) / x)) / self.rotation_per_turn) + (1 if y > 0 else -1)) # Calculate the number of turns needed to align the robot with the object
+            dist    = np.sqrt(x ** 2 + y ** 2)
+            forward = round((dist - (self.x_stop_drop if self.look_for_box else self.x_stop_pick)) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
             
-            msg.duty_cycle_right = self.vel_rotate if y > self.y_offset else -self.vel_rotate
-            msg.duty_cycle_left  = -self.vel_rotate if y > self.y_offset else self.vel_rotate
+            self._logger.info(f'publish_robot_movement: turns: {turns}, forward: {forward} - {(x - (self.x_stop_drop if self.look_for_box else self.x_stop_pick))}')
 
-            msg.duty_cycle_right *= 1.075  # Adjust the right wheel speed to compensate for it moving slower
+            msg.duty_cycle_right = (self.vel_rotate if y > 0 else -self.vel_rotate) * self.correct_right
+            msg.duty_cycle_left  = -self.vel_rotate if y > 0 else self.vel_rotate
 
             for _ in range(turns):
                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
                 self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
 
-            msg.duty_cycle_right = self.vel_forward * 1.075
+            msg.duty_cycle_right = self.vel_forward * self.correct_right
             msg.duty_cycle_left  = self.vel_forward
 
             for _ in range(forward):

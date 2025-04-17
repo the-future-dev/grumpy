@@ -1,6 +1,7 @@
 import rclpy
 import rclpy.logging
 from rclpy.node import Node
+from std_msgs.msg import Bool
 from sensor_msgs.msg import CompressedImage, Image
 import cv2
 import cv_bridge
@@ -24,19 +25,19 @@ class DetectionArmCam(Node):
         # Create publishers and a subscriber for images and object detection from the arm camera
         self.image_publisher_ = self.create_publisher(
             Image, 
-            '/detection_arm_cam/object_in_gripper',
+            '/detection_arm_cam/image_raw/object_in_gripper',
             10
         )
 
         self.object_in_gripper_pub = self.create_publisher(
-            bool,
+            Bool,
             '/detection_arm_cam/object_in_gripper',
             1
         )
 
         self.image_subscriber = self.create_subscription(
             CompressedImage,
-            '/detection_arm_cam/image_raw/compressed',
+            '/arm_camera/image_raw/compressed',
             self.process_image,
             10
         )
@@ -53,13 +54,15 @@ class DetectionArmCam(Node):
             Calls the function to see if an object is in the gripper
             Publishes if an object is in the gripper or not
         """
-        # If the number of images are to many and take up too much memory, uncomment the following lines
-        # self.num_images += 1  # Increment the number of images processed
-        # if self.num_images % 3 == 0:  # Every third image check if an object is in the gripper
-        image        = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
-        object_found = self.object_in_gripper(image)  # Call the function to see if an object is in the gripper
+        
+        self.num_images += 1  # Increment the number of images processed
+        if self.num_images % 5 == 0:  # Every third image check if an object is in the gripper
+            pub_msg = Bool()
 
-        self.object_in_gripper_pub.publish(object_found)  # Publish the result to the object_in_gripper topic
+            image        = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
+            pub_msg.data = self.object_in_gripper(image)  # Call the function to see if an object is in the gripper
+
+            self.object_in_gripper_pub.publish(pub_msg)  # Publish the result to the object_in_gripper topic
 
 
     def object_in_gripper(self, image):
@@ -90,7 +93,7 @@ class DetectionArmCam(Node):
         # contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
         areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
 
-        if len(areas) > 0:  # If there are any contours found
+        if len(areas) > 0 and np.max(areas) > 500:  # If there are any contours found
             max_index = np.argmax(areas)  # Get the index of the largest contour
             contour   = contours[max_index]  # Choose the largest contour
 

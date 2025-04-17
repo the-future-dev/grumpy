@@ -99,7 +99,7 @@ class ArmCameraService(Node):
         # time.sleep(1.0)  # Wait for the arm camera image to stabilize after arm movement
         
         cx, cy = 0, 0  # No object found, set to 0, 0
-        image  = self.image  # Makes sure the same image is used for the whole function
+        image  = self.image.copy()  # Makes sure the same image is used for the whole function
 
         undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
         hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for eaiser color-based object detection
@@ -108,8 +108,8 @@ class ArmCameraService(Node):
         mask = cv2.medianBlur(mask, 5)  # Apply a median blur to the mask to reduce salt and pepper noise
         mask = self.clean_mask(mask)  # Clean each mask using morphological operations
 
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, only external contours
-        # contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
+        # contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, only external contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
         areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
 
         if len(areas) > 0:  # If there are any contours found
@@ -124,7 +124,10 @@ class ArmCameraService(Node):
 
             self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
 
-            x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
+            if cy > 400:
+                x, y = 0.0, 0.0  # Faulty detection, set to 0, 0
+            else:
+                x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
         else:
             self._logger.info(f'get_object_position: NO OBJECTS FOUND')
             x, y = 0.0, 0.0  # No object found, set to 0, 0

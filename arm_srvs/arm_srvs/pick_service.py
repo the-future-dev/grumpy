@@ -227,7 +227,7 @@ class PickService(Node):
         for _ in range(2):
             self.servo_angle_publisher.publish(msg)
 
-            time.sleep(np.max(times) / 1000 + 0.75)  # Makes the code wait until the arm has had the time to move to the given angles
+            time.sleep(np.max(times) / 1000 + 0.25)  # Makes the code wait until the arm has had the time to move to the given angles
 
         # self._logger.info(f'current: {self.current_angles}, sent: {angles}')
 
