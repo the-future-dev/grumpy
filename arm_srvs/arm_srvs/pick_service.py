@@ -20,7 +20,7 @@ class PickService(Node):
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
-        self.position_node       = rclpy.create_node('position_node')  # Create a node for the position service
+        self.position_node       = rclpy.create_node('position_node_pick')  # Create a node for the position service
         self.arm_cam_node        = rclpy.create_node('arm_camera_node')  # Create a node for the arm camera service
         
         # Create the pick service
@@ -139,7 +139,7 @@ class PickService(Node):
                     thetas    = utils.still_thetas.copy()  # Move part of the arm
                     # Close the gripper to different degrees depending on the object
                     if label == "CUBE":
-                        thetas[0] = 14000
+                        thetas[0] = 10500
                     elif label == "SPHERE":
                         thetas[0] = 9500
                     elif label == "PUPPY":

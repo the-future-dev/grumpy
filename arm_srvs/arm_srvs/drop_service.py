@@ -22,8 +22,9 @@ class DropService(Node):
 
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
-        self.client_cb_group     = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
+
+        self.position_node       = rclpy.create_node('position_node_drop')  # Create a node for the position service
 
         # Create the drop service
         self.srv = self.create_service(
@@ -34,10 +35,9 @@ class DropService(Node):
         )
 
         # Create clients for the used services and wait for them to be available
-        self.position_client = self.create_client(
+        self.position_client = self.position_node.create_client(
             PositionRobot, 
-            '/arm_services/position_robot',
-            callback_group=self.client_cb_group
+            '/arm_services/position_robot'
         )
 
         while not self.position_client.wait_for_service(timeout_sec=1.0):
@@ -90,9 +90,9 @@ class DropService(Node):
                     thetas         = utils.still_thetas  # Do not move the arm
                     req            = PositionRobot.Request()  # Create a request for the position robot service
                     req.label.data = "BOX"  # Position the robot for the box
-                    positioned     = self.position_client.call_async(req)
-                    rclpy.spin_until_future_complete(self, positioned)
-                    res            = positioned.result()  # Get the result of the service call
+                    future         = self.position_client.call_async(req)
+                    rclpy.spin_until_future_complete(self.position_node, future)
+                    res            = future.result()  # Get the result of the service call
 
                     if res.success:
                         x, y, _   = utils.extract_object_position(self, res.pose)  # x and y position of the box
