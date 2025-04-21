@@ -48,7 +48,7 @@ class ArmCameraService(Node):
     def camera_sequence(self, request, response):
         """
         Args:
-            
+            request.grasp   : bool, required, if the arm is in the grasp position or not
         Returns:
             response.pose   : Pose, the position of the object in the base_link frame
             response.success: bool, if the camera sequence was successful or not
@@ -60,7 +60,7 @@ class ArmCameraService(Node):
         x, y         = 0.0, 0.0  # The x and y position of the object
 
         for _ in range(3):  # Try to get the object position a maximum of 3 times
-            x, y = self.get_object_position()  # Get the position of the object
+            x, y = self.get_object_position(request.grasp)  # Get the position of the object
             if x != 0.0:
                 found_object = True  # If the object was found, set the flag to true
                 break
@@ -85,7 +85,7 @@ class ArmCameraService(Node):
         self.image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
 
 
-    def get_object_position(self):
+    def get_object_position(self, grasp_position):
         """
         Args:
 
@@ -124,8 +124,8 @@ class ArmCameraService(Node):
 
             self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
 
-            if cy > 400:
-                x, y = 0.0, 0.0  # Faulty detection, set to 0, 0
+            if grasp_position:
+                x, y = self.pixel_to_adjust_in_base_link(cx, cy)
             else:
                 x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
         else:
@@ -201,6 +201,26 @@ class ArmCameraService(Node):
         y = - (x_pixel - cx) * (utils.cam_pos.position.z / fx) + utils.cam_pos.position.y
 
         return x, y
+    
+
+    def pixel_to_adjust_in_base_link(self, x_pixel, y_pixel):
+        """
+        Args:
+            x: float, required, the pixel x-coordinate of the object in the arm camera image
+            y: float, required, the pixel y-coordinate of the object in the arm camera image
+        Returns:
+            x: float, the amount the x-coordinate of the object in the base_link frame should be adjusted
+            y: float, the amount the y-coordinate of the object in the base_link frame should be adjusted
+        Other functions:
+            
+        """
+
+        cx, cy = utils.intrinsic_mtx[0, 2], 460  # Principal point from the intrinsic matrix
+
+        adjustment_to_x = - (y_pixel - cy) / 50
+        adjustment_to_y = - (x_pixel - cx) / 50
+
+        return adjustment_to_x, adjustment_to_y
     
 
     def publish_image(self, image):
