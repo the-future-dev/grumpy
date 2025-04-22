@@ -306,21 +306,6 @@ class AStarAlgorithmNode(Node):
             self.grid[node_curr.grid_y, node_curr.grid_x] = -2
             node_curr = node_curr.parent
 
-            # if free == True:
-            #     x_list.append(next_x/100)
-            #     y_list.append(next_y/100)
-            #     self.grid[node_curr.grid_y, node_curr.grid_x] = -2
-
-            #     if node_curr.grid_x == last_node.grid_x and node_curr.grid_y == last_node.grid_y:
-            #         self.get_logger().info(f'{x_list}')
-            #         self.get_logger().info('Breaking loop')
-            #         break
-            #     else:
-            #         grid_curr_x = node_curr.grid_x
-            #         grid_curr_y = node_curr.grid_y
-            #         node_curr = last_node
-            # else:
-
         x_list = x_list[::-1]
         y_list = y_list[::-1]
 
@@ -328,6 +313,27 @@ class AStarAlgorithmNode(Node):
             return None, time
 
         x_list, y_list = self.reduce_poses(x_list, y_list)
+
+        new_x = [x_list[0]]
+        new_y = [y_list[0]]
+
+        curr_x = x_list[0]
+        curr_y = y_list[0]
+
+        for i in range(len(x_list)):
+            
+            free = self.check_free_path(curr_x, curr_y, x_list[i+1], y_list[i+1])
+            
+            if free == True:
+                new_x.pop(i)
+                new_x.append(x_list[i+1])
+                new_y.pop(i)
+                new_x.append(y_list[i+1])
+            if free == False:
+                curr_x = new_x[-1]
+                curr_y = new_y[-1]
+
+
 
         cmap = plt.cm.get_cmap('Paired', 8)
         norm = BoundaryNorm([-2, -1, 0, 1, 2, 3, 4, 5, 6], cmap.N)
@@ -351,10 +357,9 @@ class AStarAlgorithmNode(Node):
 
     def check_free_path(self, x_start, y_start, x_end, y_end):
 
-        x_line = np.linspace(x_start, x_end, 100)
-        y_line = np.linspace(y_start, y_end, 100)
+        x_line = np.linspace(x_start*100, x_end*100, 1000)
+        y_line = np.linspace(y_start*100, y_end*100, 1000)
 
-        # grid_x_line, grid_y_line = self.map_to_grid(100*x_line, 100*y_line)
         grid_x_line, grid_y_line = self.ws_utils.convert_map_to_grid(x_line, y_line)
 
         if np.any((self.grid[grid_y_line, grid_x_line] > 0) & (self.grid[grid_y_line, grid_x_line] < 5)):

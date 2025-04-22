@@ -94,6 +94,10 @@ class PickService(Node):
         grasp_position = False  # If the arm is in the grasp position or not
         # first_grasp  = True  # If it is the first try to grasp the object
 
+        # self.get_logger().info('Responding with success directly')
+        # response.success = True
+        # return response
+
         while step not in end_strings:
             self._logger.info(f'Pick Service: {step}')  # Log the current step
             times  = utils.times.copy()  # Set the times to the standard times
@@ -119,6 +123,7 @@ class PickService(Node):
                         next_step = "ViewPosition"  # Next step
                     else:
                         self._logger.error('Positioning service call failed')
+                        thetas    = utils.initial_thetas
                         next_step = "Failure"  # End the FSM
 
                 case "ViewPosition":  # Get the position of the object from the arm camera
@@ -138,6 +143,7 @@ class PickService(Node):
                             x, y = x + temp_x, y + temp_y
                         else:
                             x, y = temp_x, temp_y
+
                         if (x >= 0.22 or
                             x <= 0.15 or 
                             y >= 0.05 or
@@ -151,6 +157,7 @@ class PickService(Node):
                             next_step = "GraspObject"  # Try to pick it up even though an object was not detected when in grasp position
                         else:
                             self._logger.error('Arm camera service call failed')
+                            thetas    = utils.initial_thetas
                             next_step = "Failure"  # End the FSM
                 
                 case "PickUp":  # Move the arm to the pick up position

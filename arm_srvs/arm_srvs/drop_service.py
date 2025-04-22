@@ -85,6 +85,10 @@ class DropService(Node):
         end_strings = ["Success", "Failure"]  # The end strings of the FSM
         first_drop  = True  # If it is the first try to drop the object
 
+        # self.get_logger().info('Responding with success directly')
+        # response.success = True
+        # return response
+
         while step not in end_strings:
             self._logger.info(f'{step}')  # Log the current step
             times  = utils.times  # Set the times to the standard times

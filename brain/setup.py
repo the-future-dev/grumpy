@@ -21,7 +21,8 @@ setup(
     entry_points={
         'console_scripts': [
             'brain_collection = brain.brain_collection:main',
-            'brain_exploration = brain.brain_exploration:main'
+            'brain_exploration = brain.brain_exploration:main',
+            'pick_drop_topic_node = brain.pick_drop_topic_node:main'
         ],
     },
 )

@@ -62,7 +62,7 @@ class SampleDriveControlNode(Node):
         #     return
 
         for pose in msg.poses:
-          result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+          result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y, msg.header.frame_id)
           if result == False:
               break
 
@@ -94,7 +94,7 @@ class SampleDriveControlNode(Node):
     #     msg_stop.duty_cycle_right = 0.0
     #     self.motor_publisher.publish(msg_stop)
 
-    def set_drive_input(self, x, y):
+    def set_drive_input(self, x, y, given_frame_id):
 
         msg = DutyCycles()
         sample_point = PointStamped()
@@ -112,7 +112,6 @@ class SampleDriveControlNode(Node):
             # if self.stop == True and self.drive_to_free == False:
             #     self.get_logger().info(f'Stopping, in occupied zone')
             #     return False
-
             tf_future = self.tf_buffer.wait_for_transform_async('base_link', from_frame, self.get_clock().now())
             rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 
@@ -156,7 +155,6 @@ class SampleDriveControlNode(Node):
 
             # if self.stop == True and self.drive_to_free == False:
             #     return False
-            
             tf_future = self.tf_buffer.wait_for_transform_async('base_link', from_frame, self.get_clock().now())
             rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 

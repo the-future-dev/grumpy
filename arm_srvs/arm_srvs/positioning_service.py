@@ -6,11 +6,8 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from robp_interfaces.msg import DutyCycles
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
-from nav_msgs.msg import Path
-from geometry_msgs.msg import PoseStamped
 import numpy as np
 import time
-from std_msgs.msg import Bool
 
 class PositioningService(Node):
 
@@ -20,19 +17,27 @@ class PositioningService(Node):
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
-        # Object detection variables
+        # Set speeds for the robot to move
+        self.vel_forward       = 0.07  # 0.03 before
+        self.vel_rotate        = 0.05  # 0.02 before
+        self.correct_right     = 1.00  # Correction of the right wheel
+        self.rotation_per_turn = 4.60  # Degrees of rotation per turn msg with vel_rotate = 0.06 and correct_right = 1.08
+        self.movement_per_forw = 0.0275  # Moved distance per forward msg with vel_forward = 0.07 and correct_right = 1.00
+
         self.object_pose  = Pose()  # The position of the object in base_link frame
         self.object_label = ""  # The label of the object
         self.object_found = False  # Flag to check if the object was found
         self.min_x        = 0.0  # The closest x-position of an object in base_link frame
         self.look_for_box = False  # Flag to check if the robot should only look for a box
-
-        # Objects where we will place the element with respect to base_link
-        self.desired_object_x = -0.17    # +17 cm in meters
-        self.desired_object_y = +0.07    # +7 cm in meters
+        self.update       = True  # Flag to check if the driving should be updated with new perception data
 
         # Target distance-parameters to the goal object/box
-        self.unrealistic_x =  0.30
+        self.unrealistic_x =  0.35  # The x-position where the RGB-D camera should not be able to locate an object
+        self.x_stop_goal   =  0.20  # The desired length in the x-direction from the goal object/box
+        self.switch_pick   =  0.375  # The x-position where the robot should stop updating the position of the object with the RGB-D camera
+        self.switch_drop   =  0.40  # The x-position where the robot should stop updating the position of the box with the RGB-D camera
+        self.y_offset      = -0.05  # The y-position where the robot should stop rotating with the RGB-D camera
+        # self.y_tol         =  0.02  # The tolerance for the y-position when driving with the RGB-D camera
         
         # Create the positioning service
         self.srv = self.create_service(
@@ -42,19 +47,10 @@ class PositioningService(Node):
             callback_group=self.service_cb_group
         )
 
-        # Create the publisher to the drive control path
-        self.path_publisher = self.create_publisher(
-            Path,
-            'drive/path', 
-            10
-        )
-
-        # Subscribe to drive feedback
-        self.drive_result = False
-        self.create_subscription(
-            Bool,
-            'drive/feedback',
-            self.drive_feedback_callback,
+        # Create the publisher to the wheel motors
+        self.motor_publisher = self.create_publisher(
+            DutyCycles,
+            'motor/duty_cycles', 
             10
         )
         
@@ -67,154 +63,205 @@ class PositioningService(Node):
             callback_group=self.subscriber_cb_group
         )
 
-    def drive_feedback_callback(self, msg):
-        """
-        Callback for drive feedback
-        """
-        self.drive_result = msg.data
     
     def positioning_sequence(self, request, response):
         """
-        Simplified positioning sequence that gets a single object position and sends it to drive_2
-        
         Args:
             request.box        : bool, required, if the robot should only look for a box
             request.pose       : Pose, required, the position of the goal object in base_link frame when addition
         Returns:
-            response: bool, if the positioning was successful or not
+            response.success   : bool, if the positioning was successful or not
+            response.label.data: String, the label of the closest object
+            response.pose      : Pose, the pose of the closest object
+        Other functions:
+            Controlls the positioning sequence
+            Calls the publishing function which publishes the velocities to the wheel motors for each step in the sequence
         """
-        # Reset vars and determine what we're looking for
-        self.object_found = False
-        self.object_pose = Pose()
-        self.object_label = ""
-        self.min_x = 0.0  # Reset this at the start of each call
-        
-        # Reset drive result at the beginning of each service call
-        self.drive_result = False
-        
-        if request.label.data == "BOX":
-            self._logger.info('positioning_sequence: Looking for a box')
-            self.look_for_box = True
-        else:
-            self._logger.info('positioning_sequence: Looking for an object')
-            self.look_for_box = False
 
-        # Wait a bit to receive object detection
-        timeout_counter = 0
-        max_timeout = 20  # 10 seconds (20 * 0.5)
-        
-        while not self.object_found and timeout_counter < max_timeout:
-            self._logger.info(f'Waiting for {"BOX" if self.look_for_box else "OBJECT"} detection...')
-            time.sleep(0.5)
-            timeout_counter += 1
-        
-        if not self.object_found:
-            self._logger.error('No object found within timeout period')
-            response.success = False
-            return response
+        if request.pose.position.x != 0.0 or request.pose.position.y != 0.0:
+            self.update = False  # Do not update the position of the object with the RGB-D camera as it will not see it
+            self._logger.info(f'positioning_sequence: Repositioning given x: {request.pose.position.x}, y: {request.pose.position.y}')
+
+            self.publish_robot_movement(request.pose.position.x, request.pose.position.y)
+
+            response.success    = True # if step == "Success" else False
+            response.label.data = self.object_label  # Return the label of the closest object
+            response.pose       = self.object_pose  # Return the pose of the closest object
+        else:
+            if request.box:  # If the robot should only look for a box
+                self._logger.info(f'positioning_sequence: Looking for a box')
+                self.look_for_box = True
+                self.min_x        = 0.0    # Reset the minimum x-position of the box to make sure that only boxes are detected
+                self.object_found = False  # Reset the object found flag to make sure that only boxes are detected
+            else:
+                self._logger.info(f'positioning_sequence: Looking for an object')
+                self.look_for_box = False
+
+            position_to = 'BOX' if self.look_for_box else 'OBJECT'
+            time.sleep(1.0)  # Sleep for 1.0 second to read the perception messages
             
-        # Object found, get its position
-        object_x = self.object_pose.position.x
-        object_y = self.object_pose.position.y
-        
-        # Validate that we have reasonable position values
-        if object_x <= 0 or abs(object_y) > 1.0:
-            self._logger.error(f'Invalid object position: x={object_x}, y={object_y}')
-            response.success = False
-            return response
-        
-        self._logger.info(f'Found {self.object_label} at x: {object_x}, y: {object_y}')
-        
-        # Calculate the position where the robot should go
-        # The robot needs to move to a position that will put the object at the desired coordinates
-        # This is essentially a coordinate transformation
-        robot_target_x = object_x + self.desired_object_x
-        robot_target_y = object_y + self.desired_object_y
-        
-        self._logger.info(f'Driving to position at x: {robot_target_x}, y: {robot_target_y} to align object at x={self.desired_object_x}m, y={self.desired_object_y}m')
-        
-        # Create and publish path to drive_2 node
-        path_msg = Path()
-        path_msg.header.stamp = self.get_clock().now().to_msg()
-        path_msg.header.frame_id = 'base_link'
-        
-        pose_stamped = PoseStamped()
-        pose_stamped.header = path_msg.header
-        pose_stamped.pose.position.x = robot_target_x
-        pose_stamped.pose.position.y = robot_target_y
-        pose_stamped.pose.position.z = 0.0
-        pose_stamped.pose.orientation.w = 1.0
-        
-        path_msg.poses.append(pose_stamped)
-        
-        # Publish the path
-        self.path_publisher.publish(path_msg)
-        
-        # Wait for drive to complete with timeout
-        drive_timeout = 0
-        max_drive_timeout = 60  # 30 seconds
-        
-        while not self.drive_result and drive_timeout < max_drive_timeout:
-            time.sleep(0.5)
-            drive_timeout += 1
+            if not self.object_found:
+                self._logger.info(f'Did not find an {position_to} initially, trying to find one')
+                self.publish_robot_movement(-1.0, 0.0)
             
-        if not self.drive_result:
-            self._logger.error('Drive timed out or failed')
-            response.success = False
-            return response
-            
-        # Drive completed successfully
-        self._logger.info('Positioning completed successfully')
-        
-        response.success = True
-        response.label.data = self.object_label
-        response.pose = self.object_pose
-        
-        # Reset the object detection variables
-        self.min_x = 0.0
-        self.object_pose = Pose()
-        self.object_label = ""
-        self.object_found = False
-        self.drive_result = False  # Reset drive result after completion
+            if self.object_found:
+                self._logger.info(f'Found an {position_to}, driving to it')
+
+                self.publish_robot_movement(self.object_pose.position.x, self.object_pose.position.y)  # Drive the robot to the object/box
+
+                self._logger.info(f'Got to the calculated position of {position_to}')
+                response.success    = True # if step == "Success" else False
+                response.label.data = self.object_label  # Return the label of the closest object
+                response.pose       = self.object_pose  # Return the pose of the closest object
+
+            else:
+                self._logger.error(f'Could not find an {position_to}, returning failure')
+                response.success    = False
+                response.label.data = ""
+                response.pose       = Pose()
+
+        self.min_x          = 0.0  # Reset the minimum x-position of the object
+        self.object_pose    = Pose()  # Reset the object pose
+        self.object_label   = ""  # Reset the object label
+        self.object_found   = False  # Reset the object found flag
         
         return response
 
+
     def get_object_pose(self, msg:ObjectDetection1D):
         """
-        Gets object pose from perception
-        
         Args:
             msg: ObjectDetection1D, required, x, y and z coordinates of the object in base_link
+        Returns:
+
+        Other functions:
+            Updates the poisition of the object while the robot is alinging itself
+            Logic to choose the closest object
         """
-        pose = msg.pose
+
+        pose  = msg.pose
         label = msg.label.data
 
-        try:
-            assert isinstance(pose.position.x, float), "x was not type float"
-            assert isinstance(pose.position.y, float), "y was not type float"
-            assert isinstance(label, str), "label was not type str"
-        except AssertionError as e:
-            self._logger.error(f"Validation error: {str(e)}")
-            return  # Skip this message if validation fails
+        assert isinstance(pose.position.x, float), self._logger.error('x was not type float')
+        assert isinstance(pose.position.y, float), self._logger.error('y was not type float')
+        assert isinstance(label, str), self._logger.error('label was not type str')
 
-        # Filter objects based on whether we're looking for a box or other objects
+        # If there are more than one object, choose the closest one. First seen object is used as the base line. 
+        # The allowed discrepancy is 0.01m for the object detection from the RGB-D camera
+
         if self.look_for_box:
-            if label == "BOX":
-                self.object_pose = pose
+            if label == "BOX" and (pose.position.x <= self.min_x + 0.01 or self.min_x == 0.0):
+                self.object_pose  = pose
                 self.object_label = label
-                self.min_x = pose.position.x
+                self.min_x        = pose.position.x
                 self.object_found = True
-                self._logger.debug(f"Found BOX at x={pose.position.x}, y={pose.position.y}")
-        else:  # Looking for other objects
-            # Only consider objects within a realistic range and closer than previously seen
-            if self.unrealistic_x < pose.position.x:
-                # If this is the first object seen or it's closer than previous ones
-                if self.min_x == 0.0 or pose.position.x < self.min_x:
-                    self.object_pose = pose
-                    self.object_label = label
-                    self.min_x = pose.position.x
-                    self.object_found = True
-                    self._logger.debug(f"Found {label} at x={pose.position.x}, y={pose.position.y}")
+
+        elif label != "BOX" and (self.unrealistic_x < pose.position.x <= self.min_x + 0.01 or self.min_x == 0.0):
+            self.object_pose  = pose
+            self.object_label = label
+            self.min_x        = pose.position.x  # Update the minimum x-position of the object
+            self.object_found = True
+
+    
+    def publish_robot_movement(self, x, y):
+        """
+        Args:
+            x: float, required, the x-position of the object in base_link frame
+            y: float, required, the y-position of the object in base_link frame
+        Returns:
+        
+        Other functions:
+            Publishes the velocities to the wheel motors
+        """
+
+        assert isinstance(x, float), self._logger.error('x was not type float')
+        assert isinstance(y, float), self._logger.error('y was not type float')
+
+        msg = DutyCycles()
+
+        if x < 0.0:  # Turn the robot to find the object
+            left_turns = 0
+            right_turns = 0
+
+            # Turn left until the an object is found
+            while not self.object_found:
+                if left_turns < 10:
+                    msg.duty_cycle_right = self.vel_rotate * self.correct_right
+                    msg.duty_cycle_left  = -self.vel_rotate
+                    left_turns += 1
+                elif right_turns < 20:
+                    msg.duty_cycle_right = -self.vel_rotate * self.correct_right
+                    msg.duty_cycle_left  = self.vel_rotate
+                    right_turns += 1
+                else:
+                    msg.duty_cycle_right = 0
+                    msg.duty_cycle_left  = 0
+                    self.motor_publisher.publish(msg)
+                    break
+                
+                self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
+                time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
+                
+        elif x <= 0.125:
+            turns = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) # Calculate the number of turns needed to align the robot with the object
+
+            for _ in range(3):
+                msg.duty_cycle_right = -self.vel_forward * self.correct_right
+                msg.duty_cycle_left  = -self.vel_forward
+                self.motor_publisher.publish(msg)
+                time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
+            
+            for _ in range(turns):
+                msg.duty_cycle_right = (self.vel_rotate if y > self.y_offset else -self.vel_rotate) * self.correct_right
+                msg.duty_cycle_left  = -self.vel_rotate if y > self.y_offset else self.vel_rotate
+                self.motor_publisher.publish(msg)
+                time.sleep(0.5)
+
+        else:
+            # for _ in range(10):
+            #     msg.duty_cycle_right = self.vel_rotate if y > self.y_offset else -self.vel_rotate
+            #     msg.duty_cycle_left  = -self.vel_rotate if y > self.y_offset else self.vel_rotate
+
+            #     self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
+            #     time.sleep(0.75)  # Sleep for 0.75 second to give the robot time to move
+            
+            turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) # Calculate the number of turns needed to align the robot with the object
+            forward = round((x - self.x_stop_goal) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+
+            self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
+
+            while forward > 0 or turns > 0:  # While the robot is not done moving
+                self._logger.info(f'Turns: {turns}, Forward: {forward}')
+                msg.duty_cycle_right = 0.0  # Initialize the duty cycles to 0
+                msg.duty_cycle_left  = 0.0  
+                
+                if turns > 0:  # If the robot needs to turn
+                    msg.duty_cycle_right += self.vel_rotate if y > self.y_offset else -self.vel_rotate
+                    msg.duty_cycle_left  += -self.vel_rotate if y > self.y_offset else self.vel_rotate
+                    turns                -= 1
+                
+                if forward > 0 and turns <= 0:  # If the robot needs to move forward and does not have to turn too much
+                    msg.duty_cycle_right += self.vel_forward
+                    msg.duty_cycle_left  += self.vel_forward
+                    forward              -= 1
+
+                msg.duty_cycle_right *= self.correct_right  # Adjust the right wheel speed to compensate for it moving slower
+
+                self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
+                time.sleep(0.5)  # Sleep for 0.75 second to give the robot time to move
+                
+                new_x, new_y = self.object_pose.position.x, self.object_pose.position.y  # Get the new positions of the object/box in base_link frame from perception
+
+                if new_x < x and self.update:  # If the new perception has a closer x-position than the previous one
+                    x, y    = new_x, new_y  # Update the position of the object/box
+                    # Update the number of turns and forward movements needed to get to the object/box
+                    turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn)
+                    forward = round((x - self.x_stop_goal) / self.movement_per_forw)
+                    self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
+                    if x <= (self.switch_drop if self.look_for_box else self.switch_pick):  # If the robot is close enough to the object
+                        self._logger.info(f'Not updating the position of the object anymore')
+                        self.update = False
+
 
 def main(args=None):
     rclpy.init()

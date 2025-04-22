@@ -40,10 +40,10 @@ class ReadyForPickDrop(py_trees.behaviour.Behaviour):
     
     def update(self):
         if self.node.at_goal:
-            self.node.get_logger().info('Ready for pick/drop')
+            self.node.get_logger().debug('Ready for pick/drop')
             return py_trees.common.Status.SUCCESS
         else:
-            self.node.get_logger().info('Not ready for pick/drop')
+            self.node.get_logger().debug('Not ready for pick/drop')
             return py_trees.common.Status.FAILURE
 
 
@@ -51,62 +51,53 @@ class PickDrop(py_trees.behaviour.Behaviour):
     def __init__(self, node:Node):
         super(PickDrop, self).__init__('PickDrop')
         self.node = node
-        self.future = None
 
     def update(self):
-        if self.future is None:
-            req = PickAndDropObject.Request()
+        if self.node.pick_drop_status == 'Not_called':
             if self.node.action == 'Pick':
-                self.node.get_logger().info('Calling pickup service')
-                self.future = self.node.pick_client.call_async(req)
-                # rclpy.spin_until_future_complete(self.node.pick, future)
-                # res = future.result()
+                self.node.get_logger().info('publishing to do pickup service')
+                msg = String()
+                msg.data = 'Pick'
+                self.node.pick_drop_pub.publish(msg)
             else:
-                self.node.get_logger().info('Calling drop service')
-                self.future = self.node.drop_client.call_async(req)
-                
-                # rclpy.spin_until_future_complete(self.node.drop, future)
-                # res = future.result()
-            return py_trees.common.Status.RUNNING
-        
-        if self.future.done():
-            res = self.future.result()
-
-            if res.success:
+                self.node.get_logger().info('publishing to do drop service')
+                msg = String()
+                msg.data = 'Drop'
+                self.node.pick_drop_pub.publish(msg)
+           
+            self.node.pick_drop_status = 'Called'
+        else:   
+            if self.node.pick_drop_status == 'Success':
                 self.node.get_logger().info('Pick/Drop Success')
-                self.node.picked_dropped = True
-            else:
-                self.node.get_logger().info('Pick/Drop Failure')
-                self.node.picked_dropped = False
                 self.node.have_path = False
                 self.node.have_goal = False
                 self.node.get_path = True
                 self.node.get_goal = True
                 self.node.at_goal = False
                 self.node.at_sub_goal = False
+                self.node.pick_drop_status = 'Not_called'
+
+                if self.node.action == 'Pick':
+                    self.node.action = 'Drop'
+                else:
+                    self.node.action = 'Pick'
+
+            elif self.node.pick_drop_status == 'Failure':
+                self.node.get_logger().info('Pick/Drop Failure')
+                self.node.have_path = False
+                self.node.have_goal = False
+                self.node.get_path = True
+                self.node.get_goal = True
+                self.node.at_goal = False
+                self.node.at_sub_goal = False
+                self.node.pick_drop_status = 'Not_called'
                 if self.node.action == 'Drop':
                     self.node.action = 'Pick' # if drop fails try to pick up new object
-                    
-            self.future = None
-            self.node._logger.info(f'PickDrop result: {res.success}')
-            return py_trees.common.Status.RUNNING
-        else:
-            self.node.get_logger().info('Waiting for pick/drop service')
-            return py_trees.common.Status.RUNNING
-            
+            else:
+                self.node.get_logger().debug('Waiting for pick/drop service')
 
+        return py_trees.common.Status.RUNNING
 
-class PickedDroppedObject(py_trees.behaviour.Behaviour):
-    def __init__(self, node:Node):
-        super(PickedDroppedObject, self).__init__('PickedDroppedObject')
-        self.node = node
-    
-    def update(self):
-        if self.node.picked_dropped:
-            return py_trees.common.Status.SUCCESS
-        else:
-            return py_trees.common.Status.FAILURE
-    
 
 class GetPath(py_trees.behaviour.Behaviour):
     """
@@ -221,32 +212,6 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.RUNNING
 
 
-class SetSelf(py_trees.behaviour.Behaviour):
-    """
-    Bahaviour that sets self variables used in the behaviours
-    """
-    def __init__(self, node:Node):
-        super(SetSelf, self).__init__('SetSelf')
-        self.node = node
-
-    def update(self):
-        """
-        Method that will be executed when behaviour is ticked
-        """
-        self.node.have_path = False
-        self.node.get_path = True
-        self.node.have_goal = False
-        self.node.get_goal = True
-        self.node.at_sub_goal = False
-        self.node.at_goal = False
-        if self.node.action == 'Pick':
-            self.node.action = 'Drop'
-        else:
-            self.node.action = 'Pick'
-
-        return py_trees.common.Status.RUNNING
-
-
 class BrainCollection(Node):
     def __init__(self):
         super().__init__('BrainCollection')
@@ -269,17 +234,18 @@ class BrainCollection(Node):
         self.path = None
 
         self.action = 'Pick'
+        self.pick_drop_status = 'Not_called'
 
-        self.picked_dropped = False
         
         # intialize publishers
         self.send_goal_pub = self.create_publisher(PoseStamped, 'Astar/next_goal', 1)
         self.find_goal_pub = self.create_publisher(String, 'planner_collection/find_goal', 1)
         self.drive_to_goal_pub = self.create_publisher(Path, 'drive/path', 1)
         self.path_list_pub = self.create_publisher(Path, '/brain/path_list', 1)
+        self.pick_drop_pub = self.create_publisher(String, 'brain/action/pick_drop', 1)
 
         # initialize clients
-        self.pick = rclpy.create_node('pick_brain_node')
+        self.pick = rclpy.create_node('pick_drop_brain_node')
         self.drop = rclpy.create_node('drop_brain_node')
 
         self.pick_client = self.pick.create_client(PickAndDropObject, '/arm_services/pick_object')
@@ -321,6 +287,13 @@ class BrainCollection(Node):
             self.get_logger().debug('Path is free')
             self.recalculate_path = False
     
+    def pick_drop_status_cb(self, msg:String):
+        """
+        Callback that sets the status of the pick drop services
+        """
+        self.pick_drop_status = msg.data
+
+
     def set_path_cb(self, msg:Path):
         """
         Callback that sets the path that will be sent to drive control
@@ -379,8 +352,8 @@ class BrainCollection(Node):
                                     ('NoObjectsLeft', '/planner_collection/no_objects_left', Bool, False, self.no_objects_left_cb),
                                     ('FreePath', '/avoidance/free_path', Bool, False, self.free_path_cb),
                                     ('AtGoal', '/drive/feedback', Bool, False, self.at_sub_goal_cb),
+                                    ('PickDropTopic', 'brain/pick_drop_status', String, False, self.pick_drop_status_cb)
                                     ])
-
 
 
         # Building tree
@@ -391,16 +364,9 @@ class BrainCollection(Node):
         ready_for_pick_place = py_trees.composites.Selector(name='ReadyForPickPlace', memory=False)
         ready_for_pick_place.add_children([ReadyForPickDrop(self), get_to_pick_drop])
 
-        do_pick_drop = py_trees.composites.Sequence(name='IsReadyForPickDrop', memory=False)
-        do_pick_drop.add_children([ready_for_pick_place, PickDrop(self)])
-
-        picked_dropped = py_trees.composites.Selector(name='Placed/Dropped Object?', memory=False)
-        picked_dropped.add_children([PickedDroppedObject(self), do_pick_drop])        
-
-        # exploration sequence
         collection = py_trees.composites.Sequence(name='Collection', memory=False)
-        collection.add_children([picked_dropped, SetSelf(self)])
-        
+        collection.add_children([ready_for_pick_place, PickDrop(self)])
+
         # Root
         root =  py_trees.composites.Selector(name="CollectionUntilNoObjectsLeft", memory=False)
         root.add_children([NoObjectsLeft(self), collection])
