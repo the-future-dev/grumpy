@@ -140,8 +140,11 @@ class PickService(Node):
                         else:
                             next_step = "PickUp"  # Next step
                     else:
-                        self._logger.error('Arm camera service call failed')
-                        next_step = "Failure"  # End the FSM
+                        if grasp_position:
+                            next_step = "GraspObject"  # Try to pick it up even though an object was not detected when in grasp position
+                        else:
+                            self._logger.error('Arm camera service call failed')
+                            next_step = "Failure"  # End the FSM
 
                 case "PickUp":  # Move the arm to the pick up position
                     theta_servo6               = utils.get_theta_6(x, y)  # Calculate the new angle for servo 6

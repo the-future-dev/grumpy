@@ -126,6 +126,7 @@ class ArmCameraService(Node):
 
             if grasp_position:
                 x, y = self.pixel_to_adjust_in_base_link(cx, cy)
+                cv2.circle(image, (utils.intrinsic_mtx[0, 2], 460), 10, (0, 255, 0), -1)  # Draw the point to adjust to
             else:
                 x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
         else:
@@ -216,9 +217,10 @@ class ArmCameraService(Node):
         """
 
         cx, cy = utils.intrinsic_mtx[0, 2], 460  # Principal point from the intrinsic matrix
+        pixels_per_meter = 5000  # The number of pixels per meter at the current placement of the arm camera, used for the adjustment
 
-        adjustment_to_x = - (y_pixel - cy) / 50
-        adjustment_to_y = - (x_pixel - cx) / 50
+        adjustment_to_x = - (y_pixel - cy) / pixels_per_meter
+        adjustment_to_y = - (x_pixel - cx) / pixels_per_meter
 
         return adjustment_to_x, adjustment_to_y
     
