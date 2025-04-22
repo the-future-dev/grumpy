@@ -64,7 +64,7 @@ class PickService(Node):
             callback_group=self.subscriber_cb_group
         )
 
-        self.arm_cam_detection_subscriber = self.arm_cam_node.create_subscription(
+        self.arm_cam_detection_subscriber = self.create_subscription(
             Bool,
             '/detection_arm_cam/object_in_gripper',
             self.object_in_gripper_callback,
@@ -102,9 +102,9 @@ class PickService(Node):
             match step:
                 case "Start":  # Make sure the arm is in the initial position
                     thetas    = utils.initial_thetas
-                    next_step = "PositonRobot"  # Next step
+                    next_step = "PositionRobot"  # Next step
 
-                case "PositonRobot":  # Call the position robot service to get to the position of the object
+                case "PositionRobot":  # Call the position robot service to get to the position of the object
                     req                 = PositionRobot.Request()  # Create an request with empty label -> position to pick up an object
                     req.box             = False  # Set the box to False, because we are not positioning for a drop
                     req.pose.position.x = pos_x  # Set the x position of the object
@@ -133,8 +133,15 @@ class PickService(Node):
                     res       = future.result()  # The response of the service call
 
                     if res.success:
-                        x, y, _   += utils.extract_object_position(self, res.pose)  # Get the x and y position of the detected object
-                        if (0.22 <= x <= 0.125 or 0.05 <= y <= -0.15) and not grasp_position:  # If the object is out of reach in the non grasp position
+                        temp_x, temp_y, _ = utils.extract_object_position(self, res.pose)  # Get the x and y position of the detected object
+                        if grasp_position:
+                            x, y = x + temp_x, y + temp_y
+                        else:
+                            x, y = temp_x, temp_y
+                        if (x >= 0.22 or
+                            x <= 0.15 or 
+                            y >= 0.05 or
+                            y <= -0.15) and not grasp_position:  # If the object is out of reach in the non grasp position
                             pos_x, pos_y = x, y  # Set the position of the object in the base_link frame
                             next_step    = "PositionRobot"  # Reposition the robot
                         else:
@@ -145,17 +152,17 @@ class PickService(Node):
                         else:
                             self._logger.error('Arm camera service call failed')
                             next_step = "Failure"  # End the FSM
-
+                
                 case "PickUp":  # Move the arm to the pick up position
                     theta_servo6               = utils.get_theta_6(x, y)  # Calculate the new angle for servo 6
                     theta_servo5               = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
                     theta_servo3, theta_servo4 = utils.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
 
                     thetas[2], thetas[3], thetas[4], thetas[5] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
-                    times[2], times[3], times[4], times[5]     = 2000, 2000, 1000, 1000  # Set the time for the servos to move to the new angles
                     
                     if not grasp_position:
-                        next_step = "GetPosition"  # Next step
+                        grasp_position = True
+                        next_step      = "GetPosition"  # Next step
                     else:
                         next_step = "GraspObject"  # Next step
                 
@@ -172,7 +179,7 @@ class PickService(Node):
                         self._logger.error(f'Unknown object label: {label}')
                         thetas[0] = 10500  # Default value for the gripper
                     
-                    next_step  = "DrivePosition"  # Next step
+                    next_step  = "PreCheckObject"  # Next step
 
                     # if first_grasp:
                     #     first_grasp = False  # Tried to pick the object once, should make it on the second try at least
@@ -180,12 +187,12 @@ class PickService(Node):
                     # else:
                     #     next_step  = "DrivePosition"  # Next step
 
-                case "DrivePosition":  # Finish the pick up sequence by going back to the initial position, but not for the gripper
-                    thetas    = utils.drive_thetas
-                    times     = [2000] * 6  # Longer time might be needed to move the arm back a far distance
+                case "PreCheckObject":  # Finish the pick up sequence by going back to the initial position, but not for the gripper
+                    thetas[4] = 12000
                     next_step = "CheckObject"  # End the FSM
 
                 case "CheckObject":  # Check if the object is in the gripper
+                    thetas    = utils.drive_thetas
                     if self.object_in_gripper:
                         next_step = "Success"  # End the FSM
                     else:

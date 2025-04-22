@@ -14,8 +14,9 @@ class ArmCameraService(Node):
     def __init__(self):
         super().__init__('arm_camera_srv')
 
-        self.image  = None  # The image data from the arm camera
-        self.bridge = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
+        self.pick_center = 400
+        self.image       = None  # The image data from the arm camera
+        self.bridge      = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
 
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
@@ -63,6 +64,7 @@ class ArmCameraService(Node):
             x, y = self.get_object_position(request.grasp)  # Get the position of the object
             if x != 0.0:
                 found_object = True  # If the object was found, set the flag to true
+                self._logger.info(f'Found object at: x: {x}, y: {y}')
                 break
 
         response.success         = found_object  # Set the success flag to true if the object was found
@@ -99,6 +101,7 @@ class ArmCameraService(Node):
         # time.sleep(1.0)  # Wait for the arm camera image to stabilize after arm movement
         
         cx, cy = 0, 0  # No object found, set to 0, 0
+        x, y   = 0.0, 0.0  # Object position in base link
         image  = self.image.copy()  # Makes sure the same image is used for the whole function
 
         undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
@@ -126,12 +129,13 @@ class ArmCameraService(Node):
 
             if grasp_position:
                 x, y = self.pixel_to_adjust_in_base_link(cx, cy)
-                cv2.circle(image, (utils.intrinsic_mtx[0, 2], 460), 10, (0, 255, 0), -1)  # Draw the point to adjust to
+                cv2.circle(image, (int(utils.intrinsic_mtx[0, 2]), self.pick_center), 10, (0, 255, 0), -1)  # Draw the point to adjust to
             else:
-                x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
-        else:
+                if cy < 420:
+                    x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
+        
+        if x == 0.0 and y == 0.0:
             self._logger.info(f'get_object_position: NO OBJECTS FOUND')
-            x, y = 0.0, 0.0  # No object found, set to 0, 0
             
         self.publish_image(image)  # Publish the image with or without the detected object(s)
 
@@ -216,7 +220,7 @@ class ArmCameraService(Node):
             
         """
 
-        cx, cy = utils.intrinsic_mtx[0, 2], 460  # Principal point from the intrinsic matrix
+        cx, cy = utils.intrinsic_mtx[0, 2], self.pick_center  # Principal point from the intrinsic matrix
         pixels_per_meter = 5000  # The number of pixels per meter at the current placement of the arm camera, used for the adjustment
 
         adjustment_to_x = - (y_pixel - cy) / pixels_per_meter

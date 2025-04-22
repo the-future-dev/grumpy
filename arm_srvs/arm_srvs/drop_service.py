@@ -58,7 +58,7 @@ class DropService(Node):
             callback_group=self.subscriber_cb_group
         )
 
-        self.arm_cam_detection_subscriber = self.arm_cam_node.create_subscription(
+        self.arm_cam_detection_subscriber = self.create_subscription(
             Bool,
             '/detection_arm_cam/object_in_gripper',
             self.object_in_gripper_callback,
