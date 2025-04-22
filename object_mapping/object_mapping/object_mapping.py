@@ -148,7 +148,18 @@ class ObjectMapping(Node):
         with open(self.filepath, 'w') as file:
             for obj in self.output_object_list:
                 # Write object information to file
-                file_label_str = 'B' if obj.get_label() == ObjectEnum.BOX else f'{obj.get_label().value}'
+                label = obj.get_label()
+                if label == ObjectEnum.BOX:
+                    file_label_str = 'B'
+                elif label == ObjectEnum.PUPPY:
+                    file_label_str = '3'
+                elif label == ObjectEnum.CUBE:
+                    file_label_str = '1'
+                elif label == ObjectEnum.SPHERE:
+                    file_label_str = '2'
+                else:
+                    file_label_str = f'{label.value}'
+
                 file_x = float(round(obj.get_x(), 2))
                 file_y = float(round(obj.get_y(), 2))
                 file.write(f"{file_label_str} {file_x} {file_y}\n")

@@ -202,7 +202,7 @@ class BrainExploration(Node):
 
         # Starting to tick the tree
         self.get_logger().debug('Starting to tick the tree')
-        self.tree.tick_tock(period_ms=500) 
+        self.tree.tick_tock(period_ms=100) 
 
     def free_path_cb(self, msg:Bool):
         """

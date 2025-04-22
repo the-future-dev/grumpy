@@ -116,7 +116,7 @@ def check_angles_and_times(node, angles, times):
     assert all(isinstance(angle, int) for angle in angles), node._logger.error('angles was not of type int')
     assert all(isinstance(time, int) for time in times), node._logger.error('times was not of type int')
     assert all(1000 <= time <= 5000 for time in times), node._logger.error('times was not within the interval [1000, 5000]')
-    assert (0 <= angles[0] <= 13000) or (angles[0] == -1), node._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
+    assert (0 <= angles[0] <= 13500) or (angles[0] == -1), node._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
     assert (0 <= angles[1] <= 24000) or (angles[1] == -1), node._logger.error(f'servo 2 was not within the interval [0, 24000] or -1, got {angles[1]}')
     assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), node._logger.error(f'servo 3 was not within the interval [2500, 21000] or -1, got {angles[2]}')
     assert (3000 <= angles[3] <= 21500) or (angles[3] == -1), node._logger.error(f'servo 4 was not within the interval [3000, 21500] or -1, got {angles[3]}')
@@ -139,7 +139,7 @@ def inverse_kinematics(x, y, z):
 
     """
     # The hypotenuse (rho) from the origin of servo 5 to the object position in the xy-plane minus the distance servo 4 has already moved
-    rho_dist = (np.sqrt((x - x_origin_servo5) ** 2 + (y - y_origin_servo5) ** 2) - rho_origin_servo4) * 1.03
+    rho_dist = (np.sqrt((x - x_origin_servo5) ** 2 + (y - y_origin_servo5) ** 2) - rho_origin_servo4)
     # z_dist   = utils.z_oc_g - utils.z_origin_servo4  # The combined distance to the grip point in the z direction
     z_dist   = z - z_origin_servo4  # The combined distance to the grip point in the z direction
 

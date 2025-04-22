@@ -8,16 +8,28 @@ import cv2
 import cv_bridge
 import numpy as np
 import arm_srvs.utils as utils
+from transformers import AutoImageProcessor, AutoModelForSemanticSegmentation
+from PIL import Image as PILImage
+import torch
+import os
 
 class ArmCameraService(Node):
 
     def __init__(self):
         super().__init__('arm_camera_srv')
 
-        self.pick_center = 400
-        self.image       = None  # The image data from the arm camera
-        self.bridge      = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
-
+        self.image  = None  # The image data from the arm camera
+        self.bridge = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
+        
+        # Initialize the segmentation model and preprocessor
+        self.preprocessor = AutoImageProcessor.from_pretrained("google/deeplabv3_mobilenet_v2_1.0_513")
+        self.model = AutoModelForSemanticSegmentation.from_pretrained("google/deeplabv3_mobilenet_v2_1.0_513")
+        
+        # Setup filepath for saving detection images
+        self.output_dir = os.path.join(os.path.expanduser('~'), 'dd2419_ws', 'outputs')
+        os.makedirs(self.output_dir, exist_ok=True)  # Create directory if it doesn't exist
+        self.filepath = os.path.join(self.output_dir, 'rgb_detection.png')
+        
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
@@ -49,7 +61,7 @@ class ArmCameraService(Node):
     def camera_sequence(self, request, response):
         """
         Args:
-            request.grasp   : bool, required, if the arm is in the grasp position or not
+            
         Returns:
             response.pose   : Pose, the position of the object in the base_link frame
             response.success: bool, if the camera sequence was successful or not
@@ -61,10 +73,9 @@ class ArmCameraService(Node):
         x, y         = 0.0, 0.0  # The x and y position of the object
 
         for _ in range(3):  # Try to get the object position a maximum of 3 times
-            x, y = self.get_object_position(request.grasp)  # Get the position of the object
+            x, y = self.get_object_position()  # Get the position of the object
             if x != 0.0:
                 found_object = True  # If the object was found, set the flag to true
-                self._logger.info(f'Found object at: x: {x}, y: {y}')
                 break
 
         response.success         = found_object  # Set the success flag to true if the object was found
@@ -87,7 +98,7 @@ class ArmCameraService(Node):
         self.image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
 
 
-    def get_object_position(self, grasp_position):
+    def get_object_position(self):
         """
         Args:
 
@@ -95,51 +106,108 @@ class ArmCameraService(Node):
             x: float, the x-coordinate of the object in the base_link frame
             y: float, the y-coordinate of the object in the base_link frame
         Other functions:
-            Uses the image data from the arm camera to detect object(s) and its/their position(s)
+            Uses deep learning segmentation to detect objects and their positions
         """
-
-        # time.sleep(1.0)  # Wait for the arm camera image to stabilize after arm movement
         
         cx, cy = 0, 0  # No object found, set to 0, 0
-        x, y   = 0.0, 0.0  # Object position in base link
-        image  = self.image.copy()  # Makes sure the same image is used for the whole function
+        image  = self.image  # Makes sure the same image is used for the whole function
+
+        if image is None:
+            self._logger.info(f'get_object_position: No image available')
+            return 0.0, 0.0
 
         undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
-        hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for eaiser color-based object detection
-
-        mask = self.create_masks(hsv_image)  # Create a combined mask for red, green, and blue objects
-        mask = cv2.medianBlur(mask, 5)  # Apply a median blur to the mask to reduce salt and pepper noise
-        mask = self.clean_mask(mask)  # Clean each mask using morphological operations
-
-        # contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, only external contours
-        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
-        areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
-
-        if len(areas) > 0:  # If there are any contours found
-            max_index = np.argmax(areas)  # Get the index of the largest contour
-            contour   = contours[max_index]  # Choose the largest contour
-
-            (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
-            cx, cy, radius   = int(cx), int(cy), int(radius)  # Convert to integers
-            
-            cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)  # Draw the enclosing circle in the image
-            cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)  # Draw the center of the circle in the image
-
-            self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
-
-            if grasp_position:
-                x, y = self.pixel_to_adjust_in_base_link(cx, cy)
-                cv2.circle(image, (int(utils.intrinsic_mtx[0, 2]), self.pick_center), 10, (0, 255, 0), -1)  # Draw the point to adjust to
-            else:
-                if cy < 420:
-                    x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
         
-        if x == 0.0 and y == 0.0:
-            self._logger.info(f'get_object_position: NO OBJECTS FOUND')
+        # Convert OpenCV image to PIL format for the model
+        pil_image = PILImage.fromarray(cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2RGB))
+        
+        # Find object using segmentation model
+        self.get_logger().info('Starting plushy detection with segmentation model...')
+        cx, cy = self.find_plushy_position(pil_image)
+        self.get_logger().info('Completed plushy detection')
+        
+        detection_img = image.copy()  # Create a copy for drawing
+        
+        if cx is not None and cy is not None:
+            self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
             
-        self.publish_image(image)  # Publish the image with or without the detected object(s)
+            # Draw detection on the image with a star marker
+            # Draw circle
+            cv2.circle(detection_img, (cx, cy), 15, (255, 255, 255), 2)
+            
+            # Draw star (*) shape
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            cv2.putText(detection_img, '*', (cx-10, cy+10), font, 1, (0, 0, 255), 2, cv2.LINE_AA)
+            
+            # Save the image with detection to file
+            cv2.imwrite(self.filepath, detection_img)
+            self._logger.info(f'Saved detection image to: {self.filepath}')
+            
+            x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
+        else:
+            self._logger.info(f'get_object_position: NO OBJECTS FOUND')
+            x, y = 0.0, 0.0  # No object found, set to 0, 0
+            
+        self.publish_image(detection_img)  # Publish the image with or without the detected object(s)
 
         return x, y
+        
+    def find_plushy_position(self, image):
+        """
+        Find the position of the plushy in the given image.
+        
+        Args:
+            image: PIL Image
+        
+        Returns:
+            tuple: (center_x, center_y) coordinates in the original image space,
+                  or (None, None) if the plushy cannot be found
+        """
+        # Process the image
+        inputs = self.preprocessor(images=image, return_tensors="pt")
+        with torch.no_grad():  # Add no_grad for inference efficiency
+            outputs = self.model(**inputs)
+        predicted_mask = self.preprocessor.post_process_semantic_segmentation(outputs)[0]
+        
+        # Find the unique classes in the segmentation mask
+        unique_classes = torch.unique(predicted_mask).numpy()
+        
+        # Find the class with the most pixels (excluding background class 0)
+        class_counts = {}
+        for cls in unique_classes:
+            if cls == 0:  # Skip background
+                continue
+            count = (predicted_mask == cls).sum().item()
+            class_counts[cls] = count
+        
+        # Determine the plushy class
+        if class_counts:
+            plushy_class = max(class_counts, key=class_counts.get)
+        else:
+            # No foreground objects found
+            return None, None
+        
+        # Create a binary mask for the plushy
+        plushy_mask = (predicted_mask == plushy_class).numpy()
+        
+        # Get dimensions
+        img_height, img_width = image.height, image.width
+        mask_height, mask_width = plushy_mask.shape
+        
+        # Find the center of the plushy
+        y_indices, x_indices = np.where(plushy_mask)
+        if len(y_indices) > 0 and len(x_indices) > 0:
+            # Find center in mask coordinates
+            mask_center_y = int(np.mean(y_indices))
+            mask_center_x = int(np.mean(x_indices))
+            
+            # Scale to original image coordinates
+            center_y = int(mask_center_y * (img_height / mask_height))
+            center_x = int(mask_center_x * (img_width / mask_width))
+            
+            return center_x, center_y
+        else:
+            return None, None
 
 
     def create_masks(self, hsv_image):
@@ -206,27 +274,6 @@ class ArmCameraService(Node):
         y = - (x_pixel - cx) * (utils.cam_pos.position.z / fx) + utils.cam_pos.position.y
 
         return x, y
-    
-
-    def pixel_to_adjust_in_base_link(self, x_pixel, y_pixel):
-        """
-        Args:
-            x: float, required, the pixel x-coordinate of the object in the arm camera image
-            y: float, required, the pixel y-coordinate of the object in the arm camera image
-        Returns:
-            x: float, the amount the x-coordinate of the object in the base_link frame should be adjusted
-            y: float, the amount the y-coordinate of the object in the base_link frame should be adjusted
-        Other functions:
-            
-        """
-
-        cx, cy = utils.intrinsic_mtx[0, 2], self.pick_center  # Principal point from the intrinsic matrix
-        pixels_per_meter = 5000  # The number of pixels per meter at the current placement of the arm camera, used for the adjustment
-
-        adjustment_to_x = - (y_pixel - cy) / pixels_per_meter
-        adjustment_to_y = - (x_pixel - cx) / pixels_per_meter
-
-        return adjustment_to_x, adjustment_to_y
     
 
     def publish_image(self, image):

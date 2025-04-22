@@ -7,11 +7,18 @@ import os
 
 def generate_launch_description():
     # Start nodes
+    brain_collection = Node(
+        package='brain',
+        executable='brain_collection',
+        output='screen'
+    )
+
     localization = Node(
         package='localization',
         executable='localization',
         output='screen'
     )
+
     icp_node = Node(
         package='icp_node',
         executable='icp_node',
@@ -21,6 +28,12 @@ def generate_launch_description():
         package='occupancy_grid_map',
         executable='occupancy_grid_map',
         output='screen'
+    )
+
+    local_obstacle_avoidance = Node(
+        package='drive_control',
+        executable='local_obstacle_avoidance',
+        output = 'screen'
     )
 
     planner = Node(
@@ -35,7 +48,7 @@ def generate_launch_description():
         output='screen'
     )
 
-    drive_control = Node(
+    drive_path = Node(
         package='drive_control',
         executable='drive_2',
         output='screen'
@@ -48,19 +61,21 @@ def generate_launch_description():
         parameters=[{'mode': 'collection'}]
     )
 
-    object_mapping = Node(
+    workspace_perimeter = Node(
         package='object_mapping',
-        executable='object_mapping',
-        output='screen'
+        executable='workspace_init',
+        output = 'screen'
     )
 
     return LaunchDescription([
-        drive_control,
+        brain_collection,
+        drive_path,
         occupancy_grid_map,
+        local_obstacle_avoidance,
         planner,
         a_star,
         localization,
         icp_node,
+        workspace_perimeter,
         perception,
-        object_mapping
     ])

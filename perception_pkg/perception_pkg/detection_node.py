@@ -250,6 +250,8 @@ class Detection(Node):
                 del cluster_tensor
                 torch.cuda.empty_cache()
 
+            # Apply softmax to get probabilities
+            probabilities = torch.nn.functional.softmax(pred_values, dim=1)
             prediction = torch.argmax(pred_values, dim=1)
             object_label = prediction.item()
             object_label_enum = ObjectEnum(object_label)
@@ -269,13 +271,17 @@ class Detection(Node):
                 file_dim1 = float(round(bbox_dims[1])) # Depth in cm
                 file_dim2 = float(round(bbox_dims[2])) # Height in cm
 
+                # Add probabilities to output
+                probs_str = " ".join([f"{ObjectEnum(i).name}:{prob:.4f}" for i, prob in enumerate(probabilities[0].cpu().numpy())])
+
                 line = (
                     f"{file_label_str:<{10}} "
                     f"{file_x:>{4}.2f} "
                     f"{file_y:>{4}.2f} "
                     f"{file_dim0:>{10}.2f} "
                     f"{file_dim1:>{10}.2f} "
-                    f"{file_dim2:>{10}.2f}\n"
+                    f"{file_dim2:>{10}.2f} "
+                    f"Probs: {probs_str}\n"
                 )
 
                 file.write(line)

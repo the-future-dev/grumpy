@@ -78,7 +78,8 @@ class PositioningService(Node):
         Simplified positioning sequence that gets a single object position and sends it to drive_2
         
         Args:
-            request.label: String, required, the label of the goal object
+            request.box        : bool, required, if the robot should only look for a box
+            request.pose       : Pose, required, the position of the goal object in base_link frame when addition
         Returns:
             response: bool, if the positioning was successful or not
         """
@@ -235,3 +236,85 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+
+
+# step        = "Start"  # The current step in the FSM
+# end_strings = ["Success", "Failure"]  # The end strings of the FSM
+
+ # while step not in end_strings:
+
+#     time.sleep(0.75)  # Sleep for 0.5 second to give the robot time to move and object detection time to update
+#     self._logger.info(f'{step}')  # Log the current step
+
+#     goal_x = self.object_pose.position.x  # The x-position of the object in base_link frame from perception
+#     goal_y = self.object_pose.position.y  # The y-position of the object in base_link frame from perception
+#     # self._logger.info(f'x: {goal_x}, y: {goal_y}')
+
+#     match step:
+#         case "Start":  # Check if an object was found
+#             if goal_x == 0.0 and goal_y == 0.0:  # If no object/box has been seen
+#                 self.publish_robot_movement(-1.0, 0.0)  # Turn the robot to find an object/box
+#                 if self.object_found:
+#                     self._logger.info(f'positioning_sequence: in Start --> DriveRobotWithRGB-D')
+#                 else:
+#                     self._logger.error(f'positioning_sequence: Could not find an object/box')
+#                     step = "Failure"  # End the FSM
+#                     break
+            
+#             if request.box:  # If the robot should only look for a box
+#                 step = "BoxDriveRobotWithRGB-D"  # Next step
+#             else:
+#                 step = "DriveRobotWithRGB-D"  # Next step
+
+#         case "BoxDriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback to a box
+#             if goal_x <= self.x_stop_drop:
+#                 self._logger.info(f'positioning_sequence: in B --> Success')
+#                 step = "Success"  # End the FSM
+#             else:
+#                 self._logger.info(f'positioning_sequence: in B --> BoxDriveRobotWithRGB-D')
+#                 self.publish_robot_movement(goal_x, goal_y)  # Drive the robot
+#                 step = "BoxDriveRobotWithRGB-D"  # Next step
+
+#         case "DriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback
+#             if goal_x <= self.x_stop_pick:  # End condition for driving the robot using the RGB-D camera
+#                 self._logger.info(f'positioning_sequence: in Object --> DriveRobotWithoutRGB-D')
+#                 step = "DriveRobotWithoutRGB-D"  # Next step
+#             else:
+#                 self._logger.info(f'positioning_sequence: in Object --> DriveRobotWithRGB-D')
+#                 self.publish_robot_movement(goal_x, goal_y)  # Drive the robot
+#                 step = "DriveRobotWithRGB-D"  # Next step
+        
+#         case "DriveRobotWithoutRGB-D":  # Drive the robot without the RGB-D camera
+#             self._logger.info(f'positioning_sequence: in DriveRobotWithoutRGB-D --> Success')
+#             for _ in range(6):
+#                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
+#                 self.publish_robot_movement(goal_x, self.y_offset)  # Drive the robot forward multiple times
+#             step = "Success"  # End the FSM
+
+# self.publish_robot_movement(0.0, 0.0)  # Stop the robot
+# self._logger.info(f'{step}')
+
+
+# if x == 0 and y == 0:  # Stop the robot
+#     msg.duty_cycle_right = 0.0
+#     msg.duty_cycle_left  = 0.0 
+# 
+# elif np.isclose(y, self.y_offset, atol=self.y_tol):
+#     msg.duty_cycle_right = self.vel_forward * self.multi_forward
+#     msg.duty_cycle_left  = self.vel_forward * self.multi_forward 
+# 
+# else:
+        #     # The robot should not turn faster than the maximum turn velocity and should turn slower the lower the y-value is
+        #     turn_vel = min(self.vel_rotate, abs(y - self.y_offset))
+
+        #     # Turn left if y > y_offset, otherwise turn right
+        #     msg.duty_cycle_right = turn_vel if y > self.y_offset else -turn_vel
+        #     msg.duty_cycle_left  = -turn_vel if y > self.y_offset else turn_vel  
+
+        #     # Also drive forward while turning but depending on how much turning is needed and maximum the forward velocity
+        #     msg.duty_cycle_right += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
+        #     msg.duty_cycle_left  += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
+
+        # msg.duty_cycle_right *= 1.075  # Adjust the right wheel speed to compensate for it moving slower
+        # self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
