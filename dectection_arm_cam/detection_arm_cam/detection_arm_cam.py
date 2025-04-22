@@ -42,6 +42,7 @@ class DetectionArmCam(Node):
             10
         )
 
+        self._logger.info('Detection arm camera up and running')
     
     def process_image(self, msg:CompressedImage):
         """

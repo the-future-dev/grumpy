@@ -19,10 +19,10 @@ class PositioningService(Node):
 
         # Set speeds for the robot to move
         self.vel_forward       = 0.07  # 0.03 before
-        self.vel_rotate        = 0.06  # 0.02 before
-        self.correct_right     = 1.05  # Correction of the right wheel
-        self.rotation_per_turn = 6.00  # Degrees of rotation per turn msg with vel_rotate = 0.06 and correct_right = 1.08
-        self.movement_per_forw = 0.026  # Moved distance per forward msg with vel_forward = 0.07 and correct_right = 1.08
+        self.vel_rotate        = 0.05  # 0.02 before
+        self.correct_right     = 1.00  # Correction of the right wheel
+        self.rotation_per_turn = 4.60  # Degrees of rotation per turn msg with vel_rotate = 0.06 and correct_right = 1.08
+        self.movement_per_forw = 0.0275  # Moved distance per forward msg with vel_forward = 0.07 and correct_right = 1.00
 
         self.object_pose  = Pose()  # The position of the object in base_link frame
         self.object_label = ""  # The label of the object
@@ -32,8 +32,8 @@ class PositioningService(Node):
         self.update       = True  # Flag to check if the driving should be updated with new perception data
 
         # Target distance-parameters to the goal object/box
-        self.unrealistic_x =  0.30  # The x-position where the RGB-D camera should not be able to locate an object
-        self.x_stop_goal   =  0.175  # The desired length in the x-direction from the goal object/box
+        self.unrealistic_x =  0.35  # The x-position where the RGB-D camera should not be able to locate an object
+        self.x_stop_goal   =  0.20  # The desired length in the x-direction from the goal object/box
         self.switch_pick   =  0.375  # The x-position where the robot should stop updating the position of the object with the RGB-D camera
         self.switch_drop   =  0.40  # The x-position where the robot should stop updating the position of the box with the RGB-D camera
         self.y_offset      = -0.05  # The y-position where the robot should stop rotating with the RGB-D camera
@@ -80,6 +80,7 @@ class PositioningService(Node):
 
         if request.pose.position.x != 0.0 or request.pose.position.y != 0.0:
             self.update = False  # Do not update the position of the object with the RGB-D camera as it will not see it
+            self._logger.info(f'positioning_sequence: Repositioning given x: {request.pose.position.x}, y: {request.pose.position.y}')
 
             self.publish_robot_movement(request.pose.position.x, request.pose.position.y)
 
@@ -202,7 +203,7 @@ class PositioningService(Node):
                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
                 
         elif x <= 0.125:
-            turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) # Calculate the number of turns needed to align the robot with the object
+            turns = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) # Calculate the number of turns needed to align the robot with the object
 
             for _ in range(3):
                 msg.duty_cycle_right = -self.vel_forward * self.correct_right
@@ -217,39 +218,46 @@ class PositioningService(Node):
                 time.sleep(0.5)
 
         else:
+            # for _ in range(10):
+            #     msg.duty_cycle_right = self.vel_rotate if y > self.y_offset else -self.vel_rotate
+            #     msg.duty_cycle_left  = -self.vel_rotate if y > self.y_offset else self.vel_rotate
+
+            #     self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
+            #     time.sleep(0.75)  # Sleep for 0.75 second to give the robot time to move
+            
             turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) # Calculate the number of turns needed to align the robot with the object
-            dist    = np.sqrt(x ** 2 + y ** 2)  # Calculate the distance to the object
-            forward = round((dist - self.x_stop_goal) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+            forward = round((x - self.x_stop_goal) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+
+            self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
 
             while forward > 0 or turns > 0:  # While the robot is not done moving
-
+                self._logger.info(f'Turns: {turns}, Forward: {forward}')
                 msg.duty_cycle_right = 0.0  # Initialize the duty cycles to 0
                 msg.duty_cycle_left  = 0.0  
                 
                 if turns > 0:  # If the robot needs to turn
                     msg.duty_cycle_right += self.vel_rotate if y > self.y_offset else -self.vel_rotate
                     msg.duty_cycle_left  += -self.vel_rotate if y > self.y_offset else self.vel_rotate
+                    turns                -= 1
                 
-                if forward > 0 and turns < 4:  # If the robot needs to move forward and does not have to turn too much
+                if forward > 0 and turns <= 0:  # If the robot needs to move forward and does not have to turn too much
                     msg.duty_cycle_right += self.vel_forward
                     msg.duty_cycle_left  += self.vel_forward
+                    forward              -= 1
 
                 msg.duty_cycle_right *= self.correct_right  # Adjust the right wheel speed to compensate for it moving slower
 
                 self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
-                time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
-
-                forward, turns -= 1, 1  # Decrease the number of forward movements and turns needed
+                time.sleep(0.5)  # Sleep for 0.75 second to give the robot time to move
                 
                 new_x, new_y = self.object_pose.position.x, self.object_pose.position.y  # Get the new positions of the object/box in base_link frame from perception
 
-                if new_x <= x and self.update:  # If the new perception has a closer x-position than the previous one
+                if new_x < x and self.update:  # If the new perception has a closer x-position than the previous one
                     x, y    = new_x, new_y  # Update the position of the object/box
                     # Update the number of turns and forward movements needed to get to the object/box
                     turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn)
-                    dist    = np.sqrt(x ** 2 + y ** 2)
-                    forward = round((dist - self.x_stop_goal) / self.movement_per_forw)
-                    self._logger.info(f'Updated turns and forward: {turns}, {forward}')
+                    forward = round((x - self.x_stop_goal) / self.movement_per_forw)
+                    self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
                     if x <= (self.switch_drop if self.look_for_box else self.switch_pick):  # If the robot is close enough to the object
                         self._logger.info(f'Not updating the position of the object anymore')
                         self.update = False
