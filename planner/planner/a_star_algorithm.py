@@ -314,26 +314,32 @@ class AStarAlgorithmNode(Node):
 
         x_list, y_list = self.reduce_poses(x_list, y_list)
 
-        new_x = [x_list[0]]
-        new_y = [y_list[0]]
+        # new_x = [x_list[0]]
+        # new_y = [y_list[0]]
 
-        curr_x = x_list[0]
-        curr_y = y_list[0]
+        # curr_x = x_list[0]
+        # curr_y = y_list[0]
 
-        for i in range(len(x_list)):
+        # for i in range(len(x_list) - 1):
             
-            free = self.check_free_path(curr_x, curr_y, x_list[i+1], y_list[i+1])
+        #     free = self.check_free_path(curr_x, curr_y, x_list[i+1], y_list[i+1])
             
-            if free == True:
-                new_x.pop(i)
-                new_x.append(x_list[i+1])
-                new_y.pop(i)
-                new_x.append(y_list[i+1])
-            if free == False:
-                curr_x = new_x[-1]
-                curr_y = new_y[-1]
+        #     if free == True:
+        #         new_x.pop(-1)
+        #         new_y.pop(-1)
+        #     if free == False:
+        #         self.get_logger().info('Getting not free path')
+        #         curr_x = new_x[-1]
+        #         curr_y = new_y[-1]
 
+        #     new_x.append(x_list[i+1])
+        #     new_y.append(y_list[i+1])
 
+        # new_x.insert(0, x_list[0])
+        # new_y.insert(0, y_list[0])
+
+        # x_list = new_x
+        # y_list = new_y
 
         cmap = plt.cm.get_cmap('Paired', 8)
         norm = BoundaryNorm([-2, -1, 0, 1, 2, 3, 4, 5, 6], cmap.N)
