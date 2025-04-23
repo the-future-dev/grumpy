@@ -1,4 +1,4 @@
-from grumpy_interfaces.srv import PickAndDropObject, PositionRobot
+from grumpy_interfaces.srv import *
 
 import rclpy
 from rclpy.node import Node
@@ -16,15 +16,14 @@ class DropService(Node):
         super().__init__('drop_srv')
 
         self.current_angles = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
-
-        self.box_pose = Pose()  # The position of the object in base_link frame
-        self.min_x    = 0.0  # The closest x-position of an object in base_link frame 
+        self.object_in_gripper = False  # Keeps track of the object in the gripper
 
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
         self.position_node       = rclpy.create_node('position_node_drop')  # Create a node for the position service
+        self.arm_cam_node        = rclpy.create_node('arm_camera_node_drop')  # Create a node for the arm camera service
 
         # Create the drop service
         self.srv = self.create_service(
@@ -40,10 +39,18 @@ class DropService(Node):
             '/arm_services/position_robot'
         )
 
-        while not self.position_client.wait_for_service(timeout_sec=1.0):
-            self._logger.info('Waiting for /arm_services/position_robot...')
+        self.arm_cam_client = self.arm_cam_node.create_client(
+            ArmCameraDetection, 
+            '/arm_services/arm_camera'
+        )
 
-        # Create the publisher and subscriber for the angles of the servos
+        while not self.position_client.wait_for_service(timeout_sec=1.0):
+            self._logger.info('Waiting for /arm_services/position_robot service...')
+
+        while not self.arm_cam_client.wait_for_service(timeout_sec=1.0):
+            self._logger.info('Waiting for /arm_services/arm_camera service...')
+
+        # Create the publishers and subscribers
         self.servo_angle_publisher = self.create_publisher(
             Int16MultiArray,
             '/multi_servo_cmd_sub',
@@ -83,7 +90,6 @@ class DropService(Node):
         x, y        = 0, 0  # The x and y position of the box
         z           = utils.z_origin_servo4 - 0.05  # The height at which the object is dropped
         end_strings = ["Success", "Failure"]  # The end strings of the FSM
-        first_drop  = True  # If it is the first try to drop the object
 
         while step not in end_strings:
             self._logger.info(f'{step}')  # Log the current step
@@ -103,21 +109,33 @@ class DropService(Node):
                     res            = future.result()  # Get the result of the service call
 
                     if res.success:
-                        x, y, _   = utils.extract_object_position(self, res.pose)  # x and y position of the box
-                        next_step = "DropPosition"  # Next step
+                        next_step = "GetPosition"  # Next step
                     else:
                         self._logger.error('Positioning service call failed')
                         next_step = "Failure"  # End the FSM
 
-                case "DropPosition":  # Move servo 6/base to the correct angle
-                    # thetas = utils.still_thetas.copy()  # Move part of the arm
+                case "GetPosition":  # Call the arm camera service to get the position of the object
+                    req       = ArmCameraDetection.Request()  # Create the request, no information is needed
+                    req.box   = True  # Set the box to True, because we are positioning for a drop
+                    req.grasp = False  # Set the grasp to False, because we are not grasping an object
+                    future    = self.arm_cam_client.call_async(req)
+                    rclpy.spin_until_future_complete(self.arm_cam_node, future)
+                    res       = future.result()  # The response of the service call
 
-                    # theta_servo6               = utils.get_theta_6(x, y)  # Calculate the new angle for servo 6
-                    # theta_servo5               = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
-                    # theta_servo3, theta_servo4 = utils.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
+                    if res.success:
+                        x, y, _   = utils.extract_object_position(self, res.pose)  # Get the x and y position of the detected box
+                        next_step = "DropPosition"  # Next step
+                    else:
+                        self._logger.error('Arm camera service call failed')
+                        thetas    = utils.initial_thetas  # Move the arm to the initial position
+                        next_step = "Failure"  # End the FSM
 
-                    # thetas[2], thetas[3], thetas[4], thetas[5] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
-                    thetas                                     = utils.drop_thetas
+                case "DropPosition":  # Move arm to correct position to drop the object
+                    theta_servo6               = utils.get_theta_6(x, y)  # Calculate the new angle for servo 6
+                    theta_servo5               = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
+                    theta_servo3, theta_servo4 = utils.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
+
+                    thetas[2], thetas[3], thetas[4], thetas[5] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
                     next_step                                  = "DropObject"  # Next step
 
                 case "DropObject":  # Drops the object
@@ -125,11 +143,12 @@ class DropService(Node):
                     next_step = "DrivePosition"  # Next step
 
                 case "DrivePosition":  # Finish the drop sequence by going back to the initial position
-                    thetas    = utils.initial_thetas
+                    thetas[4] = 12000
                     next_step = "CheckObject"  # End the FSM
 
                 case "CheckObject":  # Check if the object is in the gripper
                     if not self.object_in_gripper:
+                        thetas    = utils.initial_thetas
                         next_step = "Success"  # End the FSM
                     else:
                         self._logger.error('Object in gripper, trying again')
@@ -145,9 +164,6 @@ class DropService(Node):
         
         self._logger.info(f'{step}')
         response.success = True if step == "Success" else False
-
-        self.box_pose = Pose()  # Reset the box pose
-        self.min_x    = 0.0  # Reset the minimum x-position of the object
         
         return response
 

@@ -50,6 +50,7 @@ class ArmCameraService(Node):
         """
         Args:
             request.grasp   : bool, required, if the arm is in the grasp position or not
+            request.box     : bool, required, if the arm camera is looking for the box position or not
         Returns:
             response.pose   : Pose, the position of the object in the base_link frame
             response.success: bool, if the camera sequence was successful or not
@@ -61,10 +62,13 @@ class ArmCameraService(Node):
         x, y         = 0.0, 0.0  # The x and y position of the object
 
         for _ in range(3):  # Try to get the object position a maximum of 3 times
-            x, y = self.get_object_position(request.grasp)  # Get the position of the object
-            if x != 0.0:
+            if request.box:
+                x, y = self.get_box_position()
+            else:
+                x, y = self.get_object_position(request.grasp)  # Get the position of the object
+            if x > 0.0:
                 found_object = True  # If the object was found, set the flag to true
-                self._logger.info(f'Found object at: x: {x}, y: {y}')
+                self._logger.info(f'Found {'box' if request.box else 'object'} at: x: {x}, y: {y}')
                 break
 
         response.success         = found_object  # Set the success flag to true if the object was found
@@ -97,10 +101,7 @@ class ArmCameraService(Node):
         Other functions:
             Uses the image data from the arm camera to detect object(s) and its/their position(s)
         """
-
-        # time.sleep(1.0)  # Wait for the arm camera image to stabilize after arm movement
         
-        cx, cy = 0, 0  # No object found, set to 0, 0
         x, y   = 0.0, 0.0  # Object position in base link
         image  = self.image.copy()  # Makes sure the same image is used for the whole function
 
@@ -183,6 +184,38 @@ class ArmCameraService(Node):
         mask   = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)  # Close to fill holes
 
         return mask
+    
+
+    def get_box_position(self):
+        """
+        Args:
+            None
+        Returns:
+            x: float, the x-coordinate of the box in the base_link frame
+            y: float, the y-coordinate of the box in the base_link frame
+        Other functions:
+            Uses the image data from the arm camera to detect the box position
+        """
+
+        x, y   = 0.0, 0.0  # Box position in base link
+        image  = self.image.copy()  # Makes sure the same image is used for the whole function
+
+        undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
+        gray_scale        = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2GRAY)  # Convert image to grayscale
+        edges             = cv2.Canny(gray_scale, 50, 150, apertureSize=3)  # Use canny edge detection
+
+        lines_list = []
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, minLineLength=5, maxLineGap=10)
+
+        for points in lines:  # Iterate over points
+            x1, y1, x2, y2 = points[0]  # Extracted points nested in the list
+            lines_list.append([(x1,y1),(x2,y2)])
+
+            cv2.line(image,(x1,y1),(x2,y2),(0,255,0),2)
+
+        self.publish_image(image)
+
+        return x, y  # Return the x and y coordinates of the box position
 
 
     def pixel_to_base_link(self, x_pixel, y_pixel):

@@ -13,8 +13,9 @@ class DetectionArmCam(Node):
     def __init__(self):
         super().__init__('detection_arm_cam')
 
-        self.bridge     = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
-        self.num_images = 0  # Number of images processed
+        self.pick_center = 400
+        self.bridge      = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
+        self.num_images  = 0  # Number of images processed
 
         # Camera parameters for calibration and undistortion of the image
         self.intrinsic_mtx = np.array([[438.783367, 0.000000, 305.593336],
@@ -78,20 +79,18 @@ class DetectionArmCam(Node):
         
         object_found = False  # Initialize the object_found variable to False
 
-        height, _, _   = image.shape  # Get the height and width of the image
-        offset_y       = int(height * (2/3))  # Calculate the offset to crop the image
-        cropped_image  = image[offset_y:, :]  # Crop the image to the lower third to reduce processing time
+        height        = image.shape[0]  # Get the height of the image
+        offset_y      = int(height * (2/3))  # Calculate the offset to crop the image
+        cropped_image = image[offset_y:, :]  # Crop the image to the lower third to reduce processing time
 
-        # undistorted_image = cv2.undistort(image, self.intrinsic_mtx, self.dist_coeffs)  # Undistort the image
-        # hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for eaiser color-based object detection
-        hsv_image         = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for eaiser color-based object detection
+        hsv_image     = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for eaiser color-based object detection
 
         mask = self.create_masks(hsv_image)  # Create a combined mask for red, green, and blue objects
         mask = cv2.medianBlur(mask, 5)  # Apply a median blur to the mask to reduce salt and pepper noise
         mask = self.clean_mask(mask)  # Clean each mask using morphological operations
 
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, only external contours
-        # contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
+        # contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, only external contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
         areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
 
         if len(areas) > 0 and np.max(areas) > 500:  # If there are any contours found
@@ -102,6 +101,7 @@ class DetectionArmCam(Node):
             cx, cy, radius   = int(cx), int(cy) + offset_y, int(radius)  # Convert to integers
             
             cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)  # Draw the enclosing circle in the image
+            cv2.circle(image, (int(self.intrinsic_mtx[0, 2]), self.pick_center), 10, (0, 255, 0), -1)  # Compare adjust center to actual center
 
             object_found = True  # Set the object_found variable to True
             
