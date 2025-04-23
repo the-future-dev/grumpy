@@ -88,8 +88,9 @@ class DropService(Node):
 
         step        = "Start"  # The current step in the FSM
         x, y        = 0, 0  # The x and y position of the box
-        z           = utils.z_origin_servo4 - 0.05  # The height at which the object is dropped
+        z           = utils.z_origin_servo4 - 0.075  # The height at which the object is dropped
         end_strings = ["Success", "Failure"]  # The end strings of the FSM
+        end_backup  = False
 
         # self.get_logger().info('Responding with success directly')
         # response.success = True
@@ -103,23 +104,26 @@ class DropService(Node):
             match step:
                 case "Start":  # Make sure the arm is in the drive position with an object in the gripper
                     thetas    = utils.drive_thetas
-                    next_step = "PositonRobot"  # Next step
+                    next_step = "PositionRobot"  # Next step
 
-                case "PositonRobot":  # Call the position robot service to get to the position and the position of the box
+                case "PositionRobot":  # Call the position robot service to get to the position and the position of the box
                     req            = PositionRobot.Request()  # Create a request for the position robot service
                     req.box        = True  # Position the robot for the box
+                    req.backup     = end_backup
                     future         = self.position_client.call_async(req)
                     rclpy.spin_until_future_complete(self.position_node, future)
                     res            = future.result()  # Get the result of the service call
 
                     if res.success:
                         next_step = "ViewPosition"  # Next step
+                        if end_backup:
+                            next_step = 'Success'
                     else:
                         self._logger.error('Positioning service call failed')
                         next_step = "Failure"  # End the FSM
 
                 case "ViewPosition":  # Get the position of the object from the arm camera
-                    thetas    = utils.view_thetas  # Move arm to view the object
+                    thetas    = utils.view_thetas_drop  # Move arm to view the object
                     next_step = "GetPosition"  # Next step
 
                 case "GetPosition":  # Call the arm camera service to get the position of the object
@@ -141,7 +145,7 @@ class DropService(Node):
                 case "DropPosition":  # Move arm to correct position to drop the object
                     theta_servo6               = utils.get_theta_6(x, y)  # Calculate the new angle for servo 6
                     theta_servo5               = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
-                    theta_servo3, theta_servo4 = utils.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
+                    theta_servo3, theta_servo4 = utils.inverse_kinematics(self, x, y, z)  # Calculate change of the angles for servo 3 and 4
 
                     thetas[2], thetas[3], thetas[4], thetas[5] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
                     next_step                                  = "DropObject"  # Next step
@@ -156,8 +160,9 @@ class DropService(Node):
 
                 case "CheckObject":  # Check if the object is in the gripper
                     if not self.object_in_gripper:
-                        thetas    = utils.initial_thetas
-                        next_step = "Success"  # End the FSM
+                        thetas     = utils.initial_thetas
+                        end_backup = True
+                        next_step  = "PositionRobot"  # End the FSM
                     else:
                         self._logger.error('Object in gripper, trying again')
                         next_step = "DropPosition"  # Try to view the object again

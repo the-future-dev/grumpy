@@ -18,8 +18,8 @@ class SampleDriveControlNode(Node):
     def __init__(self):
         super().__init__('sample_drive_control_node')
 
-        self.vel_forward = 0.13
-        self.vel_rotate = 0.07 # 0.09 before
+        self.vel_forward = 0.2 # 0.13 before
+        self.vel_rotate = 0.09 # 0.09 before
         self.vel_small_rotate = 0.015
         self.vel_arrived = 0.0
         self.right_extra = 1.075
@@ -133,7 +133,7 @@ class SampleDriveControlNode(Node):
             y = point_base_link.point.y
         
             #If y is zero and x > 0 means perfect alignment otherwise turning
-            if x >= 0.0 and abs(y) < 0.1:
+            if x >= 0.0 and abs(y) < 0.15:
                 #Stop turning
                 msg.duty_cycle_right = self.vel_arrived*self.right_extra
                 msg.duty_cycle_left = self.vel_arrived
@@ -156,7 +156,7 @@ class SampleDriveControlNode(Node):
             # if self.stop == True and self.drive_to_free == False:
             #     return False
             tf_future = self.tf_buffer.wait_for_transform_async('base_link', from_frame, self.get_clock().now())
-            rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+            rclpy.spin_until_future_complete(self, tf_future, timeout_sec=0.5)
 
             try:
                 tf_odom_base_link = self.tf_buffer.lookup_transform('base_link', from_frame, rclpy.time.Time()) # get latest available transform

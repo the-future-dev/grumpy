@@ -90,13 +90,15 @@ class PickService(Node):
         end_strings    = ["Success", "Failure"]  # End strings for the FSM
         x, y, z        = 0.0, 0.0, -0.005  # The x, y and z position of the object, z is set to -0.005 becasue the object is always on the ground
         pos_x, pos_y   = 0.0, 0.0  # The x and y position of the object in the base_link frame if the robot needs to be positioned again
+        add_x, add_y   = 0.0, 0.0  # What should be added to the position of the object
         label          = ""  # The label of the object to be picked up
         grasp_position = False  # If the arm is in the grasp position or not
-        # first_grasp  = True  # If it is the first try to grasp the object
+        num_failures   = 0
 
         # self.get_logger().info('Responding with success directly')
         # response.success = True
         # return response
+
 
         while step not in end_strings:
             self._logger.info(f'Pick Service: {step}')  # Log the current step
@@ -111,6 +113,7 @@ class PickService(Node):
                 case "PositionRobot":  # Call the position robot service to get to the position of the object
                     req                 = PositionRobot.Request()  # Create an request with empty label -> position to pick up an object
                     req.box             = False  # Set the box to False, because we are not positioning for a drop
+                    req.backup          = False  # Only used to back up the robot after droping
                     req.pose.position.x = pos_x  # Set the x position of the object
                     req.pose.position.y = pos_y  # Set the y position of the object
                     future = self.position_client.call_async(req)
@@ -127,7 +130,7 @@ class PickService(Node):
                         next_step = "Failure"  # End the FSM
 
                 case "ViewPosition":  # Get the position of the object from the arm camera
-                    thetas    = utils.view_thetas  # Move arm to view the object
+                    thetas    = utils.view_thetas_pick # Move arm to view the object
                     next_step = "GetPosition"  # Next step
 
                 case "GetPosition":  # Call the arm camera service to get the position of the object
@@ -164,7 +167,7 @@ class PickService(Node):
                 case "PickUp":  # Move the arm to the pick up position
                     theta_servo6               = utils.get_theta_6(x, y)  # Calculate the new angle for servo 6
                     theta_servo5               = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
-                    theta_servo3, theta_servo4 = utils.inverse_kinematics(x, y, z)  # Calculate change of the angles for servo 3 and 4
+                    theta_servo3, theta_servo4 = utils.inverse_kinematics(self, x, y, z)  # Calculate change of the angles for servo 3 and 4
 
                     thetas[2], thetas[3], thetas[4], thetas[5] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
                     
@@ -199,7 +202,12 @@ class PickService(Node):
                         next_step = "Success"  # End the FSM
                     else:
                         self._logger.error('Object not in gripper, trying again')
-                        next_step = "ViewPosition"  # Try to view the object again
+                        x, y          = 0.0, 0.0
+                        num_failures += 1
+                        thetas[0]     = 3000
+                        next_step     = "ViewPosition"  # Try to view the object again
+                        if num_failures > 2:
+                            next_step = 'Failure'
             
             utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format and intervals
             

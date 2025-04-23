@@ -11,7 +11,7 @@ import tf_transformations
 from shapely.geometry.polygon import Polygon
 from shapely.geometry import Point
 import matplotlib.pyplot as plt
-from std_msgs.msg import Int16MultiArray, MultiArrayDimension
+from std_msgs.msg import Int16MultiArray, MultiArrayDimension, String
 from scipy.ndimage import binary_dilation
 from grumpy_interfaces.msg import ObjectDetection1DArray, ObjectDetection1D
 from occupancy_grid_map.workspace_utils import Workspace
@@ -41,6 +41,8 @@ class OccupancyGridMapNode(Node):
         self.grid = self.ws_utils.create_grid()
         self.counter = 0
         self.phase = 'collection'  ###############    PHASE    ##########
+        self.goal_point = None
+        self.action = 'Other'
 
         #Transfrom between lidar link and map
         self.tf_buffer = Buffer()
@@ -55,11 +57,13 @@ class OccupancyGridMapNode(Node):
         if self.phase == 'collection':
             self.map = self.ws_utils.map
             self.map_to_grid(self.map, self.object_box)
+            self.create_subscription(ObjectDetection1D, 'planner_collection/next_goal', self.goal_pos_cb, 2)
+            self.create_subscription(String, 'brain/pick_drop_status', self.remove_cb, 1)
         elif self.phase == 'exploration':
-            self.obstacle_subscription = self.create_subscription(ObjectDetection1DArray, 'object_mapping/object_poses', self.object_cb, 1)
+            self.create_subscription(ObjectDetection1DArray, 'object_mapping/object_poses', self.object_cb, 1)
 
         #Subscribe to both lidar scan
-        self.lidar_subscription = self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
+        self.create_subscription(LaserScan, '/scan', self.lidar_cb, 1)
 
 
     #Function which fills the space outside workspace as occupied, very slow now but have not succeded with other
@@ -76,6 +80,25 @@ class OccupancyGridMapNode(Node):
                     self.grid[j, i] = self.outside
 
         return
+
+    def goal_pos_cb(self, msg:ObjectDetection1D):
+
+        pos_x = msg.pose.position.x
+        pos_y = msg.pose.position.y
+
+        self.goal_point = np.array([[pos_x],
+                                    [pos_y]])
+
+        self.get_logger().info(f'Getting goal pose {self.goal_point}')
+
+    def remove_cb(self, msg:String):
+
+        self.action = msg.data
+        if self.action == 'Pick_Success':
+            self.map_to_grid(self.goal_point, self.free)
+
+        self.action = 'Other'
+        self.get_logger().info(f'Getting remove cb {msg.data}')
     
     def object_cb(self, msg:ObjectDetection1DArray):
 
@@ -227,10 +250,12 @@ class OccupancyGridMapNode(Node):
         x_grid_points = x_grid_points[mask_in_bounds]
         y_grid_points = y_grid_points[mask_in_bounds]
 
-        #Mask to filter object and boxes and outside workspace
-        mask_workspace_object_box = self.grid[y_grid_points, x_grid_points] >= self.outside
-        x_grid_points = x_grid_points[~mask_workspace_object_box]
-        y_grid_points = y_grid_points[~mask_workspace_object_box]
+        if self.action != 'Pick_Success':
+
+            #Mask to filter object and boxes and outside workspace
+            mask_workspace_object_box = self.grid[y_grid_points, x_grid_points] >= self.outside
+            x_grid_points = x_grid_points[~mask_workspace_object_box]
+            y_grid_points = y_grid_points[~mask_workspace_object_box]
 
         # #If placing an object or box we do not want to care about where in workspace
         # if value == self.object_box:

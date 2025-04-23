@@ -66,8 +66,8 @@ class PickDrop(py_trees.behaviour.Behaviour):
                 self.node.pick_drop_pub.publish(msg)
            
             self.node.pick_drop_status = 'Called'
-        else:   
-            if self.node.pick_drop_status == 'Success':
+        else:
+            if self.node.pick_drop_status in ['Pick_Success', 'Drop_Success']:
                 self.node.get_logger().info('Pick/Drop Success')
                 self.node.have_path = False
                 self.node.have_goal = False
@@ -82,7 +82,7 @@ class PickDrop(py_trees.behaviour.Behaviour):
                 else:
                     self.node.action = 'Pick'
 
-            elif self.node.pick_drop_status == 'Failure':
+            elif self.node.pick_drop_status in ['Pick_Failure', 'Drop_Failure']:
                 self.node.get_logger().info('Pick/Drop Failure')
                 self.node.have_path = False
                 self.node.have_goal = False
@@ -133,9 +133,10 @@ class GetPath(py_trees.behaviour.Behaviour):
 
                     self.node.get_path = False
                     self.node.get_logger().info('Publishing goal to A*')
-                    msg = PoseStamped()
+                    msg = ObjectDetection1D()
+                    msg.header.stamp = self.node.goal.header.stamp
                     msg.pose = self.node.goal.pose
-
+                    msg.label.data = f'{self.node.action}'
 
                     self.node.send_goal_pub.publish(msg)
                 else:
@@ -238,7 +239,7 @@ class BrainCollection(Node):
 
         
         # intialize publishers
-        self.send_goal_pub = self.create_publisher(PoseStamped, 'Astar/next_goal', 1)
+        self.send_goal_pub = self.create_publisher(ObjectDetection1D, 'Astar/next_goal', 1)
         self.find_goal_pub = self.create_publisher(String, 'planner_collection/find_goal', 1)
         self.drive_to_goal_pub = self.create_publisher(Path, 'drive/path', 1)
         self.path_list_pub = self.create_publisher(Path, '/brain/path_list', 1)

@@ -8,6 +8,7 @@ import cv2
 import cv_bridge
 import numpy as np
 import arm_srvs.utils as utils
+import time
 
 class ArmCameraService(Node):
 
@@ -58,6 +59,7 @@ class ArmCameraService(Node):
             
         """
 
+        time.sleep(0.5)  # Let the arm camera picture stabilize before trying to find an object
         found_object = False  # Flag to check if an object was found
         x, y         = 0.0, 0.0  # The x and y position of the object
 
@@ -197,23 +199,40 @@ class ArmCameraService(Node):
             Uses the image data from the arm camera to detect the box position
         """
 
-        x, y   = 0.0, 0.0  # Box position in base link
-        image  = self.image.copy()  # Makes sure the same image is used for the whole function
+        x, y      = 0.30, 0.0  # Box position in base link
+        cx, cy    = 0.0, 0.0
+        num_lines = 0
+        image     = self.image.copy()  # Makes sure the same image is used for the whole function
 
         undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
         gray_scale        = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2GRAY)  # Convert image to grayscale
         gray_equalized    = cv2.equalizeHist(gray_scale)  # Improve contrasts
         gray_blurred      = cv2.bilateralFilter(gray_equalized, 9, 75, 75)  # Add blur to simplify the image
-        edges             = cv2.Canny(gray_blurred, 30, 80, apertureSize=3)  # Use canny edge detection
+        edges             = cv2.Canny(gray_blurred, 50, 150, apertureSize=3)  # Use canny edge detection
 
         lines_list = []
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, minLineLength=5, maxLineGap=10)
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, minLineLength=100, maxLineGap=15)
 
-        for points in lines:  # Iterate over points
-            x1, y1, x2, y2 = points[0]  # Extracted points nested in the list
-            lines_list.append([(x1,y1),(x2,y2)])
+        if lines is not None:
+            for points in lines:  # Iterate over points
+                x1, y1, x2, y2 = points[0]  # Extracted points nested in the list
+                lines_list.append([(x1,y1),(x2,y2)])
 
-            cv2.line(image,(x1,y1),(x2,y2),(0,255,0),2)
+                self._logger.info(f'{x1}, {x2}, {y1}, {y2}')
+
+                if y1 < 330 and y2 < 330:
+                    num_lines += 1
+                    cx        += ((x2 - x1) / 2 + x1)
+                    cy        += ((y2 - y1) / 2 + y1)
+
+                    cv2.line(image, (x1,y1), (x2,y2), (0,255,0), 2)
+
+            cx /= num_lines
+            cy /= num_lines
+
+            cv2.circle(image, (int(cx), int(cy)), 10, (0, 0, 255), -1)
+
+            self._logger.info(f'Box is in pixels x: {cx} and y: {cy}')
 
         self.publish_image(image)
 

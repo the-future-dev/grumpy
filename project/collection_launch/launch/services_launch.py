@@ -31,9 +31,16 @@ def generate_launch_description():
         output='screen'
     )
 
+    arm_camera_detection = Node(
+        package='detection_arm_cam',
+        executable='detection_arm_cam',
+        output='screen'
+    )
+
     return LaunchDescription([
         arm_camera,
         drop,
         pick,
         positioning,
+        arm_camera_detection,
     ])

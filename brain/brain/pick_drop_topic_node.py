@@ -37,25 +37,33 @@ class PickDropTopicNode(Node):
             self.get_logger().info('Got future')
             rclpy.spin_until_future_complete(self.pick_node_call, future)
             res = future.result()
+            if res.success:
+                self.get_logger().info('Pick successful, publishing to brain')
+                msg = String()
+                msg.data = 'Pick_Success'
+                self.pick_drop_status_pub.publish(msg)
+            else:
+                self.get_logger().info('Pick failure, publishing to brain')
+                msg = String()
+                msg.data = 'Pick_Failure'
+                self.pick_drop_status_pub.publish(msg)
         else:
             self.get_logger().info('Calling Drop service')
             future = self.drop_client.call_async(req)
             self.get_logger().info('Got future')
             rclpy.spin_until_future_complete(self.drop_node_call, future)
             res = future.result()
-        
-        self.get_logger().info('Got result')
 
-        if res.success:
-            self.get_logger().info('Pick/Drop successful, publishing to brain')
-            msg = String()
-            msg.data = 'Success'
-            self.pick_drop_status_pub.publish(msg)
-        else:
-            self.get_logger().info('Pick/Drop failure, publishing to brain')
-            msg = String()
-            msg.data = 'Failure'
-            self.pick_drop_status_pub.publish(msg)
+            if res.success:
+                self.get_logger().info('Drop successful, publishing to brain')
+                msg = String()
+                msg.data = 'Drop_Success'
+                self.pick_drop_status_pub.publish(msg)
+            else:
+                self.get_logger().info('Drop failure, publishing to brain')
+                msg = String()
+                msg.data = 'Drop_Failure'
+                self.pick_drop_status_pub.publish(msg)
             
 
         
