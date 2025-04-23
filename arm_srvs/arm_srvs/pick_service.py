@@ -22,7 +22,7 @@ class PickService(Node):
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
         self.position_node       = rclpy.create_node('position_node_pick')  # Create a node for the position service
-        self.arm_cam_node        = rclpy.create_node('arm_camera_node')  # Create a node for the arm camera service
+        self.arm_cam_node        = rclpy.create_node('arm_camera_node_pick')  # Create a node for the arm camera service
         
         # Create the pick service
         self.srv = self.create_service(
@@ -44,12 +44,12 @@ class PickService(Node):
         )
 
         while not self.position_client.wait_for_service(timeout_sec=1.0):
-            self._logger.info('Waiting for /arm_services/position_robot...')
+            self._logger.info('Waiting for /arm_services/position_robot service...')
 
         while not self.arm_cam_client.wait_for_service(timeout_sec=1.0):
             self._logger.info('Waiting for /arm_services/arm_camera service...')
 
-        # Create the publisher and subscriber for the angles of the servos
+        # Create the publishers and subscribers
         self.servo_angle_publisher = self.create_publisher(
             Int16MultiArray,
             '/multi_servo_cmd_sub',
@@ -128,6 +128,7 @@ class PickService(Node):
 
                 case "GetPosition":  # Call the arm camera service to get the position of the object
                     req       = ArmCameraDetection.Request()  # Create the request, no information is needed
+                    req.box   = False  # Set the box to False, because we are not positioning for a drop
                     req.grasp = grasp_position
                     future    = self.arm_cam_client.call_async(req)
                     rclpy.spin_until_future_complete(self.arm_cam_node, future)
@@ -183,19 +184,13 @@ class PickService(Node):
                     
                     next_step  = "PreCheckObject"  # Next step
 
-                    # if first_grasp:
-                    #     first_grasp = False  # Tried to pick the object once, should make it on the second try at least
-                    #     next_step  = "GraspObject"  # Next step
-                    # else:
-                    #     next_step  = "DrivePosition"  # Next step
-
                 case "PreCheckObject":  # Finish the pick up sequence by going back to the initial position, but not for the gripper
                     thetas[4] = 12000
                     next_step = "CheckObject"  # End the FSM
 
                 case "CheckObject":  # Check if the object is in the gripper
-                    thetas    = utils.drive_thetas
                     if self.object_in_gripper:
+                        thetas    = utils.drive_thetas
                         next_step = "Success"  # End the FSM
                     else:
                         self._logger.error('Object not in gripper, trying again')
