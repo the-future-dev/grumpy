@@ -1,4 +1,5 @@
 bool grasp
+bool box
 ---
 geometry_msgs/Pose pose
 bool success

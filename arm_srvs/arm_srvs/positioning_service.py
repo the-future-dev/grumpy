@@ -72,7 +72,6 @@ class PositioningService(Node):
         Returns:
             response.success   : bool, if the positioning was successful or not
             response.label.data: String, the label of the closest object
-            response.pose      : Pose, the pose of the closest object
         Other functions:
             Controlls the positioning sequence
             Calls the publishing function which publishes the velocities to the wheel motors for each step in the sequence
@@ -86,7 +85,7 @@ class PositioningService(Node):
 
             response.success    = True # if step == "Success" else False
             response.label.data = self.object_label  # Return the label of the closest object
-            response.pose       = self.object_pose  # Return the pose of the closest object
+
         else:
             if request.box:  # If the robot should only look for a box
                 self._logger.info(f'positioning_sequence: Looking for a box')
@@ -112,13 +111,11 @@ class PositioningService(Node):
                 self._logger.info(f'Got to the calculated position of {position_to}')
                 response.success    = True # if step == "Success" else False
                 response.label.data = self.object_label  # Return the label of the closest object
-                response.pose       = self.object_pose  # Return the pose of the closest object
 
             else:
                 self._logger.error(f'Could not find an {position_to}, returning failure')
                 response.success    = False
                 response.label.data = ""
-                response.pose       = Pose()
 
         self.min_x          = 0.0  # Reset the minimum x-position of the object
         self.object_pose    = Pose()  # Reset the object pose
