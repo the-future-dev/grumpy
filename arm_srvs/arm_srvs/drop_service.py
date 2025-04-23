@@ -109,10 +109,14 @@ class DropService(Node):
                     res            = future.result()  # Get the result of the service call
 
                     if res.success:
-                        next_step = "GetPosition"  # Next step
+                        next_step = "ViewPosition"  # Next step
                     else:
                         self._logger.error('Positioning service call failed')
                         next_step = "Failure"  # End the FSM
+
+                case "ViewPosition":  # Get the position of the object from the arm camera
+                    thetas    = utils.view_thetas  # Move arm to view the object
+                    next_step = "GetPosition"  # Next step
 
                 case "GetPosition":  # Call the arm camera service to get the position of the object
                     req       = ArmCameraDetection.Request()  # Create the request, no information is needed
@@ -140,9 +144,9 @@ class DropService(Node):
 
                 case "DropObject":  # Drops the object
                     thetas[0] = 3000  # Only move and open the gripper
-                    next_step = "DrivePosition"  # Next step
+                    next_step = "CheckPosition"  # Next step
 
-                case "DrivePosition":  # Finish the drop sequence by going back to the initial position
+                case "CheckPosition":  # Finish the drop sequence by going back to the initial position
                     thetas[4] = 12000
                     next_step = "CheckObject"  # End the FSM
 

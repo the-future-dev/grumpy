@@ -172,7 +172,7 @@ class ArmCameraService(Node):
     def clean_mask(self, mask):
         """
         Args:
-            mask: np.array, required, the mask to be cleaned
+            mask: np.array, required, the image to be cleaned
         Returns:
             mask: np.array, the cleaned mask
         Other functions:
@@ -202,7 +202,9 @@ class ArmCameraService(Node):
 
         undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
         gray_scale        = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2GRAY)  # Convert image to grayscale
-        edges             = cv2.Canny(gray_scale, 50, 150, apertureSize=3)  # Use canny edge detection
+        gray_equalized    = cv2.equalizeHist(gray_scale)  # Improve contrasts
+        gray_blurred      = cv2.bilateralFilter(gray_equalized, 9, 75, 75)  # Add blur to simplify the image
+        edges             = cv2.Canny(gray_blurred, 30, 80, apertureSize=3)  # Use canny edge detection
 
         lines_list = []
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, minLineLength=5, maxLineGap=10)
