@@ -88,9 +88,10 @@ class DropService(Node):
 
         step        = "Start"  # The current step in the FSM
         x, y        = 0, 0  # The x and y position of the box
-        z           = utils.z_origin_servo4 - 0.075  # The height at which the object is dropped
+        z           = utils.z_origin_servo4 - 0.05  # The height at which the object is dropped
         end_strings = ["Success", "Failure"]  # The end strings of the FSM
         end_backup  = False
+        failure     = False
 
         # self.get_logger().info('Responding with success directly')
         # response.success = True
@@ -118,9 +119,14 @@ class DropService(Node):
                         next_step = "ViewPosition"  # Next step
                         if end_backup:
                             next_step = 'Success'
+                            if failure:
+                                next_step = 'Failure'
                     else:
                         self._logger.error('Positioning service call failed')
-                        next_step = "Failure"  # End the FSM
+                        thetas     = utils.initial_thetas
+                        end_backup = True
+                        failure    = True
+                        next_step  = "PositionRobot"  # End the FSM
 
                 case "ViewPosition":  # Get the position of the object from the arm camera
                     thetas    = utils.view_thetas_drop  # Move arm to view the object
@@ -139,8 +145,10 @@ class DropService(Node):
                         next_step = "DropPosition"  # Next step
                     else:
                         self._logger.error('Arm camera service call failed')
-                        thetas    = utils.initial_thetas  # Move the arm to the initial position
-                        next_step = "Failure"  # End the FSM
+                        thetas     = utils.initial_thetas  # Move the arm to the initial position
+                        end_backup = True
+                        failure    = True
+                        next_step  = "PositionRobot"  # End the FSM
 
                 case "DropPosition":  # Move arm to correct position to drop the object
                     theta_servo6               = utils.get_theta_6(x, y)  # Calculate the new angle for servo 6
@@ -152,21 +160,13 @@ class DropService(Node):
 
                 case "DropObject":  # Drops the object
                     thetas[0] = 3000  # Only move and open the gripper
-                    next_step = "CheckPosition"  # Next step
+                    next_step = "GoToInital"  # Next step
 
-                case "CheckPosition":  # Finish the drop sequence by going back to the initial position
-                    thetas[4] = 12000
-                    next_step = "CheckObject"  # End the FSM
+                case "GoToInitial":  # Drops the object
+                    thetas     = utils.initial_thetas  # Move arm to initial position
+                    end_backup = True
+                    next_step  = "PositionRobot"  # Next step
 
-                case "CheckObject":  # Check if the object is in the gripper
-                    if not self.object_in_gripper:
-                        thetas     = utils.initial_thetas
-                        end_backup = True
-                        next_step  = "PositionRobot"  # End the FSM
-                    else:
-                        self._logger.error('Object in gripper, trying again')
-                        next_step = "DropPosition"  # Try to view the object again
-            
             utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format
             
             if self.publish_angles(thetas, times):  # Publish the angles to the arm and check if the arm has moved to the correct angles

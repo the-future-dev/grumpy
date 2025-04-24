@@ -199,7 +199,7 @@ class ArmCameraService(Node):
             Uses the image data from the arm camera to detect the box position
         """
 
-        x, y      = 0.30, 0.0  # Box position in base link
+        x, y      = 0.0, 0.0  # Box position in base link
         cx, cy    = 0.0, 0.0
         num_lines = 0
         image     = self.image.copy()  # Makes sure the same image is used for the whole function
@@ -211,16 +211,14 @@ class ArmCameraService(Node):
         edges             = cv2.Canny(gray_blurred, 50, 150, apertureSize=3)  # Use canny edge detection
 
         lines_list = []
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, minLineLength=100, maxLineGap=15)
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, minLineLength=100, maxLineGap=5)
 
         if lines is not None:
             for points in lines:  # Iterate over points
                 x1, y1, x2, y2 = points[0]  # Extracted points nested in the list
                 lines_list.append([(x1,y1),(x2,y2)])
 
-                self._logger.info(f'{x1}, {x2}, {y1}, {y2}')
-
-                if y1 < 330 and y2 < 330:
+                if y1 < 330 or y2 < 330:
                     num_lines += 1
                     cx        += ((x2 - x1) / 2 + x1)
                     cy        += ((y2 - y1) / 2 + y1)
@@ -232,9 +230,7 @@ class ArmCameraService(Node):
 
             cv2.circle(image, (int(cx), int(cy)), 10, (0, 0, 255), -1)
 
-            x_base, y_base = self.pixel_to_base_link_general(cx, cy)  # Transform the position to the base_link frame
-
-            self._logger.info(f'Box is in base link x: {x_base} and y: {y_base}')
+            x, y = self.pixel_to_base_link_general(cx, cy)  # Transform the position to the base_link frame
 
         self.publish_image(image)
 
@@ -300,20 +296,29 @@ class ArmCameraService(Node):
         fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
 
-        # Step 1: Pixel to normalized image coordinates
-        x = - (y_pixel - cy) / fy
-        y = - (x_pixel - cx) / fx
-        ray_cam = np.array([x, y, 1.0])
+        base_link_x = - (y_pixel - cy) * (utils.cam_r_t_box['z'] / fy) + utils.cam_r_t_box['x'] + np.tan(np.deg2rad(utils.theta_cam_z)) * utils.cam_r_t_box['z']
+        base_link_y = - (x_pixel - cx) * (utils.cam_r_t_box['z'] / fx) + utils.cam_r_t_box['y']
 
-        R, t = utils.get_rotation_and_translation(utils.cam_r_t_box)  # Get the transformation matrix  from the camera to the base_link frame
+        # # Step 1: Pixel to normalized image coordinates
+        # x       = - (y_pixel - cy) / fy
+        # y       = - (x_pixel - cx) / fx
 
-        # Step 2: Transform ray to base_link frame
-        ray_base = R @ ray_cam
-        origin_base = t.reshape(3)
+        # self._logger.info(f'pixel_y : {round(y_pixel, 5)} -> x : {round(x, 5)}, pixel_x : {round(x_pixel, 5)} -> y : {round(y, 5)}')
+        # ray_cam = np.array([x, y, 1.0]).reshape(3)
 
-        # Step 3: Ray-plane intersection (z=0)
-        t_scalar = -origin_base[2] / ray_base[2]
-        base_link_x, base_link_y, _ = origin_base + t_scalar * ray_base
+        # R, t = utils.get_rotation_and_translation(utils.cam_r_t_box)  # Get the transformation matrix  from the camera to the base_link frame
+
+        # # Step 2: Transform ray to base_link frame
+        # ray_base    = R @ ray_cam
+        # origin_base = t.reshape(3)
+        # # origin_base = np.array([0.235, -0.0475, 0.215]).reshape(3)
+
+        # self._logger.info(f'(x, y, z)_base: {origin_base}')
+        # self._logger.info(f'ray_base: {ray_base}')
+
+        # # Step 3: Ray-plane intersection (z=0)
+        # t_scalar                    = - origin_base[2] / ray_base[2]
+        # base_link_x, base_link_y, _ = t_scalar * ray_base # + origin_base
 
         return base_link_x, base_link_y  # x, y in base_link
     

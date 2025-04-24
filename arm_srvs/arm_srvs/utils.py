@@ -18,13 +18,15 @@ theta_servo5_view = 30
 theta_servo5_box  = 30
 theta_servo4_box  = 30
 theta_servo3_box  = 90
-theta_cam_fixed   = -90
+theta_cam_fixed   = 270
+theta_cam_z       = 90 - (theta_servo5_box + theta_servo4_box + theta_servo3_box + theta_cam_fixed)
 
 # Constants in the robot arm links:
 l_5_4     = 0.10048  # From joint of servo 5 to joint of servo 4:
 l_4_3     = 0.094714  # From joint of servo 4 to joint of servo 3:
 l_3_2_ee  = 0.05071 + 0.11260 # From joint of servo 3 to joint of servo 2 + from joint servo 2 to end effector
 l_3_cam_z = 0.046483  # z-distance from joint of servo 3 to the arm camera
+# l_3_cam_z = 0.0620
 l_3_cam_x = 0.042169  # x-distance from joint of servo 3 to the arm camera
 
 # Origin of servo 4 in rho+z-plane
@@ -32,11 +34,12 @@ z_origin_servo4   = z_origin_servo5 + l_5_4 * np.sin(np.deg2rad(90) - np.deg2rad
 rho_origin_servo4 = l_5_4 * np.cos(np.deg2rad(90) - np.deg2rad(theta_servo5_pick))
     
 # Angles of the servos for different tasks:
-initial_thetas   = [3000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around without object
-drive_thetas     = [-1, 12000, 7000, 12000, 12000, 12000]  # Arm pointing straight up, gripper tilted forward, used for driving around with object
-view_thetas_pick = [-1, -1, 3000, 18000, 9500, -1]  # Angles when the arm camera has a view over the entire pick-up area
-view_thetas_drop = [-1, -1, 3000, 15000, 9500, -1]  # Angles when the arm camera has a view over the entire pick-up area
-still_thetas     = [-1] * 6 # Angles for when the arm should not move
+initial_thetas       = [3000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around without object
+drive_thetas         = [-1, 12000, 7000, 12000, 12000, 12000]  # Arm pointing straight up, gripper tilted forward, used for driving around with object
+position_thetas_pick = [-1, -1, 3000, 14500, 9500, 12000]
+view_thetas_pick     = [-1, -1, 3000, 18000, 9500, 12000]  # Angles when the arm camera has a view over the entire pick-up area
+view_thetas_drop     = [-1, -1, 3000, 15000, 9500, 12000]  # Angles when the arm camera has a view over the entire pick-up area
+still_thetas         = [-1] * 6 # Angles for when the arm should not move
 
 times = [1000] * 6  # Standard angle movement times to all servos
 
@@ -55,11 +58,12 @@ intrinsic_mtx = np.array([[438.783367, 0.000000, 305.593336],
 dist_coeffs   = np.array([-0.361976, 0.110510, 0.001014, 0.000505, 0.000000])
 
 cam_r_t_box = {
-    'x': (x_origin_servo5 + 
-          l_5_4 * np.sin(np.deg2rad(theta_servo5_box)) +
-          l_4_3 * np.sin(np.deg2rad(theta_servo5_box + theta_servo4_box)) +
-          l_3_cam_z * np.sin(np.deg2rad(theta_servo5_box + theta_servo4_box + theta_servo3_box)) +
-          l_3_cam_x * np.sin(np.deg2rad(theta_servo5_box + theta_servo4_box + theta_servo3_box + theta_cam_fixed))),
+    'x': 0.215,
+        # (x_origin_servo5 + 
+        #   l_5_4 * np.sin(np.deg2rad(theta_servo5_box)) +
+        #   l_4_3 * np.sin(np.deg2rad(theta_servo5_box + theta_servo4_box)) +
+        #   l_3_cam_z * np.sin(np.deg2rad(theta_servo5_box + theta_servo4_box + theta_servo3_box)) +
+        #   l_3_cam_x * np.sin(np.deg2rad(theta_servo5_box + theta_servo4_box + theta_servo3_box + theta_cam_fixed))),
     'y': y_origin_servo5,
     'z': (z_origin_servo5 +
           l_5_4 * np.cos(np.deg2rad(theta_servo5_box)) +
@@ -160,7 +164,7 @@ def inverse_kinematics(node, x, y, z):
     node._logger.info(f'Gives cos(theta3): {(rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) /  (2 * l_4_3 * l_3_2_ee)}')
 
     # Calculate the angles for servo 3 and 4 in radians
-    delta_theta_servo3 = - np.arccos((rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) /  (2 * l_4_3 * l_3_2_ee))
+    delta_theta_servo3 = - np.arccos(max(-1.0, min((rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) /  (2 * l_4_3 * l_3_2_ee), 1.0)))
     delta_theta_servo4 = (np.arctan2(z_dist, rho_dist) - 
                           np.arctan2(l_3_2_ee * np.sin(delta_theta_servo3), l_4_3 + (l_3_2_ee * np.cos(delta_theta_servo3))))
     

@@ -27,13 +27,13 @@ class PositioningService(Node):
         self.object_pose  = Pose()  # The position of the object in base_link frame
         self.object_label = ""  # The label of the object
         self.object_found = False  # Flag to check if the object was found
-        self.min_x        = 0.0  # The closest x-position of an object in base_link frame
+        self.min_x        = 1.2  # The closest x-position of an object in base_link frame
         self.look_for_box = False  # Flag to check if the robot should only look for a box
         self.update       = True  # Flag to check if the driving should be updated with new perception data
 
         # Target distance-parameters to the goal object/box
         self.unrealistic_x =  0.35  # The x-position where the RGB-D camera should not be able to locate an object
-        self.x_stop_goal   =  0.20  # The desired length in the x-direction from the goal object/box
+        self.x_stop_goal   =  0.175  # The desired length in the x-direction from the goal object/box
         self.switch_pick   =  0.375  # The x-position where the robot should stop updating the position of the object with the RGB-D camera
         self.switch_drop   =  0.40  # The x-position where the robot should stop updating the position of the box with the RGB-D camera
         self.y_offset      = -0.025  # The y-position where the robot should stop rotating with the RGB-D camera
@@ -78,6 +78,13 @@ class PositioningService(Node):
             Calls the publishing function which publishes the velocities to the wheel motors for each step in the sequence
         """
         
+        # self.min_x          = 1.2  # Reset the minimum x-position of the object
+        # self.object_pose    = Pose()  # Reset the object pose
+        # self.object_label   = ""  # Reset the object label
+        # self.object_found   = False  # Reset the object found flag
+
+        # time.sleep(0.5)
+
         if request.pose.position.x != 0.0 or request.pose.position.y != 0.0:
             self.update = False  # Do not update the position of the object with the RGB-D camera as it will not see it
             self._logger.info(f'positioning_sequence: Repositioning given x: {request.pose.position.x}, y: {request.pose.position.y}')
@@ -127,7 +134,7 @@ class PositioningService(Node):
                 response.success    = False
                 response.label.data = ""
 
-        self.min_x          = 0.0  # Reset the minimum x-position of the object
+        self.min_x          = 1.2  # Reset the minimum x-position of the object
         self.object_pose    = Pose()  # Reset the object pose
         self.object_label   = ""  # Reset the object label
         self.object_found   = False  # Reset the object found flag
@@ -156,15 +163,15 @@ class PositioningService(Node):
 
         # If there are more than one object, choose the closest one. First seen object is used as the base line. 
         # The allowed discrepancy is 0.01m for the object detection from the RGB-D camera
-        if self.get_clock().now().nanoseconds < time.nanoseconds + 4e9:
+        if self.get_clock().now().nanoseconds < time.nanoseconds + 2e9:
             if self.look_for_box:
-                if label == "BOX" and (pose.position.x <= self.min_x + 0.01 or self.min_x == 0.0):
+                if label == "BOX" and (self.unrealistic_x < pose.position.x <= self.min_x + 0.01):
                     self.object_pose  = pose
                     self.object_label = label
                     self.min_x        = pose.position.x
                     self.object_found = True
 
-            elif label != "BOX" and (self.unrealistic_x < pose.position.x <= self.min_x + 0.01 or self.min_x == 0.0):
+            elif label != "BOX" and (self.unrealistic_x < pose.position.x <= self.min_x + 0.01):
                 self.object_pose  = pose
                 self.object_label = label
                 self.min_x        = pose.position.x  # Update the minimum x-position of the object
@@ -206,7 +213,10 @@ class PositioningService(Node):
                     msg.duty_cycle_left  = 0.0
                     self.motor_publisher.publish(msg)
                     break
-                
+
+                msg.duty_cycle_right *= 1.5
+                msg.duty_cycle_left  *= 1.5
+
                 self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
 

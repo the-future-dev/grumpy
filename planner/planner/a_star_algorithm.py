@@ -88,7 +88,7 @@ class AStarAlgorithmNode(Node):
         if action == 'Pick':
             self.limit = 9
         else:
-            self.limit = 12
+            self.limit = 12 
 
         self.goal_pose_recieved = True
         #self.get_logger().info(f'{self.grid_xg}hej')

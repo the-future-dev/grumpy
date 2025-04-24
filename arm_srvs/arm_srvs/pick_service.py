@@ -196,6 +196,7 @@ class PickService(Node):
                     next_step = "CheckObject"  # End the FSM
 
                 case "CheckObject":  # Check if the object is in the gripper
+                    time.sleep(0.5)
                     if self.object_in_gripper:
                         thetas    = utils.drive_thetas
                         next_step = "Success"  # End the FSM

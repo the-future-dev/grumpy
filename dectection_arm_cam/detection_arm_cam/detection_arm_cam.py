@@ -58,7 +58,7 @@ class DetectionArmCam(Node):
         """
         
         self.num_images += 1  # Increment the number of images processed
-        if self.num_images % 5 == 0:  # Every third image check if an object is in the gripper
+        if self.num_images % 3 == 0:  # Every third image check if an object is in the gripper
             pub_msg = Bool()
 
             image        = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
@@ -93,7 +93,7 @@ class DetectionArmCam(Node):
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
         areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
 
-        if len(areas) > 0 and np.max(areas) > 500:  # If there are any contours found
+        if len(areas) > 0 and np.max(areas) > 2000:  # If there are any contours found
             max_index = np.argmax(areas)  # Get the index of the largest contour
             contour   = contours[max_index]  # Choose the largest contour
 

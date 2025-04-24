@@ -94,7 +94,7 @@ class OccupancyGridMapNode(Node):
     def remove_cb(self, msg:String):
 
         self.action = msg.data
-        if self.action == 'Pick_Success':
+        if self.action in ['Pick_Success', 'Pick_Failure']: # only Pick_Success before
             self.map_to_grid(self.goal_point, self.free)
 
         self.action = 'Other'
