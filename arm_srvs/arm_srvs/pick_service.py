@@ -90,7 +90,6 @@ class PickService(Node):
         end_strings    = ["Success", "Failure"]  # End strings for the FSM
         x, y, z        = 0.0, 0.0, -0.005  # The x, y and z position of the object, z is set to -0.005 becasue the object is always on the ground
         pos_x, pos_y   = 0.0, 0.0  # The x and y position of the object in the base_link frame if the robot needs to be positioned again
-        add_x, add_y   = 0.0, 0.0  # What should be added to the position of the object
         label          = ""  # The label of the object to be picked up
         grasp_position = False  # If the arm is in the grasp position or not
         num_failures   = 0
@@ -202,10 +201,11 @@ class PickService(Node):
                         next_step = "Success"  # End the FSM
                     else:
                         self._logger.error('Object not in gripper, trying again')
-                        x, y          = 0.0, 0.0
-                        num_failures += 1
-                        thetas[0]     = 3000
-                        next_step     = "ViewPosition"  # Try to view the object again
+                        x, y           = 0.0, 0.0
+                        num_failures  += 1
+                        thetas[0]      = 3000
+                        grasp_position = False  # Set the grasp position to False, because the arm has to be in the view position again
+                        next_step      = "ViewPosition"  # Try to view the object again
                         if num_failures > 2:
                             next_step = 'Failure'
             

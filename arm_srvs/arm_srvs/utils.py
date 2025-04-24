@@ -12,13 +12,13 @@ x_origin_servo5 = -0.00450
 y_origin_servo5 = -0.04750
 z_origin_servo5 =  0.12915
 
-z_oc_g = -0.01  # Distance from object centers to ground
-
 # Angles of the servos for different tasks:
 theta_servo5_pick = 60
 theta_servo5_view = 30
-theta_servo4_view = 60
-theta_servo3_view = 90
+theta_servo5_box  = 30
+theta_servo4_box  = 30
+theta_servo3_box  = 90
+theta_cam_fixed   = -90
 
 # Constants in the robot arm links:
 l_5_4     = 0.10048  # From joint of servo 5 to joint of servo 4:
@@ -54,6 +54,22 @@ intrinsic_mtx = np.array([[438.783367, 0.000000, 305.593336],
                           [0.000000, 0.000000, 1.000000]])
 dist_coeffs   = np.array([-0.361976, 0.110510, 0.001014, 0.000505, 0.000000])
 
+cam_r_t_box = {
+    'x': (x_origin_servo5 + 
+          l_5_4 * np.sin(np.deg2rad(theta_servo5_box)) +
+          l_4_3 * np.sin(np.deg2rad(theta_servo5_box + theta_servo4_box)) +
+          l_3_cam_z * np.sin(np.deg2rad(theta_servo5_box + theta_servo4_box + theta_servo3_box)) +
+          l_3_cam_x * np.sin(np.deg2rad(theta_servo5_box + theta_servo4_box + theta_servo3_box + theta_cam_fixed))),
+    'y': y_origin_servo5,
+    'z': (z_origin_servo5 +
+          l_5_4 * np.cos(np.deg2rad(theta_servo5_box)) +
+          l_4_3 * np.cos(np.deg2rad(theta_servo5_box + theta_servo4_box)) +
+          l_3_cam_z * np.cos(np.deg2rad(theta_servo5_box + theta_servo4_box + theta_servo3_box)) +
+          l_3_cam_x * np.cos(np.deg2rad(theta_servo5_box + theta_servo4_box + theta_servo3_box + theta_cam_fixed))),
+    'roll': 0.0,
+    'pitch': -60.0,
+    'yaw': 0.0
+}
 
 def extract_object_position(node, pose:Pose):
     """
@@ -123,8 +139,6 @@ def check_angles_and_times(node, angles, times):
     assert (6000 <= angles[4] <= 18000) or (angles[4] == -1), node._logger.error(f'servo 5 was not within the interval [6000, 18000] or -1, got {angles[4]}')
     assert (0 <= angles[5] <= 20000) or (angles[5] == -1), node._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
 
-    node._logger.info('Checked the angles and times')
-
 
 def inverse_kinematics(node, x, y, z):
     """
@@ -185,3 +199,47 @@ def changed_thetas_correctly(pub_angles, curr_angles):
             correct = False
               
     return correct
+
+
+def get_rotation_and_translation(cam_r_t_dict):
+    """
+    Args:
+        x: float, required, x-position of the object in base_link frame
+        y: float, required, y-position of the object in base_link frame
+        z: float, required, z-position of the object in base_link frame
+    Returns:
+        rotation: np.array, rotation matrix from base_link to gripper frame
+        translation: np.array, translation vector from base_link to gripper frame
+    Other functions:
+
+    """
+
+    x, y, z          = cam_r_t_dict['x'], cam_r_t_dict['y'], cam_r_t_dict['z']
+    roll, pitch, yaw = np.deg2rad(cam_r_t_dict['roll']), np.deg2rad(cam_r_t_dict['pitch']), np.deg2rad(cam_r_t_dict['yaw'])
+
+    # Rotation around X (roll)
+    Rx = np.array([
+        [1, 0, 0],
+        [0, np.cos(roll), -np.sin(roll)],
+        [0, np.sin(roll), np.cos(roll)]
+    ])
+
+    # Rotation around Y (pitch)
+    Ry = np.array([
+        [np.cos(pitch), 0, np.sin(pitch)],
+        [0, 1, 0],
+        [-np.sin(pitch), 0, np.cos(pitch)]
+    ])
+
+    # Rotation around Z (yaw)
+    Rz = np.array([
+        [np.cos(yaw), -np.sin(yaw), 0],
+        [np.sin(yaw), np.cos(yaw), 0],
+        [0, 0, 1]
+    ])
+
+    rotation = Rz @ Ry @ Rx  # Rotation matrix from arm camera to base_link frame
+
+    translation = np.array([x, y, z]).reshape(3, 1)  # Translation vector from arm camera to base_link frame
+
+    return rotation, translation

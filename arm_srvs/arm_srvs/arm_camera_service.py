@@ -232,7 +232,9 @@ class ArmCameraService(Node):
 
             cv2.circle(image, (int(cx), int(cy)), 10, (0, 0, 255), -1)
 
-            self._logger.info(f'Box is in pixels x: {cx} and y: {cy}')
+            x_base, y_base = self.pixel_to_base_link_general(cx, cy)  # Transform the position to the base_link frame
+
+            self._logger.info(f'Box is in base link x: {x_base} and y: {y_base}')
 
         self.publish_image(image)
 
@@ -281,6 +283,39 @@ class ArmCameraService(Node):
         adjustment_to_y = - (x_pixel - cx) / pixels_per_meter
 
         return adjustment_to_x, adjustment_to_y
+    
+
+    def pixel_to_base_link_general(self, x_pixel, y_pixel):
+        """
+        Args:
+            x: float, required, the pixel x-coordinate of the object in the arm camera image
+            y: float, required, the pixel y-coordinate of the object in the arm camera image
+        Returns:
+            x: float, the amount the x-coordinate of the object in the base_link frame should be adjusted
+            y: float, the amount the y-coordinate of the object in the base_link frame should be adjusted
+        Other functions:
+            
+        """
+
+        fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
+        cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
+
+        # Step 1: Pixel to normalized image coordinates
+        x = - (y_pixel - cy) / fy
+        y = - (x_pixel - cx) / fx
+        ray_cam = np.array([x, y, 1.0])
+
+        R, t = utils.get_rotation_and_translation(utils.cam_r_t_box)  # Get the transformation matrix  from the camera to the base_link frame
+
+        # Step 2: Transform ray to base_link frame
+        ray_base = R @ ray_cam
+        origin_base = t.reshape(3)
+
+        # Step 3: Ray-plane intersection (z=0)
+        t_scalar = -origin_base[2] / ray_base[2]
+        base_link_x, base_link_y, _ = origin_base + t_scalar * ray_base
+
+        return base_link_x, base_link_y  # x, y in base_link
     
 
     def publish_image(self, image):
