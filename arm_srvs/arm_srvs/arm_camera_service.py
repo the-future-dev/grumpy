@@ -15,7 +15,8 @@ class ArmCameraService(Node):
     def __init__(self):
         super().__init__('arm_camera_srv')
 
-        self.pick_center = 400
+        self.pick_center = 400  # The pixel in the y direction where the object should end up for easy pick up
+        self.min_area    = 2500  # The minimum required area of the object to be considered as an object
         self.image       = None  # The image data from the arm camera
         self.bridge      = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
 
@@ -61,17 +62,22 @@ class ArmCameraService(Node):
 
         time.sleep(0.5)  # Let the arm camera picture stabilize before trying to find an object
         found_object = False  # Flag to check if an object was found
-        x, y         = 0.0, 0.0  # The x and y position of the object
+        x, y         = -1.0, -1.0  # The x and y position of the object
 
         for _ in range(3):  # Try to get the object position a maximum of 3 times
             if request.box:
                 x, y = self.get_box_position()
+
             else:
                 x, y = self.get_object_position(grasp_position=request.grasp)  # Get the position of the object
-            if x > 0.0:
+
+            if x != -1.0 and y != -1.0:
                 found_object = True  # If the object was found, set the flag to true
                 self._logger.info(f'Found {'box' if request.box else 'object'} at: x: {x}, y: {y}')
                 break
+
+        if not found_object:
+            self._logger.info(f'get_object_position: NO OBJECTS FOUND')
 
         response.success         = found_object  # Set the success flag to true if the object was found
         response.pose.position.x = x  # Set the position of the object in the response
@@ -104,7 +110,7 @@ class ArmCameraService(Node):
             Uses the image data from the arm camera to detect object(s) and its/their position(s)
         """
         
-        x, y   = 0.0, 0.0  # Object position in base link
+        x, y   = -1.0, -1.0  # Object position in base link
         image  = self.image.copy()  # Makes sure the same image is used for the whole function
 
         undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
@@ -118,9 +124,10 @@ class ArmCameraService(Node):
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
         areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
 
-        if len(areas) > 0:  # If there are any contours found
+        if len(areas) > 0 and (max_area := np.max(areas)) > self.min_area:  # If there are any contours found
             max_index = np.argmax(areas)  # Get the index of the largest contour
             contour   = contours[max_index]  # Choose the largest contour
+            # self._logger.info(f'Max area was: {max_area}')
 
             (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
             cx, cy, radius   = int(cx), int(cy), int(radius)  # Convert to integers
@@ -128,7 +135,7 @@ class ArmCameraService(Node):
             cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)  # Draw the enclosing circle in the image
             cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)  # Draw the center of the circle in the image
 
-            self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
+            # self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
 
             if grasp_position:
                 x, y = self.pixel_to_adjust_in_base_link(cx, cy)
@@ -136,9 +143,6 @@ class ArmCameraService(Node):
             else:
                 if cy < 420:
                     x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
-        
-        if x == 0.0 and y == 0.0:
-            self._logger.info(f'get_object_position: NO OBJECTS FOUND')
             
         self.publish_image(image)  # Publish the image with or without the detected object(s)
 
@@ -199,7 +203,7 @@ class ArmCameraService(Node):
             Uses the image data from the arm camera to detect the box position
         """
 
-        x, y      = 0.0, 0.0  # Box position in base link
+        x, y      = -1.0, -1.0  # Box position in base link
         cx, cy    = 0.0, 0.0
         num_lines = 0
         image     = self.image.copy()  # Makes sure the same image is used for the whole function
@@ -225,14 +229,15 @@ class ArmCameraService(Node):
 
                     cv2.line(image, (x1,y1), (x2,y2), (0,255,0), 2)
 
-            cx /= num_lines
-            cy /= num_lines
+            if num_lines != 0:
+                cx /= num_lines
+                cy /= num_lines
 
-            cv2.circle(image, (int(cx), int(cy)), 10, (0, 0, 255), -1)
+                cv2.circle(image, (int(cx), int(cy)), 10, (0, 0, 255), -1)
 
-            x, y = self.pixel_to_base_link_general(cx, cy)  # Transform the position to the base_link frame
+                x, y = self.pixel_to_base_link_general(cx, cy)  # Transform the position to the base_link frame
 
-        self.publish_image(image)
+                self.publish_image(image)
 
         return x, y  # Return the x and y coordinates of the box position
 

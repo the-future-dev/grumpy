@@ -86,10 +86,11 @@ class DropService(Node):
             Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
         """
 
-        step        = "Start"  # The current step in the FSM
-        x, y        = 0, 0  # The x and y position of the box
-        z           = utils.z_origin_servo4 - 0.05  # The height at which the object is dropped
-        end_strings = ["Success", "Failure"]  # The end strings of the FSM
+        step              = "Start"  # The current step in the FSM
+        x, y              = 0, 0  # The x and y position of the box
+        z                 = utils.z_origin_servo4 - 0.05  # The height at which the object is dropped
+        end_strings       = ["Success", "Failure"]  # The end strings of the FSM
+        num_view_failures = 0
 
         while step not in end_strings:
             self._logger.info(f'{step}')  # Log the current step
@@ -127,15 +128,42 @@ class DropService(Node):
                     res = self.arm_camera(box=True, grasp=False)  # Call the arm camera service
 
                     if res.success:
-                        x, y, _ = utils.extract_object_position(self, res.pose)  # Get the x and y position of the detected box
-                        step    = "DropPosition"  # Next step
+                        x, y, _           = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
+                        num_view_failures = 0
+
+                        if y >= 0.025 or y <= -0.125:  # If the object is out of reach in the non grasp position
+                            step = "RepositionRobot"  # Reposition the robot
+
+                        else:
+                            step = "InverseKinematics"  # Next step
 
                     else:
-                        self._logger.error('Arm camera service call failed')
-                        thetas = utils.initial_thetas  # Move the arm to the initial position
+                        if num_view_failures == 1:
+                            self._logger.error('Arm camera service call failed')
+                            thetas = utils.initial_thetas
+                            step   = "Failure"  # End the FSM
+
+                        else:
+                            num_view_failures += 1
+                            thetas             = utils.check_object_thetas
+                            step               = "ResetViewThetas"
+
+                case "ResetViewThetas":
+                    thetas = utils.view_thetas_drop
+                    step   = "GetPosition"
+
+                case "RepositionRobot":  # Call the position robot service to get to the position of the object
+                    res = self.position_robot(box=True, backup=False, pos_x=x, pos_y=y)  # Call the position robot service
+
+                    if res.success:
+                        step = "GetPosition"  # Next step
+                        
+                    else:
+                        self._logger.error('Positioning service call failed')
+                        thetas = utils.initial_thetas
                         step   = "Failure"  # End the FSM
 
-                case "DropPosition":  # Move arm to correct position to drop the object
+                case "InverseKinematics":  # Move arm to correct position to drop the object
                     thetas[5]            = utils.get_theta_6(x=x, y=y)  # Calculate the new angle for servo 6
                     thetas[4]            = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
                     thetas[2], thetas[3] = utils.inverse_kinematics(node=self, x=x, y=y, z=z)  # Calculate change of the angles for servo 3 and 4
@@ -144,7 +172,7 @@ class DropService(Node):
 
                 case "DropObject":  # Drops the object
                     thetas[0] = 3000  # Only move and open the gripper
-                    step      = "GoToInital"  # Next step
+                    step      = "GoToInitial"  # Next step
 
                 case "GoToInitial":  # Drops the object
                     thetas = utils.initial_thetas  # Move arm to initial position
@@ -264,7 +292,7 @@ class DropService(Node):
         for _ in range(2):
             self.servo_angle_publisher.publish(msg)
 
-            time.sleep(np.max(times) / 1000)  # Makes the code wait until the arm has had the time to move to the given angles
+            time.sleep(np.max(times) / 1000 + 0.25)  # Makes the code wait until the arm has had the time to move to the given angles
 
         # self._logger.info(f'current: {self.current_angles}, sent: {angles}')
 

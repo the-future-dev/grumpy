@@ -53,5 +53,5 @@ def generate_launch_description():
         lidar_launch,
         front_camera_launch,
         static_tf_base_lidar,
-        arm_communication
+        arm_communication,
     ])

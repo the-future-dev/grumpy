@@ -88,8 +88,8 @@ class PlannerCollectionNode(Node):
         if self.object == True:
             # self.get_logger().info(f'rob_x: {rob_x}, type: {type(rob_x)}\nobject_poses:{self.object_poses} type:{type(self.object_poses)}')
             dists = np.sqrt((self.object_poses[0,:] - 100.0*float(rob_x))**2 + (self.object_poses[1,:] - 100.0*float(rob_y))**2)
-            mask_dist = np.where(dists < 90, False, True)
-            low_ind = np.argmin(dists[mask_dist])
+            # mask_dist = np.where(dists < 90, False, True)
+            low_ind = np.argmin(dists)
             self.goal_pose = self.object_poses[:, low_ind]
             self.object_poses = np.delete(self.object_poses, low_ind, axis=1)
         

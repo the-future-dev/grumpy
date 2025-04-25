@@ -73,6 +73,11 @@ def generate_launch_description():
         output = 'screen'
     )
 
+    align_topic_node = Node(
+        package = 'brain',
+        executable = 'align_topic_node',
+        output = 'screen'
+    )
     return LaunchDescription([
         brain_collection,
         drive_path,
@@ -84,5 +89,6 @@ def generate_launch_description():
         icp_node,
         workspace_perimeter,
         perception,
-        pick_drop_topic_node
+        pick_drop_topic_node,
+        align_topic_node,
     ])

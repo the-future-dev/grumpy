@@ -20,7 +20,7 @@ class PositioningService(Node):
         # Set speeds for the robot to move
         self.vel_forward       = 0.07  # 0.03 before
         self.vel_rotate        = 0.05  # 0.02 before
-        self.correct_right     = 1.05  # Correction of the right wheel
+        self.correct_right     = 1.00  # Correction of the right wheel
         self.rotation_per_turn = 5.50  # Degrees of rotation per turn msg with vel_rotate = 0.06 and correct_right = 1.08
         self.movement_per_forw = 0.0275  # Moved distance per forward msg with vel_forward = 0.07 and correct_right = 1.00
 
@@ -87,7 +87,8 @@ class PositioningService(Node):
         position_to = 'BOX' if request.box else 'OBJECT'
 
         if request.pose.position.x != 0.0 or request.pose.position.y != 0.0:
-            self.update = False  # Do not update the position of the object with the RGB-D camera as it will not see it
+            self.update       = False  # Do not update the position of the object with the RGB-D camera as it will not see it
+            self.look_for_box = request.box
             self._logger.info(f'positioning_sequence: Repositioning given x: {request.pose.position.x}, y: {request.pose.position.y}')
 
             self.publish_robot_movement(x=request.pose.position.x, y=request.pose.position.y)
@@ -106,18 +107,17 @@ class PositioningService(Node):
 
         else:
             if request.box:  # If the robot should only look for a box
-                
                 self.look_for_box = True
                 self.min_x        = 1.5    # Reset the minimum x-position of the box to make sure that only boxes are detected
                 self.object_found = False  # Reset the object found flag to make sure that only boxes are detected
                 time.sleep(1.0)  # Sleep for 1.0 second to read the perception messages
             
             if not self.object_found:
-                self._logger.info(f'positioning_sequence: Did not find an {position_to} initially, trying to find one')
+                self._logger.info(f'positioning_sequence: Did not find {'a' if self.look_for_box else 'an'} {position_to} initially, trying to find one')
                 self.publish_robot_movement(x=-1.0, y=0.0)
             
             if self.object_found:
-                self._logger.info(f'positioning_sequence: Found an {position_to}, driving to it')
+                self._logger.info(f'positioning_sequence: Found {'a' if self.look_for_box else 'an'} {position_to}, driving to it')
 
                 self.publish_robot_movement(x=self.object_pose.position.x, y=self.object_pose.position.y)  # Drive the robot to the object/box
 
@@ -135,6 +135,7 @@ class PositioningService(Node):
         self.object_label   = ""  # Reset the object label
         self.object_found   = False  # Reset the object found flag
         self.look_for_box   = False  # Reset the look for box flag
+        self.update         = True
         
         return response
 
@@ -219,21 +220,22 @@ class PositioningService(Node):
                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
 
         else:
-            turns = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
-            forward = round(abs(x - self.x_stop_goal) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+            turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
+            forward = 0
+            if self.update or not self.look_for_box:  # Should not move forward if it is repositioning for a box
+                forward = round(abs(x - self.x_stop_goal) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
             # self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
 
             while forward > 0 or turns > 0:  # While the robot is not done moving
                 # self._logger.info(f'Turns: {turns}, Forward: {forward}')
-                msg.duty_cycle_right = 0.0  # Initialize the duty cycles to 0
-                msg.duty_cycle_left  = 0.0  
+                msg.duty_cycle_right, msg.duty_cycle_left = 0.0, 0.0 # Initialize the duty cycles to 0
                 
                 if turns > 0:  # If the robot needs to turn
                     msg.duty_cycle_right += self.vel_rotate if y > self.y_offset else -self.vel_rotate
                     msg.duty_cycle_left  += -self.vel_rotate if y > self.y_offset else self.vel_rotate
-                turns                -= 1
+                    turns                -= 1
                 
-                if forward > 0 and turns < 0:  # If the robot needs to move forward and does not have to turn too much
+                elif forward > 0:  # If the robot needs to move forward and does not have to turn too much
                     msg.duty_cycle_right += self.vel_forward if x >= self.x_stop_goal else -self.vel_forward
                     msg.duty_cycle_left  += self.vel_forward if x >= self.x_stop_goal else -self.vel_forward
                     forward              -= 1

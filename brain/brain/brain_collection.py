@@ -7,9 +7,10 @@ from rclpy.node import Node
 
 from time import sleep
 
+from robp_interfaces.msg import DutyCycles
+from tf2_ros.buffer import Buffer
 from nav_msgs.msg import Path
 from std_msgs.msg import Bool, String
-from geometry_msgs.msg import PoseStamped
 from grumpy_interfaces.msg import ObjectDetection1D
 from grumpy_interfaces.srv import PickAndDropObject
 
@@ -165,21 +166,32 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
         super(DriveToGoal, self).__init__('DriveToGoal')
         self.node = node
         self.node.set_poses_list = True
-        self.empty_list = False
+        
     
     def update(self):
         """
         Method that will be executed when behaviour is ticked
         """
-        if self.empty_list:
+        if self.node.empty_list:
             if not self.node.at_sub_goal:
                 self.node.get_logger().debug('Waiting for drive control to reach point')
                 return py_trees.common.Status.RUNNING
             else:
-                self.empty_list = False
-                self.node.set_poses_list = True
-                self.node.at_goal = True # have reached the final goal
-                return py_trees.common.Status.SUCCESS
+                if self.node.aligned:
+                    self.node.get_logger().info('Robot aligned and in position for pick/drop')
+                    self.node.empty_list = False
+                    self.node.set_poses_list = True
+                    self.node.at_goal = True # have reached the final goal
+                    self.node.aligned = False
+                    self.node.align_robot = True
+                    return py_trees.common.Status.SUCCESS
+                else:
+                    if self.node.align_robot:
+                        self.node.align_robot = False
+                        self.node.align_pub.publish(self.node.goal)
+                    else:
+                        self.node.get_logger().debug('Waiting for robot to align itself')
+                    return py_trees.common.Status.RUNNING
         else:
             if self.node.set_poses_list:
                 self.node.set_poses_list = False
@@ -191,10 +203,9 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
                     return py_trees.common.Status.RUNNING
                 else:
                     if len(self.poses_list)==0:
-                        self.empty_list = True
+                        self.node.empty_list = True
                         self.node.get_logger().info(f'No poses left, should have reached goal')
                         return py_trees.common.Status.RUNNING
-
 
             self.node.at_sub_goal = False    
             self.node.get_logger().debug(f'Poses List length: {len(self.poses_list)}')
@@ -229,7 +240,12 @@ class BrainCollection(Node):
         self.at_goal = False
         self.no_objects_left = False
 
+        self.align_robot = True
+        self.aligned = False
+
         self.free_path = True
+
+        self.empty_list = False
 
         self.goal = None
         self.path = None
@@ -237,20 +253,13 @@ class BrainCollection(Node):
         self.action = 'Pick'
         self.pick_drop_status = 'Not_called'
 
-        
         # intialize publishers
         self.send_goal_pub = self.create_publisher(ObjectDetection1D, 'Astar/next_goal', 1)
         self.find_goal_pub = self.create_publisher(String, 'planner_collection/find_goal', 1)
         self.drive_to_goal_pub = self.create_publisher(Path, 'drive/path', 1)
         self.path_list_pub = self.create_publisher(Path, '/brain/path_list', 1)
         self.pick_drop_pub = self.create_publisher(String, 'brain/action/pick_drop', 1)
-
-        # initialize clients
-        self.pick = rclpy.create_node('pick_drop_brain_node')
-        self.drop = rclpy.create_node('drop_brain_node')
-
-        self.pick_client = self.pick.create_client(PickAndDropObject, '/arm_services/pick_object')
-        self.drop_client = self.drop.create_client(PickAndDropObject, '/arm_services/drop_object')
+        self.align_pub = self.create_publisher(ObjectDetection1D, 'brain/action/align', 1)
 
         # Create ROS 2 behaviour tree
         self.tree = self.create_behaviour_tree()
@@ -317,7 +326,9 @@ class BrainCollection(Node):
 
         if msg.label.data == 'Near':
             self.get_logger().info('Goal close to robot go directly to pick/drop')
-            self.at_goal = True
+            self.at_sub_goal = True
+            self.goal = msg
+            self.empty_list = True
         else:
             self.get_logger().info('Goal not close, getting path')
             self.goal = msg
@@ -338,6 +349,13 @@ class BrainCollection(Node):
         self.get_logger().debug(f'Drive control telling us that reached_goal = {msg.data}')
         self.at_sub_goal = msg.data
 
+    def align_status_cb(self, msg:Bool):
+        """
+        Callback that sets boolean that the aligning process is done
+        """
+        self.get_logger().info('Got message that aligning is done')
+        self.aligned = msg.data
+
     def create_behaviour_tree(self) -> py_trees_ros.trees.BehaviourTree:
         """
         method to create the ros implementation of a behaviour tree
@@ -353,7 +371,8 @@ class BrainCollection(Node):
                                     ('NoObjectsLeft', '/planner_collection/no_objects_left', Bool, False, self.no_objects_left_cb),
                                     ('FreePath', '/avoidance/free_path', Bool, False, self.free_path_cb),
                                     ('AtGoal', '/drive/feedback', Bool, False, self.at_sub_goal_cb),
-                                    ('PickDropTopic', 'brain/pick_drop_status', String, False, self.pick_drop_status_cb)
+                                    ('PickDropTopic', 'brain/pick_drop_status', String, False, self.pick_drop_status_cb),
+                                    ('AlignStatus', 'brain/align_status', Bool, False, self.align_status_cb)
                                     ])
 
 
