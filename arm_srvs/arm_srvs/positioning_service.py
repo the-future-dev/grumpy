@@ -20,14 +20,14 @@ class PositioningService(Node):
         # Set speeds for the robot to move
         self.vel_forward       = 0.07  # 0.03 before
         self.vel_rotate        = 0.05  # 0.02 before
-        self.correct_right     = 1.00  # Correction of the right wheel
+        self.correct_right     = 1.05  # Correction of the right wheel
         self.rotation_per_turn = 5.50  # Degrees of rotation per turn msg with vel_rotate = 0.06 and correct_right = 1.08
         self.movement_per_forw = 0.0275  # Moved distance per forward msg with vel_forward = 0.07 and correct_right = 1.00
 
         self.object_pose  = Pose()  # The position of the object in base_link frame
         self.object_label = ""  # The label of the object
         self.object_found = False  # Flag to check if the object was found
-        self.min_x        = 1.2  # The closest x-position of an object in base_link frame
+        self.min_x        = 1.5  # The closest x-position of an object in base_link frame
         self.look_for_box = False  # Flag to check if the robot should only look for a box
         self.update       = True  # Flag to check if the driving should be updated with new perception data
 
@@ -37,7 +37,6 @@ class PositioningService(Node):
         self.switch_pick   =  0.375  # The x-position where the robot should stop updating the position of the object with the RGB-D camera
         self.switch_drop   =  0.40  # The x-position where the robot should stop updating the position of the box with the RGB-D camera
         self.y_offset      = -0.025  # The y-position where the robot should stop rotating with the RGB-D camera
-        # self.y_tol         =  0.02  # The tolerance for the y-position when driving with the RGB-D camera
         
         # Create the positioning service
         self.srv = self.create_service(
@@ -78,66 +77,64 @@ class PositioningService(Node):
             Calls the publishing function which publishes the velocities to the wheel motors for each step in the sequence
         """
         
-        # self.min_x          = 1.2  # Reset the minimum x-position of the object
+        # self.min_x          = 1.5  # Reset the minimum x-position of the object
         # self.object_pose    = Pose()  # Reset the object pose
         # self.object_label   = ""  # Reset the object label
         # self.object_found   = False  # Reset the object found flag
 
         # time.sleep(0.5)
 
+        position_to = 'BOX' if request.box else 'OBJECT'
+
         if request.pose.position.x != 0.0 or request.pose.position.y != 0.0:
             self.update = False  # Do not update the position of the object with the RGB-D camera as it will not see it
             self._logger.info(f'positioning_sequence: Repositioning given x: {request.pose.position.x}, y: {request.pose.position.y}')
 
-            self.publish_robot_movement(request.pose.position.x, request.pose.position.y)
+            self.publish_robot_movement(x=request.pose.position.x, y=request.pose.position.y)
 
-            response.success    = True # if step == "Success" else False
-            response.label.data = self.object_label  # Return the label of the closest object
+            response.success    = True  # if step == "Success" else False
+            response.label.data = ''  # Not needed, but required for the response
 
         elif request.backup:
-            self.update = False  # Do not update the position of the object with the RGB-D camera as it will not see it
-            self._logger.info('Moving away from the box')
+            self.update = False  # Do not update the position of the object with the RGB-D camera as the robot should only back up
+            self._logger.info(f'positioning_sequence: Backing up from the {position_to}')
 
-            self.publish_robot_movement(0.0, 0.0)
+            self.publish_robot_movement(x=0.0, y=0.0)
 
-            response.success    = True # if step == "Success" else False
-            response.label.data = ''  # Return the label of the closest object
+            response.success    = True  # if step == "Success" else False
+            response.label.data = ''  # Not needed, but required for the response
 
         else:
             if request.box:  # If the robot should only look for a box
-                self._logger.info(f'positioning_sequence: Looking for a box')
+                
                 self.look_for_box = True
-                self.min_x        = 0.0    # Reset the minimum x-position of the box to make sure that only boxes are detected
+                self.min_x        = 1.5    # Reset the minimum x-position of the box to make sure that only boxes are detected
                 self.object_found = False  # Reset the object found flag to make sure that only boxes are detected
-            else:
-                self._logger.info(f'positioning_sequence: Looking for an object')
-                self.look_for_box = False
-
-            position_to = 'BOX' if self.look_for_box else 'OBJECT'
-            time.sleep(1.0)  # Sleep for 1.0 second to read the perception messages
+                time.sleep(1.0)  # Sleep for 1.0 second to read the perception messages
             
             if not self.object_found:
-                self._logger.info(f'Did not find an {position_to} initially, trying to find one')
-                self.publish_robot_movement(-1.0, 0.0)
+                self._logger.info(f'positioning_sequence: Did not find an {position_to} initially, trying to find one')
+                self.publish_robot_movement(x=-1.0, y=0.0)
             
             if self.object_found:
-                self._logger.info(f'Found an {position_to}, driving to it')
+                self._logger.info(f'positioning_sequence: Found an {position_to}, driving to it')
 
-                self.publish_robot_movement(self.object_pose.position.x, self.object_pose.position.y)  # Drive the robot to the object/box
+                self.publish_robot_movement(x=self.object_pose.position.x, y=self.object_pose.position.y)  # Drive the robot to the object/box
 
-                self._logger.info(f'Got to the calculated position of {position_to}')
+                self._logger.info(f'positioning_sequence: Got to the calculated position of {position_to}')
                 response.success    = True # if step == "Success" else False
                 response.label.data = self.object_label  # Return the label of the closest object
 
             else:
-                self._logger.error(f'Could not find an {position_to}, returning failure')
+                self._logger.error(f'positioning_sequence: Could not find an {position_to}, returning failure')
                 response.success    = False
                 response.label.data = ""
 
-        self.min_x          = 1.2  # Reset the minimum x-position of the object
+        self.min_x          = 1.5  # Reset the minimum x-position of the object
         self.object_pose    = Pose()  # Reset the object pose
         self.object_label   = ""  # Reset the object label
         self.object_found   = False  # Reset the object found flag
+        self.look_for_box   = False  # Reset the look for box flag
         
         return response
 
@@ -165,20 +162,20 @@ class PositioningService(Node):
         # The allowed discrepancy is 0.01m for the object detection from the RGB-D camera
         if self.get_clock().now().nanoseconds < time.nanoseconds + 2e9:
             if self.look_for_box:
-                if label == "BOX" and (self.unrealistic_x < pose.position.x <= self.min_x + 0.01):
+                if label == "BOX" and (self.unrealistic_x < pose.position.x <= self.min_x + 0.02):
                     self.object_pose  = pose
                     self.object_label = label
                     self.min_x        = pose.position.x
                     self.object_found = True
 
-            elif label != "BOX" and (self.unrealistic_x < pose.position.x <= self.min_x + 0.01):
+            elif label in ['PUPPY', 'CUBE', 'SPHERE'] and (self.unrealistic_x < pose.position.x <= self.min_x + 0.02):
                 self.object_pose  = pose
                 self.object_label = label
                 self.min_x        = pose.position.x  # Update the minimum x-position of the object
                 self.object_found = True
 
     
-    def publish_robot_movement(self, x, y):
+    def publish_robot_movement(self, x:float, y:float):
         """
         Args:
             x: float, required, the x-position of the object in base_link frame
@@ -195,27 +192,28 @@ class PositioningService(Node):
         msg = DutyCycles()
 
         if x == -1.0:  # Turn the robot to find the object
-            left_turns = 0
-            right_turns = 0
+            left_turns   = 0
+            right_turns  = 0
 
             # Turn left until the an object is found
             while not self.object_found:
-                if left_turns < 10:
+                if left_turns < 15:
                     msg.duty_cycle_right = self.vel_rotate * self.correct_right
                     msg.duty_cycle_left  = -self.vel_rotate
                     left_turns += 1
-                elif right_turns < 20:
+
+                elif right_turns < 30:
                     msg.duty_cycle_right = -self.vel_rotate * self.correct_right
                     msg.duty_cycle_left  = self.vel_rotate
                     right_turns += 1
+                    if right_turns == 30:
+                        left_turns  = 0
+
                 else:
                     msg.duty_cycle_right = 0.0
                     msg.duty_cycle_left  = 0.0
                     self.motor_publisher.publish(msg)
                     break
-
-                msg.duty_cycle_right *= 1.5
-                msg.duty_cycle_left  *= 1.5
 
                 self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
@@ -223,11 +221,10 @@ class PositioningService(Node):
         else:
             turns = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
             forward = round(abs(x - self.x_stop_goal) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
-
-            self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
+            # self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
 
             while forward > 0 or turns > 0:  # While the robot is not done moving
-                self._logger.info(f'Turns: {turns}, Forward: {forward}')
+                # self._logger.info(f'Turns: {turns}, Forward: {forward}')
                 msg.duty_cycle_right = 0.0  # Initialize the duty cycles to 0
                 msg.duty_cycle_left  = 0.0  
                 
@@ -244,7 +241,7 @@ class PositioningService(Node):
                 msg.duty_cycle_right *= self.correct_right  # Adjust the right wheel speed to compensate for it moving slower
 
                 self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
-                time.sleep(0.5)  # Sleep for 0.75 second to give the robot time to move
+                time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
                 
                 new_x, new_y = self.object_pose.position.x, self.object_pose.position.y  # Get the new positions of the object/box in base_link frame from perception
 
@@ -253,9 +250,9 @@ class PositioningService(Node):
                     # Update the number of turns and forward movements needed to get to the object/box
                     turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn)
                     forward = round(abs(x - self.x_stop_goal) / self.movement_per_forw)
-                    self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
+                    # self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
                     if x <= (self.switch_drop if self.look_for_box else self.switch_pick):  # If the robot is close enough to the object
-                        self._logger.info(f'Not updating the position of the object anymore')
+                        # self._logger.info(f'Not updating the position of the object anymore')
                         self.update = False
 
 
@@ -279,85 +276,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-
-
-# step        = "Start"  # The current step in the FSM
-# end_strings = ["Success", "Failure"]  # The end strings of the FSM
-
- # while step not in end_strings:
-
-#     time.sleep(0.75)  # Sleep for 0.5 second to give the robot time to move and object detection time to update
-#     self._logger.info(f'{step}')  # Log the current step
-
-#     goal_x = self.object_pose.position.x  # The x-position of the object in base_link frame from perception
-#     goal_y = self.object_pose.position.y  # The y-position of the object in base_link frame from perception
-#     # self._logger.info(f'x: {goal_x}, y: {goal_y}')
-
-#     match step:
-#         case "Start":  # Check if an object was found
-#             if goal_x == 0.0 and goal_y == 0.0:  # If no object/box has been seen
-#                 self.publish_robot_movement(-1.0, 0.0)  # Turn the robot to find an object/box
-#                 if self.object_found:
-#                     self._logger.info(f'positioning_sequence: in Start --> DriveRobotWithRGB-D')
-#                 else:
-#                     self._logger.error(f'positioning_sequence: Could not find an object/box')
-#                     step = "Failure"  # End the FSM
-#                     break
-            
-#             if request.box:  # If the robot should only look for a box
-#                 step = "BoxDriveRobotWithRGB-D"  # Next step
-#             else:
-#                 step = "DriveRobotWithRGB-D"  # Next step
-
-#         case "BoxDriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback to a box
-#             if goal_x <= self.x_stop_drop:
-#                 self._logger.info(f'positioning_sequence: in B --> Success')
-#                 step = "Success"  # End the FSM
-#             else:
-#                 self._logger.info(f'positioning_sequence: in B --> BoxDriveRobotWithRGB-D')
-#                 self.publish_robot_movement(goal_x, goal_y)  # Drive the robot
-#                 step = "BoxDriveRobotWithRGB-D"  # Next step
-
-#         case "DriveRobotWithRGB-D":  # Drive the robot using the RGB-D camera as feedback
-#             if goal_x <= self.x_stop_pick:  # End condition for driving the robot using the RGB-D camera
-#                 self._logger.info(f'positioning_sequence: in Object --> DriveRobotWithoutRGB-D')
-#                 step = "DriveRobotWithoutRGB-D"  # Next step
-#             else:
-#                 self._logger.info(f'positioning_sequence: in Object --> DriveRobotWithRGB-D')
-#                 self.publish_robot_movement(goal_x, goal_y)  # Drive the robot
-#                 step = "DriveRobotWithRGB-D"  # Next step
-        
-#         case "DriveRobotWithoutRGB-D":  # Drive the robot without the RGB-D camera
-#             self._logger.info(f'positioning_sequence: in DriveRobotWithoutRGB-D --> Success')
-#             for _ in range(6):
-#                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
-#                 self.publish_robot_movement(goal_x, self.y_offset)  # Drive the robot forward multiple times
-#             step = "Success"  # End the FSM
-
-# self.publish_robot_movement(0.0, 0.0)  # Stop the robot
-# self._logger.info(f'{step}')
-
-
-# if x == 0 and y == 0:  # Stop the robot
-#     msg.duty_cycle_right = 0.0
-#     msg.duty_cycle_left  = 0.0 
-# 
-# elif np.isclose(y, self.y_offset, atol=self.y_tol):
-#     msg.duty_cycle_right = self.vel_forward * self.multi_forward
-#     msg.duty_cycle_left  = self.vel_forward * self.multi_forward 
-# 
-# else:
-        #     # The robot should not turn faster than the maximum turn velocity and should turn slower the lower the y-value is
-        #     turn_vel = min(self.vel_rotate, abs(y - self.y_offset))
-
-        #     # Turn left if y > y_offset, otherwise turn right
-        #     msg.duty_cycle_right = turn_vel if y > self.y_offset else -turn_vel
-        #     msg.duty_cycle_left  = -turn_vel if y > self.y_offset else turn_vel  
-
-        #     # Also drive forward while turning but depending on how much turning is needed and maximum the forward velocity
-        #     msg.duty_cycle_right += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
-        #     msg.duty_cycle_left  += min(self.vel_forward, self.vel_forward * self.y_tol / turn_vel)
-
-        # msg.duty_cycle_right *= 1.075  # Adjust the right wheel speed to compensate for it moving slower
-        # self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors

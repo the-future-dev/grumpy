@@ -36,10 +36,12 @@ rho_origin_servo4 = l_5_4 * np.cos(np.deg2rad(90) - np.deg2rad(theta_servo5_pick
 # Angles of the servos for different tasks:
 initial_thetas       = [3000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around without object
 drive_thetas         = [-1, 12000, 7000, 12000, 12000, 12000]  # Arm pointing straight up, gripper tilted forward, used for driving around with object
-position_thetas_pick = [-1, -1, 3000, 14500, 9500, 12000]
+position_thetas_pick = [-1, -1, 3000, 14500, 9500, 12000]  
+check_object_thetas  = [-1, -1, 3000, 12000, 9500, 12000]  # Angles for checking the object
 view_thetas_pick     = [-1, -1, 3000, 18000, 9500, 12000]  # Angles when the arm camera has a view over the entire pick-up area
 view_thetas_drop     = [-1, -1, 3000, 15000, 9500, 12000]  # Angles when the arm camera has a view over the entire pick-up area
 still_thetas         = [-1] * 6 # Angles for when the arm should not move
+grasp_thetas         = {'CUBE': 10500, 'SPHERE': 9500, 'PUPPY': 13000}  # Angles for when the arm should not move
 
 times = [1000] * 6  # Standard angle movement times to all servos
 

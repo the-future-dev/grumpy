@@ -67,7 +67,7 @@ class ArmCameraService(Node):
             if request.box:
                 x, y = self.get_box_position()
             else:
-                x, y = self.get_object_position(request.grasp)  # Get the position of the object
+                x, y = self.get_object_position(grasp_position=request.grasp)  # Get the position of the object
             if x > 0.0:
                 found_object = True  # If the object was found, set the flag to true
                 self._logger.info(f'Found {'box' if request.box else 'object'} at: x: {x}, y: {y}')
@@ -93,7 +93,7 @@ class ArmCameraService(Node):
         self.image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
 
 
-    def get_object_position(self, grasp_position):
+    def get_object_position(self, grasp_position:bool):
         """
         Args:
 

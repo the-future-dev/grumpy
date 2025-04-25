@@ -4,7 +4,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_msgs.msg import Int16MultiArray, Bool
-from sensor_msgs.msg import JointState
+# from sensor_msgs.msg import JointState
 import numpy as np
 import time
 import arm_srvs.utils as utils
@@ -14,7 +14,7 @@ class PickService(Node):
     def __init__(self):
         super().__init__('pick_srv')
 
-        self.current_angles    = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
+        # self.current_angles    = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
         self.object_in_gripper = False  # Keeps track of if an object is in the gripper or not
 
         # Create group for the service and subscriber that will run on different threads
@@ -56,13 +56,13 @@ class PickService(Node):
             1
         )
         
-        self.servo_subscriber = self.create_subscription(
-            JointState,
-            '/servo_pos_publisher',
-            self.current_servos,
-            1,
-            callback_group=self.subscriber_cb_group
-        )
+        # self.servo_subscriber = self.create_subscription(
+        #     JointState,
+        #     '/servo_pos_publisher',
+        #     self.current_servos,
+        #     1,
+        #     callback_group=self.subscriber_cb_group
+        # )
 
         self.arm_cam_detection_subscriber = self.create_subscription(
             Bool,
@@ -89,15 +89,9 @@ class PickService(Node):
         step           = "Start"  # Start step of the FSM
         end_strings    = ["Success", "Failure"]  # End strings for the FSM
         x, y, z        = 0.0, 0.0, -0.005  # The x, y and z position of the object, z is set to -0.005 becasue the object is always on the ground
-        pos_x, pos_y   = 0.0, 0.0  # The x and y position of the object in the base_link frame if the robot needs to be positioned again
         label          = ""  # The label of the object to be picked up
         grasp_position = False  # If the arm is in the grasp position or not
-        num_failures   = 0
-
-        # self.get_logger().info('Responding with success directly')
-        # response.success = True
-        # return response
-
+        num_failures   = 0  # Number of failures to pick up the object
 
         while step not in end_strings:
             self._logger.info(f'Pick Service: {step}')  # Log the current step
@@ -106,123 +100,118 @@ class PickService(Node):
 
             match step:
                 case "Start":  # Make sure the arm is in the initial position
-                    thetas    = utils.initial_thetas
-                    next_step = "PositionRobot"  # Next step
+                    thetas = utils.initial_thetas
+                    step   = "PositionRobot"  # Next step
 
                 case "PositionRobot":  # Call the position robot service to get to the position of the object
-                    req                 = PositionRobot.Request()  # Create an request with empty label -> position to pick up an object
-                    req.box             = False  # Set the box to False, because we are not positioning for a drop
-                    req.backup          = False  # Only used to back up the robot after droping
-                    req.pose.position.x = pos_x  # Set the x position of the object
-                    req.pose.position.y = pos_y  # Set the y position of the object
-                    future = self.position_client.call_async(req)
-                    rclpy.spin_until_future_complete(self.position_node, future)
-                    res    = future.result()  # The response of the service call
+                    res = self.position_robot(box=False, backup=False, pos_x=0.0, pos_y=0.0)  # Call the position robot service
 
                     if res.success:
-                        if pos_x == 0.0 and pos_y == 0.0:  # If the robot was not repositioned
-                            label = res.label.data  # Get the label of the object
-                        next_step = "ViewPosition"  # Next step
+                        label  = res.label.data  # Get the label of the object
+                        thetas = utils.view_thetas_pick # Move arm to view the object
+                        step   = "GetPosition"  # Next step
                     else:
                         self._logger.error('Positioning service call failed')
-                        thetas    = utils.initial_thetas
-                        next_step = "Failure"  # End the FSM
-
-                case "ViewPosition":  # Get the position of the object from the arm camera
-                    thetas    = utils.view_thetas_pick # Move arm to view the object
-                    next_step = "GetPosition"  # Next step
+                        thetas = utils.initial_thetas
+                        step   = "Failure"  # End the FSM
 
                 case "GetPosition":  # Call the arm camera service to get the position of the object
-                    req       = ArmCameraDetection.Request()  # Create the request, no information is needed
-                    req.box   = False  # Set the box to False, because we are not positioning for a drop
-                    req.grasp = grasp_position
-                    future    = self.arm_cam_client.call_async(req)
-                    rclpy.spin_until_future_complete(self.arm_cam_node, future)
-                    res       = future.result()  # The response of the service call
+                    res = self.arm_camera(box=False, grasp=False)  # Call the arm camera service
 
                     if res.success:
-                        temp_x, temp_y, _ = utils.extract_object_position(self, res.pose)  # Get the x and y position of the detected object
-                        if grasp_position:
-                            x, y = x + temp_x, y + temp_y
-                        else:
-                            x, y = temp_x, temp_y
+                        x, y, _ = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
 
-                        if (x >= 0.22 or
-                            x <= 0.15 or 
-                            y >= 0.05 or
-                            y <= -0.15) and not grasp_position:  # If the object is out of reach in the non grasp position
-                            pos_x, pos_y = x, y  # Set the position of the object in the base_link frame
-                            next_step    = "PositionRobot"  # Reposition the robot
+                        if (x >= 0.22 or x <= 0.15 or y >= 0.05 or y <= -0.15):  # If the object is out of reach in the non grasp position
+                            step = "RepositionRobot"  # Reposition the robot
+
                         else:
-                            next_step = "PickUp"  # Next step
+                            step = "InverseKinematics"  # Next step
+
                     else:
-                        if grasp_position:
-                            next_step = "GraspObject"  # Try to pick it up even though an object was not detected when in grasp position
-                        else:
-                            self._logger.error('Arm camera service call failed')
-                            thetas    = utils.initial_thetas
-                            next_step = "Failure"  # End the FSM
-                
-                case "PickUp":  # Move the arm to the pick up position
-                    theta_servo6               = utils.get_theta_6(x, y)  # Calculate the new angle for servo 6
-                    theta_servo5               = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
-                    theta_servo3, theta_servo4 = utils.inverse_kinematics(self, x, y, z)  # Calculate change of the angles for servo 3 and 4
+                        self._logger.error('Arm camera service call failed')
+                        thetas = utils.initial_thetas
+                        step   = "Failure"  # End the FSM
 
-                    thetas[2], thetas[3], thetas[4], thetas[5] = theta_servo3, theta_servo4, theta_servo5, theta_servo6  # Set the angles for the servos
+                case "RepositionRobot":  # Call the position robot service to get to the position of the object
+                    res = self.position_robot(box=False, backup=False, pos_x=x, pos_y=y)  # Call the position robot service
+
+                    if res.success:
+                        step = "GetPosition"  # Next step
+                        
+                    else:
+                        self._logger.error('Positioning service call failed')
+                        thetas = utils.initial_thetas
+                        step   = "Failure"  # End the FSM
+                
+                case "InverseKinematics":  # Move the arm to the pick up position
+                    thetas[5]            = utils.get_theta_6(x=x, y=y)  # Calculate the new angle for servo 6
+                    thetas[4]            = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
+                    thetas[2], thetas[3] = utils.inverse_kinematics(node=self, x=x, y=y, z=z)  # Calculate change of the angles for servo 3 and 4
                     
                     if not grasp_position:
                         grasp_position = True
-                        next_step      = "GetPosition"  # Next step
+                        step           = "GetGraspPosition"  # Next step
+
                     else:
-                        next_step = "GraspObject"  # Next step
+                        step = "GraspObject"  # Next step
+
+                case "GetGraspPosition":  # Call the arm camera service to get the position of the object
+                    res = self.arm_camera(box=False, grasp=True)  # Call the arm camera service
+
+                    if res.success:
+                        dx, dy, _ = utils.extract_object_position(node=self, pose=res.pose)  # Get the adjustment to the x and y position
+                        x, y      = x + dx, y + dy  # Add the adjustment to the position of the object
+                        step      = "InverseKinematics"  # Next step
+
+                    else:
+                        self._logger.error('Arm camera service call failed in grasp position, trying to grasp anyway')
+                        step = "GraspObject"  # Try to grasp the object anyway
                 
                 case "GraspObject":  # Grasp the object
-                    times[0]  = 2500  # Set the time to slowly close the gripper
-                    # Close the gripper to different degrees depending on the object
-                    if label == "CUBE":
-                        thetas[0] = 10500
-                    elif label == "SPHERE":
-                        thetas[0] = 9500
-                    elif label == "PUPPY":
-                        thetas[0] = 13000
-                    else:
+                    try:
+                        thetas[0] = utils.grasp_thetas[label]  # Close the gripper to different degrees depending on the object
+
+                    except KeyError:
                         self._logger.error(f'Unknown object label: {label}')
                         thetas[0] = 10500  # Default value for the gripper
                     
-                    next_step  = "PreCheckObject"  # Next step
+                    times[0] = 2500  # Set the time to slowly close the gripper
+                    step     = "PreCheckObject"  # Next step
 
-                case "PreCheckObject":  # Finish the pick up sequence by going back to the initial position, but not for the gripper
-                    thetas[4] = 12000
-                    next_step = "CheckObject"  # End the FSM
+                case "PreCheckObject":  # Position to check if the object is in the gripper
+                    thetas = utils.check_object_thetas  # Make sure can lift the object
+                    step   = "CheckObject"  # End the FSM
 
                 case "CheckObject":  # Check if the object is in the gripper
-                    time.sleep(0.5)
+                    time.sleep(0.5)  # Wait for the image from the arm camera to be processed 
                     if self.object_in_gripper:
-                        thetas    = utils.drive_thetas
-                        next_step = "Success"  # End the FSM
+                        thetas = utils.drive_thetas
+                        step   = "Success"  # End the FSM
+
                     else:
                         self._logger.error('Object not in gripper, trying again')
                         x, y           = 0.0, 0.0
                         num_failures  += 1
                         thetas[0]      = 3000
                         grasp_position = False  # Set the grasp position to False, because the arm has to be in the view position again
-                        next_step      = "ViewPosition"  # Try to view the object again
+                        step           = "ViewPosition"  # Try to view the object again
                         if num_failures > 2:
-                            next_step = 'Failure'
+                            step = 'Failure'
             
-            utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format and intervals
-            
-            if self.publish_angles(thetas, times):  # Publish the angles to the arm and check if the arm has moved to the correct angles
-                step = next_step
+            utils.check_angles_and_times(node=self, angles=thetas, times=times)  # Assert that the angles and times are in the correct format and intervals
+            self.publish_angles(angles=thetas, times=times)  # Publish the angles to the arm
 
-            elif step == "PickUp":  # To get to the grasping position, the arm has to be in an allowed initial position
-                self._logger.error('Move error PickUp: The arm did not move to the correct angles, trying again') 
-                for _ in range(2):  # Try to move the arm to the initial angles a maximum of 2 times
-                    if self.publish_angles(utils.initial_thetas, [2000] * 6):  
-                        break  # Break when the arm has moved to the initial angles and try PickUp again
+            # if self.publish_angles(angles=thetas, times=times):  # Publish the angles to the arm and check if the arm has moved to the correct angles
+            #     step = next_step
 
-            else:  # If the arm did not move to the correct angles, try to move the arm to the same angles again
-                self._logger.error('Move error Other: The arm did not move to the correct angles, trying again') 
+            # elif step == "PickUp":  # To get to the grasping position, the arm has to be in an allowed initial position
+            #     self._logger.error('Move error PickUp: The arm did not move to the correct angles, trying again') 
+            #     for _ in range(2):  # Try to move the arm to the initial angles a maximum of 2 times
+            #         if self.publish_angles(utils.initial_thetas, [2000] * 6):  
+            #             break  # Break when the arm has moved to the initial angles and try PickUp again
+
+            # else:  # If the arm did not move to the correct angles, try to move the arm to the same angles again
+            #     self._logger.error('Move error Other: The arm did not move to the correct angles, trying again') 
         
         self._logger.info(f'Pick Service: {step}')
         response.success = True if step == "Success" else False
@@ -230,23 +219,23 @@ class PickService(Node):
         return response
     
 
-    def current_servos(self, msg:JointState):
-        """
-        Args:
-            msg: JointState, required, information about the servos
-        Returns:
+    # def current_servos(self, msg:JointState):
+    #     """
+    #     Args:
+    #         msg: JointState, required, information about the servos
+    #     Returns:
 
-        Other functions:
-            Listens to what the angles of the servos currently are and sets a self variable to these angles
-        """
+    #     Other functions:
+    #         Listens to what the angles of the servos currently are and sets a self variable to these angles
+    #     """
 
-        current_angles = msg.position
+    #     current_angles = msg.position
 
-        # assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
-        # assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
-        # assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
+    #     # assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
+    #     # assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
+    #     # assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
 
-        self.current_angles = current_angles
+    #     self.current_angles = current_angles
 
     
     def object_in_gripper_callback(self, msg:Bool):
@@ -260,10 +249,54 @@ class PickService(Node):
         """
 
         self.object_in_gripper = msg.data  # Set the object_in_gripper variable to the value of the message
+
+
+    def position_robot(self, box:bool, backup:bool, pos_x:float, pos_y:float):
+        """
+        Args:
+            box   : bool, required, if the object is a box or not
+            backup: bool, required, if the robot should back up after dropping the object or not
+            pos_x : float, required, x-position of the object in base_link frame
+            pos_y : float, required, y-position of the object in base_link frame
+        Returns:
+            response: PositionRobot.Response, the response of the position robot service
+        Other functions:
+            Calls the position robot service to get the position of the object
+        """
+        req                 = PositionRobot.Request()  # Create an request with empty label -> position to pick up an object
+        req.box             = box  # Set the box to False, because we are not positioning for a drop
+        req.backup          = backup  # Only used to back up the robot after droping
+        req.pose.position.x = pos_x  # Set the x position of the object
+        req.pose.position.y = pos_y  # Set the y position of the object
+
+        future = self.position_client.call_async(req)
+        rclpy.spin_until_future_complete(self.position_node, future)
+
+        return future.result()  # Return the response of the service call
     
-        
+
+    def arm_camera(self, box:bool, grasp:bool):
+        """
+        Args:
+            box  : bool, required, if the object is a box or not
+            grasp: bool, required, if the arm is in the grasp position or not
+        Returns:
+            response: ArmCameraDetection.Response, the response of the arm camera service
+        Other functions:
+            Calls the arm camera service to get the position of the object
+        """
+
+        req       = ArmCameraDetection.Request()  # Create the request, no information is needed
+        req.box   = box  # Set the box to False, because we are not positioning for a drop
+        req.grasp = grasp  # If we are in the grasp position or not
+
+        future = self.arm_cam_client.call_async(req)
+        rclpy.spin_until_future_complete(self.arm_cam_node, future)
+
+        return future.result()  # Return the response of the service call
+
     
-    def publish_angles(self, angles, times):
+    def publish_angles(self, angles:list, times:list):
         """
         Args:
             angles: list, required, the angles for each servo to be set to
@@ -275,7 +308,7 @@ class PickService(Node):
         """
 
         if angles == utils.still_thetas:  # If the arm is not moving, there is no need to publish the angles
-            return True
+            return
 
         msg      = Int16MultiArray()  # Initializes the message
         msg.data = angles + times  # Concatenates the angles and times
@@ -288,7 +321,7 @@ class PickService(Node):
         # self._logger.info(f'current: {self.current_angles}, sent: {angles}')
 
         # return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
-        return True
+        # return True
 
 
 def main(args=None):
