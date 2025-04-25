@@ -4,7 +4,7 @@ from geometry_msgs.msg import Pose
 ######################################
 # This file contains the:
 # Common functions for the arm services
-# Common constants for the arm
+# Common constants for the arm services
 ######################################
 
 # Origin of servo 5 in base_link frame:
@@ -26,7 +26,6 @@ l_5_4     = 0.10048  # From joint of servo 5 to joint of servo 4:
 l_4_3     = 0.094714  # From joint of servo 4 to joint of servo 3:
 l_3_2_ee  = 0.05071 + 0.11260 # From joint of servo 3 to joint of servo 2 + from joint servo 2 to end effector
 l_3_cam_z = 0.046483  # z-distance from joint of servo 3 to the arm camera
-# l_3_cam_z = 0.0620
 l_3_cam_x = 0.042169  # x-distance from joint of servo 3 to the arm camera
 
 # Origin of servo 4 in rho+z-plane
@@ -102,7 +101,7 @@ def extract_object_position(node, pose:Pose):
     return x, y, z
 
 
-def get_theta_6(x, y):
+def get_theta_6(x:float, y:float):
     """
     Args:
         x: float, required, x-position of the object in base_link frame
@@ -120,7 +119,7 @@ def get_theta_6(x, y):
     return round(initial_thetas[5] + delta_theta_6 * 100)  # New angle of servo 6, round and convert to int
 
 
-def check_angles_and_times(node, angles, times):
+def check_angles_and_times(node, angles:list, times:list):
     """
     Args:
         angles: list, required, the angles for each servo to be set to
@@ -146,7 +145,7 @@ def check_angles_and_times(node, angles, times):
     assert (0 <= angles[5] <= 20000) or (angles[5] == -1), node._logger.error(f'servo 6 was not within the interval [0, 20000] or -1, got {angles[5]}')
 
 
-def inverse_kinematics(node, x, y, z):
+def inverse_kinematics(node, x:float, y:float, z:float):
     """
     Args:
         x: float, required, x-position of the object in base_link frame
@@ -162,19 +161,19 @@ def inverse_kinematics(node, x, y, z):
     rho_dist = (np.sqrt((x - x_origin_servo5) ** 2 + (y - y_origin_servo5) ** 2) - rho_origin_servo4)
     z_dist   = z - z_origin_servo4  # The combined distance to the grip point in the z direction
 
-    node._logger.info(f'Calculated rho: {rho_dist}, z: {z_dist}')
-    node._logger.info(f'Gives cos(theta3): {(rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) /  (2 * l_4_3 * l_3_2_ee)}')
+    # node._logger.info(f'Calculated rho: {rho_dist}, z: {z_dist}')
+    # node._logger.info(f'Gives cos(theta3): {(rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) /  (2 * l_4_3 * l_3_2_ee)}')
 
     # Calculate the angles for servo 3 and 4 in radians
     delta_theta_servo3 = - np.arccos(max(-1.0, min((rho_dist ** 2 + z_dist ** 2 - l_4_3 ** 2 - l_3_2_ee ** 2) /  (2 * l_4_3 * l_3_2_ee), 1.0)))
     delta_theta_servo4 = (np.arctan2(z_dist, rho_dist) - 
                           np.arctan2(l_3_2_ee * np.sin(delta_theta_servo3), l_4_3 + (l_3_2_ee * np.cos(delta_theta_servo3))))
     
-    node._logger.info(f'Gives delta of theta3: {delta_theta_servo3}, theta4: {delta_theta_servo4}')
+    # node._logger.info(f'Gives delta of theta3: {delta_theta_servo3}, theta4: {delta_theta_servo4}')
 
     # Convert the angles to degrees and adjust for the initial angle of servo 5
     delta_theta_servo3 = np.rad2deg(delta_theta_servo3)
-    delta_theta_servo4 = (- np.rad2deg(delta_theta_servo4)) + (90 - theta_servo5_pick)
+    delta_theta_servo4 = - np.rad2deg(delta_theta_servo4) + (90 - theta_servo5_pick)
 
     theta_servo3 = round(initial_thetas[2] + delta_theta_servo3 * 100)  # New angle of servo 3, round and convert to int
     theta_servo4 = round(initial_thetas[3] + delta_theta_servo4 * 100)  # New angle of servo 4, round and convert to int
@@ -182,7 +181,7 @@ def inverse_kinematics(node, x, y, z):
     return theta_servo3, theta_servo4
 
 
-def changed_thetas_correctly(pub_angles, curr_angles):
+def changed_thetas_correctly(pub_angles:list, curr_angles:list):
     """
     Args:
         pub_angles : list, required, the angles that were published to the arm
@@ -207,7 +206,7 @@ def changed_thetas_correctly(pub_angles, curr_angles):
     return correct
 
 
-def get_rotation_and_translation(cam_r_t_dict):
+def get_rotation_and_translation(cam_r_t_dict:dict):
     """
     Args:
         x: float, required, x-position of the object in base_link frame
