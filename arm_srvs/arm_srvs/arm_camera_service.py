@@ -134,7 +134,7 @@ class ArmCameraService(Node):
         if len(areas) > 0 and (max_area := np.max(areas)) > self.min_area:  # If there are any contours found
             max_index = np.argmax(areas)  # Get the index of the largest contour
             contour   = contours[max_index]  # Choose the largest contour
-            # self._logger.info(f'Max area was: {max_area}')
+            self._logger.info(f'Max area was: {max_area}')
 
             (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
             cx, cy, radius   = int(cx), int(cy), int(radius)  # Convert to integers
@@ -142,14 +142,13 @@ class ArmCameraService(Node):
             cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)  # Draw the enclosing circle in the image
             cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)  # Draw the center of the circle in the image
 
-            # self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
+            self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
 
             if grasp_position:
                 x, y = self.pixel_to_adjust_in_base_link(cx, cy)
                 cv2.circle(image, (int(utils.intrinsic_mtx[0, 2]), self.pick_center), 10, (0, 255, 0), -1)  # Draw the point to adjust to
             else:
-                if cy < 420:
-                    x, y = self.pixel_to_base_link_new(cx, cy)  # Transform the position to the base_link frame
+                x, y = self.pixel_to_base_link_new(cx, cy)  # Transform the position to the base_link frame
             
         self.publish_image(image)  # Publish the image with or without the detected object(s)
 
@@ -287,6 +286,8 @@ class ArmCameraService(Node):
 
         angles, cam_pose = utils.cam_poses[self.cam_pose]  # Get the pose of the arm camera in base_link frame
 
+        self._logger.info(f'cam pose: {cam_pose.position.x, cam_pose.position.y, cam_pose.position.z}')
+
         fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
 
@@ -294,10 +295,17 @@ class ArmCameraService(Node):
         x_image = - (y_pixel - cy) * (cam_pose.position.z / fy)
         y_image = - (x_pixel - cx) * (cam_pose.position.z / fx)
 
+        self._logger.info(f'x_image: {x_image}, y_image: {y_image}')
+
         # Calculate angle and distance to x_image and y_image from the camera
         angle         = np.rad2deg(np.arctan2(y_image, x_image))  # Angle to the object in radians
         distance      = np.sqrt(x_image**2 + y_image**2)  # Distance to the object in meters
-        center_offset = cam_pose.position.z * np.tan(np.deg2rad(np.sum(angles[1:]) - 90))
+
+        self._logger.info(f'sum: {np.sum(angles[1:])}, deg2rad: {np.deg2rad(180 - np.sum(angles[1:]))}, tan: {np.tan(np.deg2rad(180 - np.sum(angles[1:])))}')
+
+        center_offset = cam_pose.position.z * np.tan(np.deg2rad(180 - np.sum(angles[1:])))
+
+        self._logger.info(f'angle: {angle}, dist: {distance}, center: {center_offset}')
 
         # Calculate the x and y coordinates in the base_link frame
         x = cam_pose.position.x + center_offset * np.cos(np.deg2rad(angles[0])) + distance * np.cos(np.deg2rad(angles[0] + angle))
