@@ -37,7 +37,7 @@ class PositioningService(Node):
         self.x_stop_goal   = 0.20  # The desired length in the x-direction from the goal object/box
         self.switch_pick   = 0.375  # The x-position where the robot should stop updating the position of the object with the RGB-D camera
         self.switch_drop   = 0.40  # The x-position where the robot should stop updating the position of the box with the RGB-D camera
-        self.x_stop_box    = 0.35  # The desired length in the x-direction from the box
+        self.x_stop_box    = 0.30  # The desired length in the x-direction from the box
         self.y_offset      = utils.y_origin_servo5  # The y-position where the robot should stop rotating with the RGB-D camera
         
         # Create the positioning service
@@ -217,7 +217,7 @@ class PositioningService(Node):
                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
 
         else:
-            if self.update or not self.look_for_box:
+            if not self.update and self.look_for_box:
                 turns   = 2 * round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
                 forward = round(abs(x - self.x_stop_box) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
             else:

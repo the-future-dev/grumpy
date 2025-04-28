@@ -20,6 +20,7 @@ theta_servo5_box  = 30
 theta_servo4_box  = 30
 theta_servo3_box  = 90
 theta_cam_fixed   = 270
+theta_arm_cam     = -90
 theta_cam_z       = 90 - (theta_servo5_box + theta_servo4_box + theta_servo3_box + theta_cam_fixed)
 
 # Constants in the robot arm links:
@@ -30,8 +31,8 @@ l_3_cam_z = 0.046483  # z-distance from joint of servo 3 to the arm camera
 l_3_cam_x = 0.042169  # x-distance from joint of servo 3 to the arm camera
 
 # Origin of servo 4 in rho+z-plane
-z_origin_servo4   = z_origin_servo5 + l_5_4 * np.sin(np.deg2rad(90) - np.deg2rad(theta_servo5_pick))
-rho_origin_servo4 = l_5_4 * np.cos(np.deg2rad(90) - np.deg2rad(theta_servo5_pick))
+z_origin_servo4   = z_origin_servo5 + l_5_4 * np.cos(np.deg2rad(theta_servo5_pick))
+rho_origin_servo4 = l_5_4 * np.sin(np.deg2rad(theta_servo5_pick))
     
 # Angles of the servos for different tasks:
 initial_thetas       = [3000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around without object
@@ -96,7 +97,7 @@ def get_camera_position(theta6:float, theta5:float, theta4:float, theta3:float):
     theta5_rad          = np.deg2rad(theta5)
     theta_54_rad        = np.deg2rad(theta5 + theta4)
     theta_543_rad       = np.deg2rad(theta5 + theta4 + theta3)
-    theta_cam_fixed_rad = np.deg2rad(theta5 + theta4 + theta3 + theta_cam_fixed)
+    theta_cam_fixed_rad = np.deg2rad(theta5 + theta4 + theta3 + theta_arm_cam)
 
     arm_length_xy_plane = (l_5_4 * np.sin(theta5_rad) +
                           l_4_3 * np.sin(theta_54_rad) +

@@ -78,6 +78,7 @@ def generate_launch_description():
         executable = 'align_topic_node',
         output = 'screen'
     )
+    
     return LaunchDescription([
         brain_collection,
         drive_path,

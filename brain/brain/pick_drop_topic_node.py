@@ -33,6 +33,7 @@ class PickDropTopicNode(Node):
 
         if msg.data == 'Pick':
             self.get_logger().info('Calling Pick service')
+            # req.object_label = 'object'  # TODO: Get the object label from the message
             future = self.pick_client.call_async(req)
             self.get_logger().info('Got future')
             rclpy.spin_until_future_complete(self.pick_node_call, future)
@@ -49,6 +50,7 @@ class PickDropTopicNode(Node):
                 self.pick_drop_status_pub.publish(msg)
         else:
             self.get_logger().info('Calling Drop service')
+            # req.object_label = ''  # TODO: Not used in drop, can be skipped
             future = self.drop_client.call_async(req)
             self.get_logger().info('Got future')
             rclpy.spin_until_future_complete(self.drop_node_call, future)

@@ -80,11 +80,11 @@ class ArmCameraService(Node):
 
             if x != -1.0 and y != -1.0:
                 found_object = True  # If the object was found, set the flag to true
-                self._logger.info(f'Found {'box' if request.box else 'object'} at: x: {x}, y: {y}')
+                self._logger.info(f'Found {'a box' if request.box else 'an object'} at: x: {x}, y: {y}')
                 break
 
         if not found_object:
-            self._logger.info(f'get_object_position: NO OBJECTS FOUND')
+            self._logger.info(f'Arm camera could not find {'a box' if request.box else 'an object'}')
 
         response.success         = found_object  # Set the success flag to true if the object was found
         response.pose.position.x = x  # Set the position of the object in the response
@@ -134,13 +134,20 @@ class ArmCameraService(Node):
         if len(areas) > 0 and (max_area := np.max(areas)) > self.min_area:  # If there are any contours found
             max_index = np.argmax(areas)  # Get the index of the largest contour
             contour   = contours[max_index]  # Choose the largest contour
-            self._logger.info(f'Max area was: {max_area}')
+            # self._logger.info(f'Max area was: {max_area}')
 
             (cx, cy), radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
             cx, cy, radius   = int(cx), int(cy), int(radius)  # Convert to integers
             
             cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)  # Draw the enclosing circle in the image
             cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)  # Draw the center of the circle in the image
+
+            for c in contours:
+                (temp_cx, temp_cy), temp_radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
+                temp_cx, temp_cy, temp_radius   = int(cx), int(cy), int(radius)  # Convert to integers
+
+                cv2.circle(image, (temp_cx, temp_cy), temp_radius, (102, 255, 255), 2)  # Draw the enclosing circle in the image
+                # cv2.circle(image, (temp_cx, temp_cy), 5, (153, 255, 153), -1)  # Draw the center of the circle in the image
 
             self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
 
@@ -218,27 +225,32 @@ class ArmCameraService(Node):
         gray_scale        = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2GRAY)  # Convert image to grayscale
         gray_equalized    = cv2.equalizeHist(gray_scale)  # Improve contrasts
         gray_blurred      = cv2.bilateralFilter(gray_equalized, 9, 75, 75)  # Add blur to simplify the image
-        edges             = cv2.Canny(gray_blurred, 50, 150, apertureSize=3)  # Use canny edge detection
+        edges             = cv2.Canny(gray_blurred, 50, 100, apertureSize=3)  # Use canny edge detection ## was 50, 150
 
         lines_list = []
-        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, minLineLength=100, maxLineGap=5)
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=80, minLineLength=80, maxLineGap=5) ## was t=80, min=80
 
         if lines is not None:
             for points in lines:  # Iterate over points
                 x1, y1, x2, y2 = points[0]  # Extracted points nested in the list
                 lines_list.append([(x1,y1),(x2,y2)])
-
-                if y1 < 330 or y2 < 330:
+                
+                #if y1 < 330 or y2 < 330
+                if (y1 < 350 or y2 < 350 or 
+                    x1 < 220 or x1 > 420 or
+                    x2 < 220 or x2 > 420):  # Ignore lines that are too close to the top or left of the image
                     num_lines += 1
                     cx        += ((x2 - x1) / 2 + x1)
                     cy        += ((y2 - y1) / 2 + y1)
 
                     cv2.line(image, (x1,y1), (x2,y2), (0,255,0), 2)
 
-            if num_lines != 0:
+            if num_lines >= 1:
                 cx /= num_lines
                 cy /= num_lines
 
+                self._logger.info(f'num_lines: {num_lines}')
+                
                 cv2.circle(image, (int(cx), int(cy)), 10, (0, 0, 255), -1)
 
                 # x, y = self.pixel_to_base_link_general(cx, cy)  # Transform the position to the base_link frame
@@ -301,9 +313,14 @@ class ArmCameraService(Node):
         angle         = np.rad2deg(np.arctan2(y_image, x_image))  # Angle to the object in radians
         distance      = np.sqrt(x_image**2 + y_image**2)  # Distance to the object in meters
 
-        self._logger.info(f'sum: {np.sum(angles[1:])}, deg2rad: {np.deg2rad(180 - np.sum(angles[1:]))}, tan: {np.tan(np.deg2rad(180 - np.sum(angles[1:])))}')
+        if ((sum_angles := (utils.theta_arm_cam - np.sum(angles[1:]))) == 90 or
+           sum_angles == -90 or
+           sum_angles == 270):
+            center_offset = 0
+        else:
+            center_offset = cam_pose.position.z * np.tan(np.deg2rad(sum_angles))
 
-        center_offset = cam_pose.position.z * np.tan(np.deg2rad(180 - np.sum(angles[1:])))
+        self._logger.info(f'sum angles: {sum_angles}, tan: {np.tan(np.deg2rad(sum_angles))}')
 
         self._logger.info(f'angle: {angle}, dist: {distance}, center: {center_offset}')
 

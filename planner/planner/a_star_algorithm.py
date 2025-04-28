@@ -86,8 +86,10 @@ class AStarAlgorithmNode(Node):
         self.grid_xg, self.grid_yg = self.ws_utils.convert_map_to_grid(goal_x, goal_y)
 
         if action == 'Pick':
+            # self.limit = 4 # TODO: If A* is used to get all the way to the object
             self.limit = 9
         else:
+            # self.limit = 6 # TODO: If A* is used to get all the way to the box
             self.limit = 12 
 
         self.goal_pose_recieved = True
