@@ -149,7 +149,7 @@ class ArmCameraService(Node):
                 cv2.circle(image, (int(utils.intrinsic_mtx[0, 2]), self.pick_center), 10, (0, 255, 0), -1)  # Draw the point to adjust to
             else:
                 if cy < 420:
-                    x, y = self.pixel_to_base_link(cx, cy)  # Transform the position to the base_link frame
+                    x, y = self.pixel_to_base_link_new(cx, cy)  # Transform the position to the base_link frame
             
         self.publish_image(image)  # Publish the image with or without the detected object(s)
 
@@ -261,8 +261,6 @@ class ArmCameraService(Node):
             
         """
 
-        cam_pose = utils.cam_poses[self.cam_pose]  # Get the pose of the arm camera in base_link frame
-
         fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
 
@@ -270,6 +268,38 @@ class ArmCameraService(Node):
         # to the base_link frame
         x = - (y_pixel - cy) * (utils.cam_pos.position.z / fy) + utils.cam_pos.position.x
         y = - (x_pixel - cx) * (utils.cam_pos.position.z / fx) + utils.cam_pos.position.y
+
+        return x, y
+    
+
+    def pixel_to_base_link_new(self, x_pixel, y_pixel):
+        """
+        Args:
+            x: float, required, the pixel x-coordinate of the object in the arm camera image
+            y: float, required, the pixel y-coordinate of the object in the arm camera image
+        Returns:
+            x: float, the x-coordinate of the object in the base_link frame
+            y: float, the y-coordinate of the object in the base_link frame
+        Other functions:
+            
+        """
+
+        base_angle, cam_pose = utils.cam_poses[self.cam_pose]  # Get the pose of the arm camera in base_link frame
+
+        fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
+        cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
+
+        # Convert pixel coordinates to cartesian, inverted because the rows and columns increase opposite to the base_link frame
+        x_image = - (y_pixel - cy) * (cam_pose.position.z / fy)
+        y_image = - (x_pixel - cx) * (cam_pose.position.z / fx)
+
+        # Calculate angle and distance to x_image and y_image from the camera
+        angle    = np.rad2deg(np.arctan2(y_image, x_image))  # Angle to the object in radians
+        distance = np.sqrt(x_image**2 + y_image**2)  # Distance to the object in meters
+
+        # Calculate the x and y coordinates in the base_link frame
+        x = cam_pose.position.x + distance * np.cos(np.deg2rad(base_angle + angle))
+        y = cam_pose.position.y + distance * np.sin(np.deg2rad(base_angle + angle))
 
         return x, y
     

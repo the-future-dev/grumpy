@@ -14,6 +14,7 @@ z_origin_servo5 =  0.12915
 
 # Angles of the servos for different tasks:
 theta_servo5_pick = 60
+theta_servo6_find = 45
 theta_servo5_view = 30
 theta_servo5_box  = 30
 theta_servo4_box  = 30
@@ -75,11 +76,48 @@ cam_r_t_box = {
     'yaw': 0.0
 }
 
+
+def get_camera_position(theta6:float, theta5:float, theta4:float, theta3:float):
+    """
+    Args:
+        theta6: float, required, the angle of servo 6
+        theta5: float, required, the angle of servo 5
+        theta4: float, required, the angle of servo 4
+        theta3: float, required, the angle of servo 3
+    Returns:
+        cam_pos: Pose, the position of the camera in the base_link frame
+    Other functions:
+
+    """
+    
+    cam_pos = Pose()
+
+    theta6_rad          = np.deg2rad(theta6)
+    theta5_rad          = np.deg2rad(theta5)
+    theta_54_rad        = np.deg2rad(theta5 + theta4)
+    theta_543_rad       = np.deg2rad(theta5 + theta4 + theta3)
+    theta_cam_fixed_rad = np.deg2rad(theta5 + theta4 + theta3 + theta_cam_fixed)
+
+    arm_length_xy_plane = (l_5_4 * np.sin(theta5_rad) +
+                          l_4_3 * np.sin(theta_54_rad) +
+                          l_3_cam_z * np.sin(theta_543_rad) +
+                          l_3_cam_x * np.sin(theta_cam_fixed_rad))
+
+    cam_pos.position.x = x_origin_servo5 + arm_length_xy_plane * np.cos(theta6_rad)
+    cam_pos.position.y = y_origin_servo5 + arm_length_xy_plane * np.sin(theta6_rad)
+    cam_pos.position.z = (z_origin_servo5 +
+                          l_5_4 * np.cos(theta5_rad) +
+                          l_4_3 * np.cos(theta_54_rad) +
+                          l_3_cam_z * np.cos(theta_543_rad) +
+                          l_3_cam_x * np.cos(theta_cam_fixed_rad))
+
+    return cam_pos
+
 cam_poses = {
-    'View Pick' : get_camera_position(theta6=0, theta5=30, theta4=60, theta3=90),
-    'View Drop' : get_camera_position(theta6=0, theta5=30, theta4=30, theta3=90),
-    'View Left' : get_camera_position(theta6=45, theta5=30, theta4=30, theta3=90),
-    'View Right': get_camera_position(theta6=-45, theta5=30, theta4=30, theta3=90),
+    'View Pick' : (0, get_camera_position(theta6=0, theta5=30, theta4=60, theta3=90)),
+    'View Drop' : (0, get_camera_position(theta6=0, theta5=30, theta4=30, theta3=90)),
+    'View Left' : (theta_servo6_find, get_camera_position(theta6=45, theta5=30, theta4=30, theta3=90)),
+    'View Right': (-theta_servo6_find, get_camera_position(theta6=-45, theta5=30, theta4=30, theta3=90)),
 }
 
 
@@ -211,40 +249,3 @@ def changed_thetas_correctly(pub_angles:list, curr_angles:list):
             correct = False
               
     return correct
-
-
-def get_camera_position(theta6:float, theta5:float, theta4:float, theta3:float):
-    """
-    Args:
-        theta6: float, required, the angle of servo 6
-        theta5: float, required, the angle of servo 5
-        theta4: float, required, the angle of servo 4
-        theta3: float, required, the angle of servo 3
-    Returns:
-        cam_pos: Pose, the position of the camera in the base_link frame
-    Other functions:
-
-    """
-    
-    cam_pos = Pose()
-
-    theta6_rad          = np.deg2rad(theta6)
-    theta5_rad          = np.deg2rad(theta5)
-    theta_54_rad        = np.deg2rad(theta5 + theta4)
-    theta_543_rad       = np.deg2rad(theta5 + theta4 + theta3)
-    theta_cam_fixed_rad = np.deg2rad(theta5 + theta4 + theta3 + theta_cam_fixed)
-
-    arm_length_xy_plane = (l_5_4 * np.sin(theta5_rad) +
-                          l_4_3 * np.sin(theta_54_rad) +
-                          l_3_cam_z * np.sin(theta_543_rad) +
-                          l_3_cam_x * np.sin(theta_cam_fixed_rad))
-
-    cam_pos.position.x = x_origin_servo5 + arm_length_xy_plane * np.cos(theta6_rad)
-    cam_pos.position.y = y_origin_servo5 + arm_length_xy_plane * np.sin(theta6_rad)
-    cam_pos.position.z = (z_origin_servo5 +
-                          l_5_4 * np.cos(theta5_rad) +
-                          l_4_3 * np.cos(theta_54_rad) +
-                          l_3_cam_z * np.cos(theta_543_rad) +
-                          l_3_cam_x * np.cos(theta_cam_fixed_rad))
-
-    return cam_pos
