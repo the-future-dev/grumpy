@@ -105,7 +105,7 @@ class DropService(Node):
                 case "CheckObject":  # Check if the object is in the gripper
                     time.sleep(0.5)  # Wait for the image from the arm camera to be processed
                     if self.object_in_gripper:
-                        thetas = utils.drive_thetas  # Move arm to drive position
+                        thetas = utils.drive_thetas  # Move arm back to the drive position
                         step   = "PositionRobot"  # Next step
 
                     else:
@@ -113,7 +113,7 @@ class DropService(Node):
                         thetas = utils.initial_thetas  # Move arm to initial position
                         step   = "Failure"  # End the FSM
 
-                case "PositionRobot":  # Call the position robot service to get to the position and the position of the box
+                case "PositionRobot":  # Call the position robot service to get to the position of the box
                     res = self.position_robot(box=True, backup=False, pos_x=0.0, pos_y=0.0)  # Call the position robot service
 
                     if res.success:
@@ -131,7 +131,7 @@ class DropService(Node):
                         x, y, _           = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
                         num_view_failures = 0
 
-                        if y >= 0.025 or y <= -0.125:  # If the object is out of reach in the non grasp position
+                        if y >= -0.025 or y <= -0.075:  # If the box is not close enough in the y direction
                             step = "RepositionRobot"  # Reposition the robot
 
                         else:

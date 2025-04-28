@@ -17,6 +17,7 @@ class ArmCameraService(Node):
 
         self.pick_center = 400  # The pixel in the y direction where the object should end up for easy pick up
         self.min_area    = 2500  # The minimum required area of the object to be considered as an object
+        self.cam_pose    = ''  # String to get the pose of the arm camera in base_link frame
         self.image       = None  # The image data from the arm camera
         self.bridge      = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
 
@@ -61,10 +62,16 @@ class ArmCameraService(Node):
         """
 
         time.sleep(0.5)  # Let the arm camera picture stabilize before trying to find an object
-        found_object = False  # Flag to check if an object was found
-        x, y         = -1.0, -1.0  # The x and y position of the object
+        found_object  = False  # Flag to check if an object was found
+        self.cam_pose = request.cam_pose.data  # Get the pose of the arm camera in base_link frame
+        x, y          = -1.0, -1.0  # The x and y position of the object
 
-        for _ in range(3):  # Try to get the object position a maximum of 3 times
+        if self.cam_pose in ['View Drop', 'View Left', 'View Right']:
+            self.min_area = 1000  # Set the minimum area to 1000 when trying to find an object
+        else:
+            self.min_area = 2500
+
+        for _ in range(2):  # Try to get the object position a maximum of 3 times
             if request.box:
                 x, y = self.get_box_position()
 
@@ -254,6 +261,8 @@ class ArmCameraService(Node):
             
         """
 
+        cam_pose = utils.cam_poses[self.cam_pose]  # Get the pose of the arm camera in base_link frame
+
         fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
 
@@ -303,27 +312,6 @@ class ArmCameraService(Node):
 
         base_link_x = - (y_pixel - cy) * (utils.cam_r_t_box['z'] / fy) + utils.cam_r_t_box['x'] + np.tan(np.deg2rad(utils.theta_cam_z)) * utils.cam_r_t_box['z']
         base_link_y = - (x_pixel - cx) * (utils.cam_r_t_box['z'] / fx) + utils.cam_r_t_box['y']
-
-        # # Step 1: Pixel to normalized image coordinates
-        # x       = - (y_pixel - cy) / fy
-        # y       = - (x_pixel - cx) / fx
-
-        # self._logger.info(f'pixel_y : {round(y_pixel, 5)} -> x : {round(x, 5)}, pixel_x : {round(x_pixel, 5)} -> y : {round(y, 5)}')
-        # ray_cam = np.array([x, y, 1.0]).reshape(3)
-
-        # R, t = utils.get_rotation_and_translation(utils.cam_r_t_box)  # Get the transformation matrix  from the camera to the base_link frame
-
-        # # Step 2: Transform ray to base_link frame
-        # ray_base    = R @ ray_cam
-        # origin_base = t.reshape(3)
-        # # origin_base = np.array([0.235, -0.0475, 0.215]).reshape(3)
-
-        # self._logger.info(f'(x, y, z)_base: {origin_base}')
-        # self._logger.info(f'ray_base: {ray_base}')
-
-        # # Step 3: Ray-plane intersection (z=0)
-        # t_scalar                    = - origin_base[2] / ray_base[2]
-        # base_link_x, base_link_y, _ = t_scalar * ray_base # + origin_base
 
         return base_link_x, base_link_y  # x, y in base_link
     

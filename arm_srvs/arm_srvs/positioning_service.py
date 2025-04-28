@@ -7,6 +7,7 @@ from robp_interfaces.msg import DutyCycles
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
 import numpy as np
+from arm_srvs.utils import utils
 import time
 
 class PositioningService(Node):
@@ -32,11 +33,12 @@ class PositioningService(Node):
         self.update       = True  # Flag to check if the driving should be updated with new perception data
 
         # Target distance-parameters to the goal object/box
-        self.unrealistic_x =  0.35  # The x-position where the RGB-D camera should not be able to locate an object
-        self.x_stop_goal   =  0.175  # The desired length in the x-direction from the goal object/box
-        self.switch_pick   =  0.375  # The x-position where the robot should stop updating the position of the object with the RGB-D camera
-        self.switch_drop   =  0.40  # The x-position where the robot should stop updating the position of the box with the RGB-D camera
-        self.y_offset      = -0.025  # The y-position where the robot should stop rotating with the RGB-D camera
+        self.unrealistic_x = 0.35  # The x-position where the RGB-D camera should not be able to locate an object
+        self.x_stop_goal   = 0.20  # The desired length in the x-direction from the goal object/box
+        self.switch_pick   = 0.375  # The x-position where the robot should stop updating the position of the object with the RGB-D camera
+        self.switch_drop   = 0.40  # The x-position where the robot should stop updating the position of the box with the RGB-D camera
+        self.x_stop_box    = 0.35  # The desired length in the x-direction from the box
+        self.y_offset      = utils.y_origin_servo5  # The y-position where the robot should stop rotating with the RGB-D camera
         
         # Create the positioning service
         self.srv = self.create_service(
@@ -77,12 +79,14 @@ class PositioningService(Node):
             Calls the publishing function which publishes the velocities to the wheel motors for each step in the sequence
         """
         
-        # self.min_x          = 1.5  # Reset the minimum x-position of the object
-        # self.object_pose    = Pose()  # Reset the object pose
-        # self.object_label   = ""  # Reset the object label
-        # self.object_found   = False  # Reset the object found flag
+        self.min_x          = 1.5  # Reset the minimum x-position of the object
+        self.object_pose    = Pose()  # Reset the object pose
+        self.object_label   = ""  # Reset the object label
+        self.object_found   = False  # Reset the object found flag
+        self.look_for_box   = False  # Reset the look for box flag
+        self.update         = True  # Reset the update flag
 
-        # time.sleep(0.5)
+        time.sleep(0.5)  # Sleep for 0.5 second to recive the perception messages
 
         position_to = 'BOX' if request.box else 'OBJECT'
 
@@ -129,13 +133,6 @@ class PositioningService(Node):
                 self._logger.error(f'positioning_sequence: Could not find an {position_to}, returning failure')
                 response.success    = False
                 response.label.data = ""
-
-        self.min_x          = 1.5  # Reset the minimum x-position of the object
-        self.object_pose    = Pose()  # Reset the object pose
-        self.object_label   = ""  # Reset the object label
-        self.object_found   = False  # Reset the object found flag
-        self.look_for_box   = False  # Reset the look for box flag
-        self.update         = True
         
         return response
 
@@ -220,10 +217,13 @@ class PositioningService(Node):
                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
 
         else:
-            turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
-            forward = 0
-            if self.update or not self.look_for_box:  # Should not move forward if it is repositioning for a box
+            if self.update or not self.look_for_box:
+                turns   = 2 * round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
+                forward = round(abs(x - self.x_stop_box) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+            else:
+                turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
                 forward = round(abs(x - self.x_stop_goal) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+            
             # self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
 
             while forward > 0 or turns > 0:  # While the robot is not done moving

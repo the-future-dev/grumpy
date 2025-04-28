@@ -108,8 +108,7 @@ class PickService(Node):
                     res = self.arm_camera(box=False, grasp=False)  # Call the arm camera service
 
                     if res.success:
-                        x, y, _           = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
-                        num_view_failures = 0
+                        x, y, _ = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
 
                         if (x >= 0.22 or x <= 0.15 or y >= 0.05 or y <= -0.15):  # If the object is out of reach in the non grasp position
                             step = "RepositionRobot"  # Reposition the robot
@@ -118,11 +117,9 @@ class PickService(Node):
                             step = "InverseKinematics"  # Next step
 
                     else:
-                        if num_view_failures == 0:
-                            self._logger.info('Is not close enough')
-                            thetas            = utils.initial_thetas
-                            num_view_failures = 0
-                            step              = "PositionRobot"  # End the FSM 
+                        self._logger.info('Is not close enough')
+                        thetas            = utils.initial_thetas
+                        step              = "PositionRobot"  # End the FSM 
 
                 case "PositionRobot":  # Call the position robot service to get to the position of the object
                     res = self.position_robot(box=False, backup=False, pos_x=0.0, pos_y=0.0)  # Call the position robot service
@@ -152,14 +149,22 @@ class PickService(Node):
 
                     else:
                         if num_view_failures == 1:
-                            self._logger.error('Arm camera service call failed')
-                            thetas = utils.initial_thetas
-                            step   = "Failure"  # End the FSM
+                            self._logger.error('Did not find an object')
+                            thetas     = utils.view_thetas_drop
+                            thetas[5] += 4500
+                            step       = "SearchForObject"  # End the FSM
 
                         else:
                             num_view_failures += 1
                             thetas             = utils.check_object_thetas
                             step               = "ResetViewThetas"
+
+                case "SearchForObject":  # Call the arm camera service to get the position of the object
+                    res = self.arm_camera(box=False, grasp=False, cam_pose='View Find Left')  # Call the arm camera service
+
+                    if res.success:
+                        x, y, _ = utils.extract_object_position(node=self, pose=res.pose)
+
 
                 case "ResetViewThetas":
                     thetas = utils.view_thetas_pick
@@ -310,7 +315,7 @@ class PickService(Node):
         return future.result()  # Return the response of the service call
     
 
-    def arm_camera(self, box:bool, grasp:bool):
+    def arm_camera(self, box:bool, grasp:bool, cam_pose:str):
         """
         Args:
             box  : bool, required, if the object is a box or not
@@ -324,6 +329,7 @@ class PickService(Node):
         req       = ArmCameraDetection.Request()  # Create the request, no information is needed
         req.box   = box  # Set the box to False, because we are not positioning for a drop
         req.grasp = grasp  # If we are in the grasp position or not
+        req.cam_pose.data = cam_pose  # Set the camera pose to the left view
 
         future = self.arm_cam_client.call_async(req)
         rclpy.spin_until_future_complete(self.arm_cam_node, future)

@@ -35,16 +35,15 @@ rho_origin_servo4 = l_5_4 * np.cos(np.deg2rad(90) - np.deg2rad(theta_servo5_pick
 # Angles of the servos for different tasks:
 initial_thetas       = [3000, 12000, 12000, 12000, 12000, 12000]  # Arm pointing straight up, used for reset and driving around without object
 drive_thetas         = [-1, 12000, 7000, 12000, 12000, 12000]  # Arm pointing straight up, gripper tilted forward, used for driving around with object
-position_thetas_pick = [-1, -1, 3000, 14500, 9500, 12000]  
 check_object_thetas  = [-1, -1, 3000, 12000, 9500, 12000]  # Angles for checking the object
 view_thetas_pick     = [-1, -1, 3000, 18000, 9500, 12000]  # Angles when the arm camera has a view over the entire pick-up area
 view_thetas_drop     = [-1, -1, 3000, 15000, 9500, 12000]  # Angles when the arm camera has a view over the entire pick-up area
 still_thetas         = [-1] * 6 # Angles for when the arm should not move
 grasp_thetas         = {'CUBE': 10500, 'SPHERE': 9500, 'PUPPY': 13000}  # Angles for when the arm should not move
 
-times = [1000] * 6  # Standard angle movement times to all servos
+times                = [1000] * 6  # Standard angle movement times to all servos
 
-servos_offset = 350 # Allowed offset for the servos to be considered at the correct position
+servos_offset        = 350 # Allowed offset for the servos to be considered at the correct position
 
 # The position of the camera in the base_link frame when in view position
 cam_pos = Pose()
@@ -75,6 +74,14 @@ cam_r_t_box = {
     'pitch': -60.0,
     'yaw': 0.0
 }
+
+cam_poses = {
+    'View Pick' : get_camera_position(theta6=0, theta5=30, theta4=60, theta3=90),
+    'View Drop' : get_camera_position(theta6=0, theta5=30, theta4=30, theta3=90),
+    'View Left' : get_camera_position(theta6=45, theta5=30, theta4=30, theta3=90),
+    'View Right': get_camera_position(theta6=-45, theta5=30, theta4=30, theta3=90),
+}
+
 
 def extract_object_position(node, pose:Pose):
     """
@@ -206,45 +213,38 @@ def changed_thetas_correctly(pub_angles:list, curr_angles:list):
     return correct
 
 
-def get_rotation_and_translation(cam_r_t_dict:dict):
+def get_camera_position(theta6:float, theta5:float, theta4:float, theta3:float):
     """
     Args:
-        x: float, required, x-position of the object in base_link frame
-        y: float, required, y-position of the object in base_link frame
-        z: float, required, z-position of the object in base_link frame
+        theta6: float, required, the angle of servo 6
+        theta5: float, required, the angle of servo 5
+        theta4: float, required, the angle of servo 4
+        theta3: float, required, the angle of servo 3
     Returns:
-        rotation: np.array, rotation matrix from base_link to gripper frame
-        translation: np.array, translation vector from base_link to gripper frame
+        cam_pos: Pose, the position of the camera in the base_link frame
     Other functions:
 
     """
+    
+    cam_pos = Pose()
 
-    x, y, z          = cam_r_t_dict['x'], cam_r_t_dict['y'], cam_r_t_dict['z']
-    roll, pitch, yaw = np.deg2rad(cam_r_t_dict['roll']), np.deg2rad(cam_r_t_dict['pitch']), np.deg2rad(cam_r_t_dict['yaw'])
+    theta6_rad          = np.deg2rad(theta6)
+    theta5_rad          = np.deg2rad(theta5)
+    theta_54_rad        = np.deg2rad(theta5 + theta4)
+    theta_543_rad       = np.deg2rad(theta5 + theta4 + theta3)
+    theta_cam_fixed_rad = np.deg2rad(theta5 + theta4 + theta3 + theta_cam_fixed)
 
-    # Rotation around X (roll)
-    Rx = np.array([
-        [1, 0, 0],
-        [0, np.cos(roll), -np.sin(roll)],
-        [0, np.sin(roll), np.cos(roll)]
-    ])
+    arm_length_xy_plane = (l_5_4 * np.sin(theta5_rad) +
+                          l_4_3 * np.sin(theta_54_rad) +
+                          l_3_cam_z * np.sin(theta_543_rad) +
+                          l_3_cam_x * np.sin(theta_cam_fixed_rad))
 
-    # Rotation around Y (pitch)
-    Ry = np.array([
-        [np.cos(pitch), 0, np.sin(pitch)],
-        [0, 1, 0],
-        [-np.sin(pitch), 0, np.cos(pitch)]
-    ])
+    cam_pos.position.x = x_origin_servo5 + arm_length_xy_plane * np.cos(theta6_rad)
+    cam_pos.position.y = y_origin_servo5 + arm_length_xy_plane * np.sin(theta6_rad)
+    cam_pos.position.z = (z_origin_servo5 +
+                          l_5_4 * np.cos(theta5_rad) +
+                          l_4_3 * np.cos(theta_54_rad) +
+                          l_3_cam_z * np.cos(theta_543_rad) +
+                          l_3_cam_x * np.cos(theta_cam_fixed_rad))
 
-    # Rotation around Z (yaw)
-    Rz = np.array([
-        [np.cos(yaw), -np.sin(yaw), 0],
-        [np.sin(yaw), np.cos(yaw), 0],
-        [0, 0, 1]
-    ])
-
-    rotation = Rz @ Ry @ Rx  # Rotation matrix from arm camera to base_link frame
-
-    translation = np.array([x, y, z]).reshape(3, 1)  # Translation vector from arm camera to base_link frame
-
-    return rotation, translation
+    return cam_pos
