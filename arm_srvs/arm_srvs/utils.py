@@ -114,10 +114,10 @@ def get_camera_position(theta6:float, theta5:float, theta4:float, theta3:float):
     return cam_pos
 
 cam_poses = {
-    'View Pick' : (0, get_camera_position(theta6=0, theta5=30, theta4=60, theta3=90)),
-    'View Drop' : (0, get_camera_position(theta6=0, theta5=30, theta4=30, theta3=90)),
-    'View Left' : (theta_servo6_find, get_camera_position(theta6=45, theta5=30, theta4=30, theta3=90)),
-    'View Right': (-theta_servo6_find, get_camera_position(theta6=-45, theta5=30, theta4=30, theta3=90)),
+    'View Pick' : ([0, 30, 60, 90], get_camera_position(theta6=0, theta5=30, theta4=60, theta3=90)),
+    'View Drop' : ([0, 30, 30, 90], get_camera_position(theta6=0, theta5=30, theta4=30, theta3=90)),
+    'View Left' : ([theta_servo6_find, 30, 30, 90], get_camera_position(theta6=theta_servo6_find, theta5=30, theta4=30, theta3=90)),
+    'View Right': ([-theta_servo6_find, 30, 30, 90], get_camera_position(theta6=-theta_servo6_find, theta5=30, theta4=30, theta3=90)),
 }
 
 

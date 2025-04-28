@@ -284,7 +284,7 @@ class ArmCameraService(Node):
             
         """
 
-        base_angle, cam_pose = utils.cam_poses[self.cam_pose]  # Get the pose of the arm camera in base_link frame
+        angles, cam_pose = utils.cam_poses[self.cam_pose]  # Get the pose of the arm camera in base_link frame
 
         fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
@@ -294,12 +294,13 @@ class ArmCameraService(Node):
         y_image = - (x_pixel - cx) * (cam_pose.position.z / fx)
 
         # Calculate angle and distance to x_image and y_image from the camera
-        angle    = np.rad2deg(np.arctan2(y_image, x_image))  # Angle to the object in radians
-        distance = np.sqrt(x_image**2 + y_image**2)  # Distance to the object in meters
+        angle         = np.rad2deg(np.arctan2(y_image, x_image))  # Angle to the object in radians
+        distance      = np.sqrt(x_image**2 + y_image**2)  # Distance to the object in meters
+        center_offset = cam_pose.position.z * np.tan(np.deg2rad(np.sum(angles[1:]) - 90))
 
         # Calculate the x and y coordinates in the base_link frame
-        x = cam_pose.position.x + distance * np.cos(np.deg2rad(base_angle + angle))
-        y = cam_pose.position.y + distance * np.sin(np.deg2rad(base_angle + angle))
+        x = cam_pose.position.x + center_offset * np.cos(np.deg2rad(angles[0])) + distance * np.cos(np.deg2rad(angles[0] + angle))
+        y = cam_pose.position.y + center_offset * np.sin(np.deg2rad(angles[0])) + distance * np.sin(np.deg2rad(angles[0] + angle))
 
         return x, y
     
