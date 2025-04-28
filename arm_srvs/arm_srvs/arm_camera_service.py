@@ -242,7 +242,8 @@ class ArmCameraService(Node):
 
                 cv2.circle(image, (int(cx), int(cy)), 10, (0, 0, 255), -1)
 
-                x, y = self.pixel_to_base_link_general(cx, cy)  # Transform the position to the base_link frame
+                # x, y = self.pixel_to_base_link_general(cx, cy)  # Transform the position to the base_link frame
+                x, y = self.pixel_to_base_link_new(cx, cy)
 
                 self.publish_image(image)
 
