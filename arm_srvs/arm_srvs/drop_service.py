@@ -125,7 +125,7 @@ class DropService(Node):
                         step   = "Failure"  # End the FSM
 
                 case "GetPosition":  # Call the arm camera service to get the position of the object
-                    res = self.arm_camera(box=True, grasp=False)  # Call the arm camera service
+                    res = self.self.arm_camera(box=True, grasp=False, cam_pose='View Drop')  # Call the arm camera service
 
                     if res.success:
                         x, y, _           = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
@@ -251,7 +251,7 @@ class DropService(Node):
         return future.result()  # Return the response of the service call
     
 
-    def arm_camera(self, box:bool, grasp:bool):
+    def arm_camera(self, box:bool, grasp:bool, cam_pose:str):
         """
         Args:
             box  : bool, required, if the object is a box or not
@@ -262,9 +262,10 @@ class DropService(Node):
             Calls the arm camera service to get the position of the object
         """
 
-        req       = ArmCameraDetection.Request()  # Create the request, no information is needed
-        req.box   = box  # Set the box to False, because we are not positioning for a drop
-        req.grasp = grasp  # If we are in the grasp position or not
+        req               = ArmCameraDetection.Request()  # Create the request, no information is needed
+        req.box           = box  # Set the box to False, because we are not positioning for a drop
+        req.grasp         = grasp  # If we are in the grasp position or not
+        req.cam_pose.data = cam_pose  # Set the camera pose to the left view
 
         future = self.arm_cam_client.call_async(req)
         rclpy.spin_until_future_complete(self.arm_cam_node, future)

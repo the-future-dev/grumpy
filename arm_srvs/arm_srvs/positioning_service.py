@@ -7,7 +7,7 @@ from robp_interfaces.msg import DutyCycles
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
 import numpy as np
-from arm_srvs.utils import utils
+import arm_srvs.utils as utils
 import time
 
 class PositioningService(Node):
