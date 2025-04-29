@@ -12,17 +12,31 @@ import random
 from geometry_msgs.msg import PointStamped, TransformStamped
 from nav_msgs.msg import Path
 from std_msgs.msg import Bool
+from occupancy_grid_map.workspace_utils import Workspace
 
 class SampleDriveControlNode(Node):
 
     def __init__(self):
         super().__init__('sample_drive_control_node')
 
-        self.vel_forward = 0.2 # 0.13 before
-        self.vel_rotate = 0.09 # 0.09 before
-        self.vel_small_rotate = 0.015
-        self.vel_arrived = 0.0
-        self.right_extra = 1.075
+        self.ws_utils = Workspace()
+        self.phase = self.ws_utils.phase
+
+        if self.phase == 'collection':
+
+            self.vel_forward = 0.2 # 0.13 before
+            self.vel_rotate = 0.09 # 0.09 before
+            self.vel_small_rotate = 0.015
+            self.vel_arrived = 0.0
+            self.right_extra = 1.075
+
+        elif self.phase == 'exploration':
+
+            self.vel_forward = 0.13 # 0.13 before
+            self.vel_rotate = 0.09 # 0.09 before
+            self.vel_small_rotate = 0.015
+            self.vel_arrived = 0.0
+            self.right_extra = 1.075
 
         # stop variable
         self.stop = False

@@ -9,6 +9,8 @@ from time import sleep
 
 from robp_interfaces.msg import DutyCycles
 from tf2_ros.buffer import Buffer
+from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Path
 from std_msgs.msg import Bool, String
 from grumpy_interfaces.msg import ObjectDetection1D
@@ -171,7 +173,7 @@ class DriveToGoal(py_trees.behaviour.Behaviour):
     def update(self):
         """
         Method that will be executed when behaviour is ticked
-        """
+        """        
         if self.node.empty_list:
             if not self.node.at_sub_goal:
                 self.node.get_logger().debug('Waiting for drive control to reach point')
@@ -261,6 +263,9 @@ class BrainCollection(Node):
         self.pick_drop_pub = self.create_publisher(String, 'brain/action/pick_drop', 1)
         self.align_pub = self.create_publisher(ObjectDetection1D, 'brain/action/align', 1)
 
+        # initialize transform broadcaster
+        self._tf_broadcaster = TransformBroadcaster(self) 
+
         # Create ROS 2 behaviour tree
         self.tree = self.create_behaviour_tree()
 
@@ -322,19 +327,33 @@ class BrainCollection(Node):
         """
         Callback that sets the goal that will be sent to A*
         """
-        self.get_logger().info('Have received goal from planner')
+        self.get_logger().info(f'Have received goal from planner, x: {msg.pose.position.x}, y: {msg.pose.position.y}') 
 
         if msg.label.data == 'Near':
             self.get_logger().info('Goal close to robot go directly to pick/drop')
             self.at_sub_goal = True
+            self.have_path = True
             self.goal = msg
             self.empty_list = True
+            self.aligned = False
+            self.align_robot = True
         else:
             self.get_logger().info('Goal not close, getting path')
             self.goal = msg
             self.have_goal = True
             self.get_path = True
-    
+
+        tf = TransformStamped()
+        tf.header.stamp = msg.header.stamp
+        tf.header.frame_id = "map"
+        tf.child_frame_id = "target_frame"
+        tf.transform.translation.x = msg.pose.position.x/100.0
+        tf.transform.translation.y = msg.pose.position.y/100.0
+        tf.transform.translation.z = 0.0
+
+        self._tf_broadcaster.sendTransform(tf)
+
+
     def no_objects_left_cb(self, msg:Bool):
         """
         Callback that sets boolean, True if all exploration is done, False otherwise

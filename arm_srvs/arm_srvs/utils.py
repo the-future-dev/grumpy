@@ -182,7 +182,7 @@ def check_angles_and_times(node, angles:list, times:list):
     assert len(times) == 6, node._logger.error('times was not of length 6')
     assert all(isinstance(angle, int) for angle in angles), node._logger.error('angles was not of type int')
     assert all(isinstance(time, int) for time in times), node._logger.error('times was not of type int')
-    assert all(1000 <= time <= 5000 for time in times), node._logger.error('times was not within the interval [1000, 5000]')
+    assert all(500 <= time <= 5000 for time in times), node._logger.error('times was not within the interval [1000, 5000]')
     assert (0 <= angles[0] <= 13500) or (angles[0] == -1), node._logger.error(f'servo 1 was not within the interval [0, 11000] or -1, got {angles[0]}')
     assert (0 <= angles[1] <= 24000) or (angles[1] == -1), node._logger.error(f'servo 2 was not within the interval [0, 24000] or -1, got {angles[1]}')
     assert (2500 <= angles[2] <= 21000) or (angles[2] == -1), node._logger.error(f'servo 3 was not within the interval [2500, 21000] or -1, got {angles[2]}')
@@ -225,28 +225,3 @@ def inverse_kinematics(node, x:float, y:float, z:float):
     theta_servo4 = round(initial_thetas[3] + delta_theta_servo4 * 100)  # New angle of servo 4, round and convert to int
 
     return theta_servo3, theta_servo4
-
-
-def changed_thetas_correctly(pub_angles:list, curr_angles:list):
-    """
-    Args:
-        pub_angles : list, required, the angles that were published to the arm
-        curr_angles: list, required, the angles that the arm is at after the angles have been published and the required time has passed
-    Returns:
-        bool, if the arm has moved to the published angles, except for the first servo as it is not reliable
-    Other functions:
-        
-    """
-
-    correct = True
-
-    if len(pub_angles) != len(curr_angles):
-        correct = False
-    
-    for i in range(1, len(pub_angles)):
-        if pub_angles[i] == -1:
-            continue
-        elif not np.isclose(curr_angles[i], pub_angles[i], atol=servos_offset):
-            correct = False
-              
-    return correct

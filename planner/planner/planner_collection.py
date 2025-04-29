@@ -1,14 +1,11 @@
 
 import rclpy
-import rclpy.clock
 from rclpy.node import Node
 import rclpy.time
 import numpy as np
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
-import tf_transformations
 from tf2_ros import TransformException
-from builtin_interfaces.msg import Time
 from std_msgs.msg import Bool
 from std_msgs.msg import String
 from grumpy_interfaces.msg import ObjectDetection1D
@@ -30,14 +27,16 @@ class PlannerCollectionNode(Node):
         self.ws_utils = Workspace()
         self.positions = self.ws_utils.objects_boxes
 
-        self.goal_pose = None
+        self.goal_pose = None, None
         self.goal_pose_old = None
+        self.curr_ind = None
         
         self.object_poses, self.box_poses = self.filter_box_objects()
         # self.get_logger().info(f'{self.object_poses.shape}')
         self.object = True #Use to choose if going to object or box
 
         self.create_subscription(String, 'planner_collection/find_goal', self.find_goal_cb, 1)
+        self.create_subscription(String, 'brain/pick_drop_status', self.remove_cb, 1)
     
     def find_goal_cb(self, msg:String):
 
@@ -47,6 +46,11 @@ class PlannerCollectionNode(Node):
             self.object = False
 
         self.choose_next()
+
+    def remove_cb(self, msg:String):
+
+        if msg.data == 'Pick_Success':
+            self.object_poses = np.delete(self.object_poses, self.curr_ind, axis=1)  
 
     def filter_box_objects(self):
         #Filter teh boxes and object in spereat groups
@@ -62,7 +66,7 @@ class PlannerCollectionNode(Node):
         try:
             tf = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
         except TransformException as ex:
-            #  self.get_logger().info(f'Could not transform{ex}')
+             self.get_logger().info(f'Could not transform{ex}')
              return 0.0, 0.0
         
         rob_x = tf.transform.translation.x
@@ -80,9 +84,9 @@ class PlannerCollectionNode(Node):
             self.collection_done.publish(msg_finish)
 
         #Get current pose
-        rob_x, rob_y = None, None
-        while rob_x is None or rob_y is None:
-            rob_x, rob_y = self.get_curr_pos()
+        # rob_x, rob_y = None, None
+        # while rob_x is None or rob_y is None:
+        rob_x, rob_y = self.get_curr_pos()
 
         #Taking the object/box with smallest distance
         if self.object == True:
@@ -90,34 +94,44 @@ class PlannerCollectionNode(Node):
             dists = np.sqrt((self.object_poses[0,:] - 100.0*float(rob_x))**2 + (self.object_poses[1,:] - 100.0*float(rob_y))**2)
             # mask_dist = np.where(dists < 90, False, True)
             low_ind = np.argmin(dists)
+            random_ind = sorted(range(len(dists)), key=lambda i: dists[i])[1]
+            self.curr_ind = low_ind
+            
+            old_x, old_y = self.goal_pose
             self.goal_pose = self.object_poses[:, low_ind]
-            self.object_poses = np.delete(self.object_poses, low_ind, axis=1)
+            x, y = self.goal_pose
+            # self.object_poses = np.delete(self.object_poses, low_ind, axis=1)
         
         elif self.object == False:
             dists = np.sqrt((self.box_poses[0,:] - 100.0*float(rob_x))**2 + (self.box_poses[1,:] - 100.0*float(rob_x))**2)
             low_ind = np.argmin(dists)
+            random_ind = sorted(range(len(dists)), key=lambda i: dists[i])[1]
+            self.curr_ind = low_ind
 
             old_x, old_y = self.goal_pose
             self.goal_pose = self.box_poses[:, low_ind]
             x, y = self.goal_pose
 
-            if x == old_x and y == old_y:
-                inds = np.arange(len(dists))
-                not_low_ind = np.where(inds==low_ind, False, True)
-                random_ind = np.random.choice(inds[not_low_ind])
+        if x == old_x and y == old_y:
+            #inds = np.arange(len(dists))
+            #not_low_ind = np.where(inds==low_ind, False, True)
+            #random_ind = np.random.choice(inds[not_low_ind])
+
+            if self.object:
+                self.goal_pose = self.object_poses[:, random_ind]
+                self.curr_ind = random_ind
+            else:
                 self.goal_pose = self.box_poses[:, random_ind]
+                self.curr_ind = random_ind
 
         # self.get_logger().info(f'{dists[low_ind]}')
 
-        if dists[low_ind] < 45 and self.object == True: # was 50
+        if dists[self.curr_ind] < 45 and self.object == True: # was 50
             label = 'Near'
-        elif dists[low_ind] < 50 and self.object == False: # was 65
+        elif dists[self.curr_ind] < 50 and self.object == False: # was 65
             label = 'Near'
         else:
             label = 'Far'
-
-
-
 
         self.publish_goal(self.goal_pose, label)
 
@@ -125,6 +139,7 @@ class PlannerCollectionNode(Node):
         #Publisg goal point to A star
 
         pose_msg = ObjectDetection1D()
+        pose_msg.header.stamp = self.get_clock().now().to_msg()
         pose_msg.pose.position.x = float(goal_pose[0])
         pose_msg.pose.position.y = float(goal_pose[1])
         pose_msg.pose.position.z = 0.0

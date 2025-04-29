@@ -1,7 +1,5 @@
-
 import rclpy
 from rclpy.node import Node
-import rclpy.time
 import numpy as np
 from sensor_msgs.msg import LaserScan
 from tf2_ros.buffer import Buffer
@@ -17,7 +15,9 @@ from grumpy_interfaces.msg import ObjectDetection1DArray, ObjectDetection1D
 from occupancy_grid_map.workspace_utils import Workspace
 from time import sleep
 from matplotlib.colors import BoundaryNorm
-from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid, MapMetaData, GridCells
+from geometry_msgs.msg import Pose
+
 
 class OccupancyGridMapNode(Node):
     
@@ -40,7 +40,7 @@ class OccupancyGridMapNode(Node):
 
         self.grid = self.ws_utils.create_grid()
         self.counter = 0
-        self.phase = 'collection'  ###############    PHASE    ##########
+        self.phase = self.ws_utils.phase
         self.goal_point = None
         self.action = 'Other'
 
@@ -50,6 +50,8 @@ class OccupancyGridMapNode(Node):
 
         #Create publisher fo grid
         self.grid_pub = self.create_publisher(Int16MultiArray, 'map/gridmap', 10)
+        self.visualize_pub = self.create_publisher(OccupancyGrid, 'map/visualized', 1)
+        self.cells_pub = self.create_publisher(GridCells, 'map/grid_cells', 1)
 
         #Fill outside grid with 
         self.fill_outside_grid()
@@ -94,7 +96,7 @@ class OccupancyGridMapNode(Node):
     def remove_cb(self, msg:String):
 
         self.action = msg.data
-        if self.action in ['Pick_Success', 'Pick_Failure']: # only Pick_Success before
+        if self.action == 'Pick_Success': # only Pick_Success before
             self.map_to_grid(self.goal_point, self.free)
 
         self.action = 'Other'
@@ -232,16 +234,18 @@ class OccupancyGridMapNode(Node):
 
         msg_grid.layout.dim = [dim1, dim2]
 
-        cmap = plt.cm.get_cmap('Paired', 6)
-        norm = BoundaryNorm([-1, 0, 1, 2, 3, 4, 5], cmap.N)
+        cmap = plt.cm.get_cmap('Paired', 8)
+        norm = BoundaryNorm([-2, -1, 0, 1, 2, 3, 4, 5, 6], cmap.N)
         plt.figure(figsize=(10, 10))
         plt.imshow(self.grid, cmap=cmap, norm=norm, interpolation='nearest', origin='lower')
         cbar = plt.colorbar()
-        cbar.set_ticks([-1, 0, 1, 2, 3, 4])
+        cbar.set_ticks([-2, -1, 0, 1, 2, 3, 4, 5])
         plt.savefig('/home/group5/dd2419_ws/outputs/fantastic_map')
         plt.close()
 
         self.grid_pub.publish(msg_grid)
+
+        self.visualize_grid_as_cells()
     
     def filter_points(self, x_grid_points, y_grid_points, value):
 
@@ -293,61 +297,28 @@ class OccupancyGridMapNode(Node):
 
         return x_free, y_free, x_unknown, y_unknown
 
+    def visualize_grid_as_cells(self):
+        # Create separate publishers for different cell types
+        cells_msg = GridCells()
+        cells_msg.header.frame_id = "map"
+        cells_msg.header.stamp = self.get_clock().now().to_msg()
+        cells_msg.cell_width = self.ws_utils.resolution / 100.0
+        cells_msg.cell_height = self.ws_utils.resolution / 100.0
 
-    # def publish_grid(self):
-    #     """Creates and publishes the OccupancyGrid message."""
-    #     try:
-    #         # Create the OccupancyGrid message
-    #         grid_msg = OccupancyGrid()
+        # Get occupied cells
+        occupied_y, occupied_x = np.where(self.grid == self.object_box)
+        
+        cells_msg.cells = []
+        for x, y in zip(occupied_x, occupied_y):
+            map_x, map_y = self.ws_utils.convert_grid_to_map(x, y)
+            pose = Pose()
+            pose.position.x = map_x / 100.0  # Convert to meters
+            pose.position.y = map_y / 100.0
+            pose.position.z = 0.0
+            cells_msg.cells.append(pose.position)
 
-    #         # --- Fill Header ---
-    #         grid_msg.header.stamp = self.get_clock().now().to_msg()
-    #         grid_msg.header.frame_id = 'map' # Grid is in the map frame
+        self.cells_pub.publish(cells_msg)
 
-    #         # --- Fill Info ---
-    #         grid_msg.info.map_load_time = grid_msg.header.stamp
-    #         grid_msg.info.resolution = self.ws_utils.resolution # Meters per cell
-    #         grid_msg.info.width = self.grid.shape[1] # Columns
-    #         grid_msg.info.height = self.grid.shape[0] # Rows
-
-    #         # Origin pose (position and orientation) of the grid cell (0, 0) in the map frame
-    #         grid_msg.info.origin = Pose()
-    #         grid_msg.info.origin.position.x = self.ws_utils.origin_x # Meters
-    #         grid_msg.info.origin.position.y = self.ws_utils.origin_y # Meters
-    #         grid_msg.info.origin.position.z = 0.0 # Assuming 2D map
-    #         # Orientation (usually identity quaternion for a non-rotated map)
-    #         grid_msg.info.origin.orientation.x = self.ws_utils.origin_orientation_x
-    #         grid_msg.info.origin.orientation.y = self.ws_utils.origin_orientation_y
-    #         grid_msg.info.origin.orientation.z = self.ws_utils.origin_orientation_z
-    #         grid_msg.info.origin.orientation.w = self.ws_utils.origin_orientation_w
-
-    #         # --- Prepare Grid Data ---
-    #         # The data needs to be a flattened list/array of int8 values
-    #         # Map your internal grid values to OccupancyGrid standard (-1, 0, 100)
-    #         # Make a copy to avoid modifying the internal grid representation directly if needed
-    #         publish_grid_data = self.grid.copy()
-
-    #         # Map custom values to standard OccupancyGrid values
-    #         # Example: Map custom_outside and custom_object_box to occupied (100)
-    #         publish_grid_data[publish_grid_data == self.custom_object_box] = self.obstacle # Map object box to 100
-    #         # Add mappings for other custom values if you have them (e.g., self.custom_outside)
-    #         # publish_grid_data[publish_grid_data == self.custom_outside] = self.obstacle # Or -1 if unknown
-
-    #         # Ensure values are within the valid range [-1, 100] and correct type (int8)
-    #         # Clip values just in case (optional, good practice)
-    #         np.clip(publish_grid_data, -1, 100, out=publish_grid_data)
-
-    #         # Flatten the grid data in row-major order (standard for OccupancyGrid)
-    #         grid_msg.data = publish_grid_data.flatten().astype(np.int8).tolist()
-
-    #         # --- Publish the message ---
-    #         self.grid_pub.publish(grid_msg)
-
-    #         # --- Optional: Save image (keep if useful for debugging) ---
-    #         # self.save_grid_image() # Call the save image function
-
-    #     except Exception as e:
-    #         self.get_logger().error(f"Error in publish_grid: {e}")
 
 def main():
     rclpy.init()
@@ -362,21 +333,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-######   IF PLOTTING    ########
-# cmap = plt.cm.get_cmap('viridis', 5)
-# grid_values = {
-#     self.unknown: 'gray',
-#     self.free: 'white',
-#     self.obstacle: 'black',
-#     self.object_box: 'blue',
-#     self.outside: 'lightgray'
-# }
-
-# plt.figure(figsize=(10, 10))
-# plt.imshow(self.grid, cmap=cmap, interpolation='nearest', origin='lower')
-# cbar = plt.colorbar()
-# cbar.set_ticks([0, 1, 2, 3, 4])
-# plt.savefig('fantastic_map')
-# plt.close()

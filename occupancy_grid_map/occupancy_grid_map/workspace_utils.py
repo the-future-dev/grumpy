@@ -7,7 +7,7 @@ class Workspace:
     def __init__(self):
 
         self.file_path_ws = '/home/group5/dd2419_ws/outputs/workspace_exploration.csv'
-        self.file_path_map = '/home/group5/dd2419_ws/outputs/map_collection.csv'
+        self.file_path_map = '/home/group5/dd2419_ws/outputs/normal_map1.csv'
         ws = pd.read_csv(self.file_path_ws)
         mp = pd.read_csv(self.file_path_map, header=None)
 
@@ -29,6 +29,7 @@ class Workspace:
         self.unknown = -1
 
         self.grid = np.full((self.grid_ylength, self.grid_xlength), self.unknown, dtype=np.int16)
+        self.phase = 'collection' #### 'collection' or 'exploration'
         
     def create_grid(self):
  

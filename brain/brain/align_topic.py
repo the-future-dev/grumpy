@@ -9,9 +9,7 @@ from tf2_ros import TransformException
 import tf2_geometry_msgs
 from geometry_msgs.msg import PointStamped
 from std_msgs.msg import Bool
-from geometry_msgs.msg import PoseStamped
 from grumpy_interfaces.msg import ObjectDetection1D
-from time import sleep
 
 
 class AlignTopic(Node):
@@ -33,13 +31,14 @@ class AlignTopic(Node):
     def align_cb(self, msg:ObjectDetection1D):
         # align robot to object
         x, y = msg.pose.position.x, msg.pose.position.y
+        self.get_logger().info(f'align callback got x: {x}, y: {y}')
         msg_motor = DutyCycles()
         sample_point = PointStamped()
 
         sample_point.header.frame_id = 'map'
         sample_point.header.stamp = rclpy.time.Time()
-        sample_point.point.x = x
-        sample_point.point.y = y
+        sample_point.point.x = x/100.0
+        sample_point.point.y = y/100.0
         sample_point.point.z = 0.0
         from_frame = 'map'
         vel_arrived = 0.0
@@ -62,34 +61,43 @@ class AlignTopic(Node):
             x = point_base_link.point.x
             y = point_base_link.point.y
 
-            if abs(y) <= 15:
+            if abs(y) <= 0.15:
                 vel_rotate  = 0.05
                 max_aligns -= 1
 
-            self._logger.info(f'align_cb: x: {x}, y: {y}')
-
             #If y is zero and x > 0 means perfect alignment otherwise turning
-            if abs(y) < 5 or max_aligns < 0:
-                #Stop turning
-                msg_motor.duty_cycle_right = vel_arrived*right_extra
-                msg_motor.duty_cycle_left = vel_arrived
-                self.motor_publisher.publish(msg_motor)
-                status_msg = Bool()
-                status_msg.data = True
-                self._logger.info(f'Align topic says robot is aligned')
-                self.align_status_pub.publish(status_msg) 
-                break
-            elif y >= 0.0:
-                #Turn left
-                msg_motor.duty_cycle_right = vel_rotate*right_extra
-                msg_motor.duty_cycle_left = -vel_rotate
-                self.motor_publisher.publish(msg_motor)
-            elif y < 0.0:
-                #Turn right
-                msg_motor.duty_cycle_right = -vel_rotate*right_extra
-                msg_motor.duty_cycle_left = vel_rotate
-                self.motor_publisher.publish(msg_motor)
-
+            if x>=0:
+                if (abs(y) < 0.025 or max_aligns < 0):
+                    #Stop turning
+                    msg_motor.duty_cycle_right = vel_arrived*right_extra
+                    msg_motor.duty_cycle_left = vel_arrived
+                    self.motor_publisher.publish(msg_motor)
+                    status_msg = Bool()
+                    status_msg.data = True
+                    self._logger.info(f'Align topic says robot is aligned')
+                    self.align_status_pub.publish(status_msg) 
+                    break
+                elif y >= 0.0:
+                    #Turn left
+                    msg_motor.duty_cycle_right = vel_rotate*right_extra
+                    msg_motor.duty_cycle_left = -vel_rotate
+                    self.motor_publisher.publish(msg_motor)
+                elif y < 0.0:
+                    #Turn right
+                    msg_motor.duty_cycle_right = -vel_rotate*right_extra
+                    msg_motor.duty_cycle_left = vel_rotate
+                    self.motor_publisher.publish(msg_motor)
+            else:
+                if y >= 0.0:
+                    #Turn right
+                    msg_motor.duty_cycle_right = -vel_rotate*right_extra
+                    msg_motor.duty_cycle_left = vel_rotate
+                    self.motor_publisher.publish(msg_motor)
+                else:
+                    #Turn left
+                    msg_motor.duty_cycle_right = vel_rotate*right_extra
+                    msg_motor.duty_cycle_left = -vel_rotate
+                    self.motor_publisher.publish(msg_motor)
 
 
 def main():

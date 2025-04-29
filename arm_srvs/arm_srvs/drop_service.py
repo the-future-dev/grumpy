@@ -4,8 +4,6 @@ import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_msgs.msg import Int16MultiArray, Bool
-from sensor_msgs.msg import JointState
-from geometry_msgs.msg import Pose
 import numpy as np
 import time
 import arm_srvs.utils as utils
@@ -15,7 +13,6 @@ class DropService(Node):
     def __init__(self):
         super().__init__('drop_srv')
 
-        # self.current_angles    = utils.initial_thetas  # Keeps track of the angles of the servos published under /servo_pos_publisher
         self.object_in_gripper = False  # Keeps track of the object in the gripper
 
         # Create group for the service and subscriber that will run on different threads
@@ -57,14 +54,6 @@ class DropService(Node):
             '/multi_servo_cmd_sub',
             1
         )
-        
-        # self.servo_subscriber = self.create_subscription(
-        #     JointState,
-        #     '/servo_pos_publisher',
-        #     self.current_servos,
-        #     1,
-        #     callback_group=self.subscriber_cb_group
-        # )
 
         self.arm_cam_detection_subscriber = self.create_subscription(
             Bool,
@@ -110,7 +99,6 @@ class DropService(Node):
                     time.sleep(0.5)  # Wait for the image from the arm camera to be processed
 
                     if self.object_in_gripper:
-                        thetas = utils.drive_thetas  # Move arm back to the drive position
                         step   = "PositionRobot"  # Next step
 
                     else:
@@ -127,39 +115,43 @@ class DropService(Node):
                         step   = "GetPosition"  # Next step
 
                     else:
-                        self._logger.error('Positioning service call failed')
+                        self._logger.error('Positioning service call failed, try using the arm instead')
                         thetas = utils.initial_thetas
-                        step   = "Failure"  # End the FSM
+                        step   = "GetPosition"  # End the FSM
 
 
                 case "GetPosition":  # Call the arm camera service to get the position of the object
-                    res = self.self.arm_camera(box=True, grasp=False, cam_pose='View Drop')  # Call the arm camera service
+                    res = self.arm_camera(box=True, grasp=False, cam_pose='View Drop')  # Call the arm camera service
 
                     if res.success:
                         x, y, _           = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
                         num_view_failures = 0
 
-                        if x >= 0.34 or y >= -0.025 or y <= -0.075:  # If the box is not close enough in the y-direction
+                        if x >= 0.45 or y >= 0.0 or y <= -0.10:  # If the box is not close enough in the y-direction
                             step = "RepositionRobot"  # Reposition the robot
 
                         else:
                             step = "InverseKinematics"  # Next step
 
                     else:
-                        if num_view_failures == 1:
-                            self._logger.error('Did not find a box, searching for it')
-                            thetas = 12000 + utils.theta_servo6_find
-                            step   = "SearchForBox"  # End the FSM
+                        self._logger.error('Did not find a box, searching for it')
+                        thetas[5] = 12000 + utils.theta_servo6_find * 100
+                        step      = "SearchForBox"  # End the FSM
 
-                        else:
-                            num_view_failures += 1
-                            thetas             = utils.check_object_thetas
-                            step               = "ResetViewThetas"
+                        # if num_view_failures == 1:
+                        #     self._logger.error('Did not find a box, searching for it')
+                        #     thetas[5] = 12000 + utils.theta_servo6_find * 100
+                        #     step      = "SearchForBox"  # End the FSM
+
+                        # else:
+                        #     num_view_failures += 1
+                        #     thetas             = utils.check_object_thetas
+                        #     step               = "ResetViewThetas"
 
 
-                case "ResetViewThetas":
-                    thetas = utils.view_thetas_drop
-                    step   = "GetPosition"
+                # case "ResetViewThetas":
+                #     thetas = utils.view_thetas_drop
+                #     step   = "GetPosition"
 
 
                 case "SearchForBox":  # Call the arm camera service to get the position of the object
@@ -175,7 +167,7 @@ class DropService(Node):
                     else:
                         step       = "SearchForBox"  # Try again
                         find_step += 1
-                        thetas[5]  = 12000 - utils.theta_servo6_find
+                        thetas[5]  = 12000 - utils.theta_servo6_find * 100
                         
                         if find_step == 2:
                             self._logger.info('Did not find a box in the search sequence')
@@ -216,12 +208,6 @@ class DropService(Node):
 
             utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format
             self.publish_angles(thetas, times)  # Publish the angles to the arm
-            
-            # if self.publish_angles(thetas, times):  # Publish the angles to the arm and check if the arm has moved to the correct angles
-            #     step = next_step
-
-            # else:  # If the arm did not move to the correct angles, try to move the arm to the same angles again
-            #     self._logger.error('Move error All: The arm did not move to the correct angles, trying again') 
         
         res = self.position_robot(box=False, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service
 
@@ -231,166 +217,141 @@ class DropService(Node):
         return response
     
 
-    def drop_sequence_str(self, request, response):
-        """
-        Args:
-
-        Returns:
-            response: bool, if the drop was successful or not
-        Other functions:
-            Controlls the drop sequence
-            Calls on the positioning service for the robot to put it in the correct position for droping an object
-            Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
-        """
-
-        step              = "Start"  # The current step in the FSM
-        x, y              = 0, 0  # The x and y position of the box
-        z                 = utils.z_origin_servo4 - 0.05  # The height at which the object is dropped
-        end_strings       = ["Success", "Failure"]  # The end strings of the FSM
-        num_view_failures = 0
-        find_positions    = ['View Left', 'View Right']  # The view positions of the arm camera during finding the object
-        find_step         = 0  # The current step of the find positions
-
-        while step not in end_strings:
-            self._logger.info(f'{step}')  # Log the current step
-            times  = utils.times.copy()  # Set the times to the standard times
-            thetas = utils.still_thetas.copy()  # Do not move the arm
-
-            match step:
-                case "Start":  # Make sure the arm is in the drive position with an object in the gripper
-                    thetas = utils.check_object_thetas
-                    step   = "CheckObject"  # Next step
-                    
-
-                case "CheckObject":  # Check if the object is in the gripper
-                    time.sleep(0.5)  # Wait for the image from the arm camera to be processed
-
-                    if self.object_in_gripper:
-                        thetas = utils.drive_thetas  # Move arm back to the drive position
-                        step   = "GetPosition"  # Next step
-
-                    else:
-                        self._logger.error('Object not in gripper, must have been dropped')
-                        thetas = utils.initial_thetas  # Move arm to initial position
-                        step   = "Failure"  # End the FSM
-
-
-                case "GetPosition":  # Call the arm camera service to get the position of the object
-                    res = self.self.arm_camera(box=True, grasp=False, cam_pose='View Drop')  # Call the arm camera service
-
-                    if res.success:
-                        x, y, _           = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
-                        num_view_failures = 0
-
-                        if x >= 0.35 or y >= -0.025 or y <= -0.075:  # If the box is not close enough in the y-direction
-                            step = "RepositionRobot"  # Reposition the robot
-
-                        else:
-                            step = "InverseKinematics"  # Next step
-
-                    else:
-                        if num_view_failures == 1:
-                            self._logger.error('Did not find a box, searching for it')
-                            thetas = 12000 + utils.theta_servo6_find
-                            step   = "SearchForBox"  # End the FSM
-
-                        else:
-                            num_view_failures += 1
-                            thetas             = utils.check_object_thetas
-                            step               = "ResetViewThetas"
-
-
-                case "ResetViewThetas":
-                    thetas = utils.view_thetas_drop
-                    step   = "GetPosition"
-
-
-                case "SearchForBox":  # Call the arm camera service to get the position of the object
-                    view = find_positions[find_step]  # Get the current view position in the find process
-                    res = self.arm_camera(box=True, grasp=False, cam_pose=view)  # Call the arm camera service
-
-                    if res.success:
-                        x, y, _   = utils.extract_object_position(node=self, pose=res.pose)
-                        thetas    = utils.view_thetas_drop  # Move arm to view the object
-                        step      = "RepositionRobot"  # Next step
-                        find_step = 0
-                    
-                    else:
-                        step       = "SearchForBox"  # Try again
-                        find_step += 1
-                        thetas[5]  = 12000 - utils.theta_servo6_find
-                        
-                        if find_step == 2:
-                            self._logger.info('Did not find a box in the search sequence')
-                            find_step = 0
-                            thetas    = utils.initial_thetas
-                            step      = "Failure"  # End the FSM
-
-
-                case "RepositionRobot":  # Call the position robot service to get to the position of the object
-                    res = self.position_robot(box=True, backup=False, pos_x=x, pos_y=y)  # Call the position robot service
-
-                    if res.success:
-                        step = "GetPosition"  # Next step
-                        
-                    else:
-                        self._logger.error('Positioning service call failed')
-                        thetas = utils.initial_thetas
-                        step   = "Failure"  # End the FSM
-
-
-                case "InverseKinematics":  # Move arm to correct position to drop the object
-                    thetas[5]            = utils.get_theta_6(x=x, y=y)  # Calculate the new angle for servo 6
-                    thetas[4]            = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
-                    thetas[2], thetas[3] = utils.inverse_kinematics(node=self, x=x, y=y, z=z)  # Calculate change of the angles for servo 3 and 4
-                    times                = [1500] * 6
-                    step                 = "DropObject"  # Next step
-
-
-                case "DropObject":  # Drops the object
-                    thetas[0] = 3000  # Only move and open the gripper
-                    step      = "GoToInitial"  # Next step
-
-
-                case "GoToInitial":  # Drops the object
-                    thetas = utils.initial_thetas  # Move arm to initial position
-                    step   = "Success"  # Next step
-
-
-            utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format
-            self.publish_angles(thetas, times)  # Publish the angles to the arm
-            
-            # if self.publish_angles(thetas, times):  # Publish the angles to the arm and check if the arm has moved to the correct angles
-            #     step = next_step
-
-            # else:  # If the arm did not move to the correct angles, try to move the arm to the same angles again
-            #     self._logger.error('Move error All: The arm did not move to the correct angles, trying again') 
-        
-        res = self.position_robot(box=False, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service
-
-        self._logger.info(f'{step}')
-        response.success = True if step == "Success" else False
-        
-        return response
-
-
-    # def current_servos(self, msg:JointState):
+    # def drop_sequence_str(self, request, response):
     #     """
     #     Args:
-    #         msg: JointState, required, information about the servos positions, velocities and efforts
-    #     Returns:
 
+    #     Returns:
+    #         response: bool, if the drop was successful or not
     #     Other functions:
-    #         Listens to what the angles of the servos currently are and sets a self variable to these angles
+    #         Controlls the drop sequence
+    #         Calls on the positioning service for the robot to put it in the correct position for droping an object
+    #         Calls the publishing function which publishes the servo angles to the arm for each step in the sequence
     #     """
 
-    #     current_angles = msg.position
+    #     step              = "Start"  # The current step in the FSM
+    #     x, y              = 0, 0  # The x and y position of the box
+    #     z                 = utils.z_origin_servo4 - 0.05  # The height at which the object is dropped
+    #     end_strings       = ["Success", "Failure"]  # The end strings of the FSM
+    #     num_view_failures = 0
+    #     find_positions    = ['View Left', 'View Right']  # The view positions of the arm camera during finding the object
+    #     find_step         = 0  # The current step of the find positions
 
-    #     # assert isinstance(current_angles, list), self._logger.error('angles is not of type list')
-    #     # assert len(current_angles) == 6, self._logger.error('angles was not of length 6')
-    #     # assert all(isinstance(angle, int) for angle in current_angles), self._logger.error('angles was not of type int')
+    #     while step not in end_strings:
+    #         self._logger.info(f'{step}')  # Log the current step
+    #         times  = utils.times.copy()  # Set the times to the standard times
+    #         thetas = utils.still_thetas.copy()  # Do not move the arm
 
-    #     self.current_angles = current_angles
+    #         match step:
+    #             case "Start":  # Make sure the arm is in the drive position with an object in the gripper
+    #                 thetas = utils.check_object_thetas
+    #                 step   = "CheckObject"  # Next step
+                    
+
+    #             case "CheckObject":  # Check if the object is in the gripper
+    #                 time.sleep(0.5)  # Wait for the image from the arm camera to be processed
+
+    #                 if self.object_in_gripper:
+    #                     thetas = utils.drive_thetas  # Move arm back to the drive position
+    #                     step   = "GetPosition"  # Next step
+
+    #                 else:
+    #                     self._logger.error('Object not in gripper, must have been dropped')
+    #                     thetas = utils.initial_thetas  # Move arm to initial position
+    #                     step   = "Failure"  # End the FSM
+
+
+    #             case "GetPosition":  # Call the arm camera service to get the position of the object
+    #                 res = self.self.arm_camera(box=True, grasp=False, cam_pose='View Drop')  # Call the arm camera service
+
+    #                 if res.success:
+    #                     x, y, _           = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
+    #                     num_view_failures = 0
+
+    #                     if x >= 0.35 or y >= -0.025 or y <= -0.075:  # If the box is not close enough in the y-direction
+    #                         step = "RepositionRobot"  # Reposition the robot
+
+    #                     else:
+    #                         step = "InverseKinematics"  # Next step
+
+    #                 else:
+    #                     if num_view_failures == 1:
+    #                         self._logger.error('Did not find a box, searching for it')
+    #                         thetas = 12000 + utils.theta_servo6_find * 100
+    #                         step   = "SearchForBox"  # End the FSM
+
+    #                     else:
+    #                         num_view_failures += 1
+    #                         thetas             = utils.check_object_thetas
+    #                         step               = "ResetViewThetas"
+
+
+    #             case "ResetViewThetas":
+    #                 thetas = utils.view_thetas_drop
+    #                 step   = "GetPosition"
+
+
+    #             case "SearchForBox":  # Call the arm camera service to get the position of the object
+    #                 view = find_positions[find_step]  # Get the current view position in the find process
+    #                 res = self.arm_camera(box=True, grasp=False, cam_pose=view)  # Call the arm camera service
+
+    #                 if res.success:
+    #                     x, y, _   = utils.extract_object_position(node=self, pose=res.pose)
+    #                     thetas    = utils.view_thetas_drop  # Move arm to view the object
+    #                     step      = "RepositionRobot"  # Next step
+    #                     find_step = 0
+                    
+    #                 else:
+    #                     step       = "SearchForBox"  # Try again
+    #                     find_step += 1
+    #                     thetas[5]  = 12000 - utils.theta_servo6_find * 100
+                        
+    #                     if find_step == 2:
+    #                         self._logger.info('Did not find a box in the search sequence')
+    #                         find_step = 0
+    #                         thetas    = utils.initial_thetas
+    #                         step      = "Failure"  # End the FSM
+
+
+    #             case "RepositionRobot":  # Call the position robot service to get to the position of the object
+    #                 res = self.position_robot(box=True, backup=False, pos_x=x, pos_y=y)  # Call the position robot service
+
+    #                 if res.success:
+    #                     step = "GetPosition"  # Next step
+                        
+    #                 else:
+    #                     self._logger.error('Positioning service call failed')
+    #                     thetas = utils.initial_thetas
+    #                     step   = "Failure"  # End the FSM
+
+
+    #             case "InverseKinematics":  # Move arm to correct position to drop the object
+    #                 thetas[5]            = utils.get_theta_6(x=x, y=y)  # Calculate the new angle for servo 6
+    #                 thetas[4]            = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
+    #                 thetas[2], thetas[3] = utils.inverse_kinematics(node=self, x=x, y=y, z=z)  # Calculate change of the angles for servo 3 and 4
+    #                 times                = [1500] * 6
+    #                 step                 = "DropObject"  # Next step
+
+
+    #             case "DropObject":  # Drops the object
+    #                 thetas[0] = 3000  # Only move and open the gripper
+    #                 step      = "GoToInitial"  # Next step
+
+
+    #             case "GoToInitial":  # Drops the object
+    #                 thetas = utils.initial_thetas  # Move arm to initial position
+    #                 step   = "Success"  # Next step
+
+
+    #         utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format
+    #         self.publish_angles(thetas, times)  # Publish the angles to the arm
+        
+    #     res = self.position_robot(box=False, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service
+
+    #     self._logger.info(f'{step}')
+    #     response.success = True if step == "Success" else False
+        
+    #     return response
 
     
     def object_in_gripper_callback(self, msg:Bool):
@@ -467,18 +428,17 @@ class DropService(Node):
         if angles == utils.still_thetas:  # If the arm is not moving, there is no need to publish the angles
             return
 
-        msg      = Int16MultiArray()  # Initializes the message
-        msg.data = angles + times  # Concatenates the angles and times
+        msg           = Int16MultiArray()  # Initializes the message
+        msg.data      = angles + times  # Concatenates the angles and times
+        shorter_times = [x // 2 for x in times]  # Move faster the second time
 
         for _ in range(2):
             self.servo_angle_publisher.publish(msg)
 
             time.sleep(np.max(times) / 1000 + 0.25)  # Makes the code wait until the arm has had the time to move to the given angles
 
-        # self._logger.info(f'current: {self.current_angles}, sent: {angles}')
+            msg.data = angles + shorter_times  
 
-        # return utils.changed_thetas_correctly(angles, self.current_angles)  # Checks if the arm has moved to the correct angles
-        # return True
 
 def main(args=None):
     rclpy.init()

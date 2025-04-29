@@ -16,7 +16,7 @@ class ArmCameraService(Node):
         super().__init__('arm_camera_srv')
 
         self.pick_center = 400  # The pixel in the y direction where the object should end up for easy pick up
-        self.min_area    = 2500  # The minimum required area of the object to be considered as an object
+        self.min_area    = 1500  # The minimum required area of the object to be considered as an object
         self.cam_pose    = ''  # String to get the pose of the arm camera in base_link frame
         self.image       = None  # The image data from the arm camera
         self.bridge      = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
@@ -69,7 +69,7 @@ class ArmCameraService(Node):
         if self.cam_pose in ['View Drop', 'View Left', 'View Right']:
             self.min_area = 1000  # Set the minimum area to 1000 when trying to find an object
         else:
-            self.min_area = 2500
+            self.min_area = 1500
 
         for _ in range(2):  # Try to get the object position a maximum of 3 times
             if request.box:
@@ -131,7 +131,8 @@ class ArmCameraService(Node):
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
         areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
 
-        if len(areas) > 0 and (max_area := np.max(areas)) > self.min_area:  # If there are any contours found
+        max_area = np.max(areas) if len(areas) > 0 else 0
+        if len(areas) > 0 and max_area > self.min_area:  # If there are any contours found
             max_index = np.argmax(areas)  # Get the index of the largest contour
             contour   = contours[max_index]  # Choose the largest contour
             # self._logger.info(f'Max area was: {max_area}')
@@ -142,21 +143,23 @@ class ArmCameraService(Node):
             cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)  # Draw the enclosing circle in the image
             cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)  # Draw the center of the circle in the image
 
-            for c in contours:
-                (temp_cx, temp_cy), temp_radius = cv2.minEnclosingCircle(contour)  # Get the center and radius of the enclosing circle
-                temp_cx, temp_cy, temp_radius   = int(cx), int(cy), int(radius)  # Convert to integers
+            # for c in contours:
+            #     (temp_cx, temp_cy), temp_radius = cv2.minEnclosingCircle(c)  # Get the center and radius of the enclosing circle
+            #     temp_cx, temp_cy, temp_radius   = int(temp_cx), int(temp_cy), int(temp_radius / 2)  # Convert to integers
 
-                cv2.circle(image, (temp_cx, temp_cy), temp_radius, (102, 255, 255), 2)  # Draw the enclosing circle in the image
-                # cv2.circle(image, (temp_cx, temp_cy), 5, (153, 255, 153), -1)  # Draw the center of the circle in the image
+            #     cv2.circle(image, (temp_cx, temp_cy), temp_radius, (102, 255, 255), 2)  # Draw the enclosing circle in the image
+            #     # cv2.circle(image, (temp_cx, temp_cy), 5, (153, 255, 153), -1)  # Draw the center of the circle in the image
 
-            self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}')
+            # self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}, number of countours: {len(contours)}')
 
             if grasp_position:
                 x, y = self.pixel_to_adjust_in_base_link(cx, cy)
                 cv2.circle(image, (int(utils.intrinsic_mtx[0, 2]), self.pick_center), 10, (0, 255, 0), -1)  # Draw the point to adjust to
             else:
                 x, y = self.pixel_to_base_link_new(cx, cy)  # Transform the position to the base_link frame
-            
+        
+        # self._logger.info(f'Max area was: {max_area}')
+
         self.publish_image(image)  # Publish the image with or without the detected object(s)
 
         return x, y
@@ -173,10 +176,12 @@ class ArmCameraService(Node):
         """
         
         # Define HSV ranges
-        lower_red1, upper_red1   = np.array([0, 120, 70]), np.array([10, 255, 255])
-        lower_red2, upper_red2   = np.array([170, 120, 70]), np.array([180, 255, 255])
-        lower_green, upper_green = np.array([35, 100, 50]), np.array([85, 255, 255])
-        lower_blue, upper_blue   = np.array([100, 150, 50]), np.array([140, 255, 255])
+        lower_red1, upper_red1   = np.array([0, 100, 100]), np.array([10, 255, 255])
+        lower_red2, upper_red2   = np.array([160, 100, 100]), np.array([179, 255, 255])
+        lower_green, upper_green = np.array([35, 100, 100]), np.array([85, 255, 255])
+        lower_blue, upper_blue   = np.array([100, 100, 100]), np.array([140, 255, 255])
+        lower_brown, upper_brown = np.array((10, 100, 20)), np.array((20, 255, 200))
+
 
         # Create masks for each color
         mask_red1  = cv2.inRange(hsv_image, lower_red1, upper_red1)
@@ -184,8 +189,9 @@ class ArmCameraService(Node):
         red_mask   = mask_red1 | mask_red2  # Combine both red masks
         green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
         blue_mask  = cv2.inRange(hsv_image, lower_blue, upper_blue)
+        brown_mask = cv2.inRange(hsv_image, lower_brown, upper_brown)
 
-        return cv2.bitwise_or(red_mask, cv2.bitwise_or(green_mask, blue_mask))  # Combine all masks
+        return cv2.bitwise_or(red_mask, cv2.bitwise_or(green_mask, cv2.bitwise_or(brown_mask, blue_mask)))  # Combine all masks
 
 
     def clean_mask(self, mask):
@@ -218,6 +224,7 @@ class ArmCameraService(Node):
 
         x, y      = -1.0, -1.0  # Box position in base link
         cx, cy    = 0.0, 0.0
+        x_1_tot, x_2_tot, y_1_tot, y_2_tot = 0.0, 0.0, 0.0, 0.0
         num_lines = 0
         image     = self.image.copy()  # Makes sure the same image is used for the whole function
 
@@ -229,6 +236,10 @@ class ArmCameraService(Node):
 
         lines_list = []
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=80, minLineLength=80, maxLineGap=5) ## was t=80, min=80
+        # cv2.line(image, (220,350), (420,350), (0,255,100), 2)
+        # cv2.line(image, (220,350), (220,480), (0,255,100), 2)
+        # cv2.line(image, (420,350), (420,480), (0,255,100), 2)
+
 
         if lines is not None:
             for points in lines:  # Iterate over points
@@ -243,11 +254,22 @@ class ArmCameraService(Node):
                     cx        += ((x2 - x1) / 2 + x1)
                     cy        += ((y2 - y1) / 2 + y1)
 
+                    x_1_tot += x1
+                    x_2_tot += x2
+                    y_1_tot += y1
+                    y_2_tot += y2
+
                     cv2.line(image, (x1,y1), (x2,y2), (0,255,0), 2)
 
             if num_lines >= 1:
                 cx /= num_lines
                 cy /= num_lines
+                # x_1_tot /= num_lines
+                # x_2_tot /= num_lines
+                # y_1_tot /= num_lines
+                # y_2_tot /= num_lines
+                # cx       = ((x_2_tot - x_1_tot) / 2 + x_1_tot)
+                # cy       = ((y_2_tot - y_1_tot) / 2 + y_1_tot)
 
                 self._logger.info(f'num_lines: {num_lines}')
                 
@@ -298,7 +320,7 @@ class ArmCameraService(Node):
 
         angles, cam_pose = utils.cam_poses[self.cam_pose]  # Get the pose of the arm camera in base_link frame
 
-        self._logger.info(f'cam pose: {cam_pose.position.x, cam_pose.position.y, cam_pose.position.z}')
+        # self._logger.info(f'cam pose: {cam_pose.position.x, cam_pose.position.y, cam_pose.position.z}')
 
         fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
@@ -307,22 +329,21 @@ class ArmCameraService(Node):
         x_image = - (y_pixel - cy) * (cam_pose.position.z / fy)
         y_image = - (x_pixel - cx) * (cam_pose.position.z / fx)
 
-        self._logger.info(f'x_image: {x_image}, y_image: {y_image}')
+        # self._logger.info(f'x_image: {x_image}, y_image: {y_image}')
 
         # Calculate angle and distance to x_image and y_image from the camera
         angle         = np.rad2deg(np.arctan2(y_image, x_image))  # Angle to the object in radians
         distance      = np.sqrt(x_image**2 + y_image**2)  # Distance to the object in meters
 
-        if ((sum_angles := (utils.theta_arm_cam - np.sum(angles[1:]))) == 90 or
-           sum_angles == -90 or
-           sum_angles == 270):
+        if (sum_angles := (utils.theta_arm_cam + np.sum(angles[1:]))) % 90 == 0:
             center_offset = 0
+            
         else:
-            center_offset = cam_pose.position.z * np.tan(np.deg2rad(sum_angles))
+            center_offset = cam_pose.position.z / np.tan(np.deg2rad(sum_angles))
 
-        self._logger.info(f'sum angles: {sum_angles}, tan: {np.tan(np.deg2rad(sum_angles))}')
+        # self._logger.info(f'sum angles: {sum_angles}, tan: {np.tan(np.deg2rad(sum_angles))}')
 
-        self._logger.info(f'angle: {angle}, dist: {distance}, center: {center_offset}')
+        # self._logger.info(f'angle: {angle}, dist: {distance}, center: {center_offset}')
 
         # Calculate the x and y coordinates in the base_link frame
         x = cam_pose.position.x + center_offset * np.cos(np.deg2rad(angles[0])) + distance * np.cos(np.deg2rad(angles[0] + angle))

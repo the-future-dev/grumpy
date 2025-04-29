@@ -36,7 +36,7 @@ class PositioningService(Node):
         self.unrealistic_x = 0.35  # The x-position where the RGB-D camera should not be able to locate an object
         self.x_stop_goal   = 0.20  # The desired length in the x-direction from the goal object/box
         self.switch_pick   = 0.375  # The x-position where the robot should stop updating the position of the object with the RGB-D camera
-        self.switch_drop   = 0.40  # The x-position where the robot should stop updating the position of the box with the RGB-D camera
+        self.switch_drop   = 0.45  # The x-position where the robot should stop updating the position of the box with the RGB-D camera
         self.x_stop_box    = 0.30  # The desired length in the x-direction from the box
         self.y_offset      = utils.y_origin_servo5  # The y-position where the robot should stop rotating with the RGB-D camera
         
@@ -218,11 +218,11 @@ class PositioningService(Node):
 
         else:
             if not self.update and self.look_for_box:
-                turns   = 2 * round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
-                forward = round(abs(x - self.x_stop_box) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+                turns   = round(1.5 * np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
+                forward = round(abs(x - self.switch_drop) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
             else:
                 turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
-                forward = round(abs(x - self.x_stop_goal) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+                forward = round(abs(x - (self.x_stop_goal if not self.look_for_box else self.x_stop_box)) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
             
             # self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
 
@@ -251,7 +251,7 @@ class PositioningService(Node):
                     x, y    = new_x, new_y  # Update the position of the object/box
                     # Update the number of turns and forward movements needed to get to the object/box
                     turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn)
-                    forward = round(abs(x - self.x_stop_goal) / self.movement_per_forw)
+                    forward = round(abs(x - (self.x_stop_goal if not self.look_for_box else self.x_stop_box)) / self.movement_per_forw)
                     # self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
                     if x <= (self.switch_drop if self.look_for_box else self.switch_pick):  # If the robot is close enough to the object
                         # self._logger.info(f'Not updating the position of the object anymore')

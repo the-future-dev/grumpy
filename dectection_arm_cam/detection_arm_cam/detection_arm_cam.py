@@ -93,7 +93,7 @@ class DetectionArmCam(Node):
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
         areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
 
-        if len(areas) > 0 and np.max(areas) > 2000:  # If there are any contours found
+        if len(areas) > 0 and np.max(areas) > 1500:  # If there are any contours found
             max_index = np.argmax(areas)  # Get the index of the largest contour
             contour   = contours[max_index]  # Choose the largest contour
 
@@ -121,10 +121,12 @@ class DetectionArmCam(Node):
         """
         
         # Define HSV ranges
-        lower_red1, upper_red1   = np.array([0, 120, 70]), np.array([10, 255, 255])
-        lower_red2, upper_red2   = np.array([170, 120, 70]), np.array([180, 255, 255])
+        lower_red1, upper_red1   = np.array([0, 100, 100]), np.array([10, 255, 255])
+        lower_red2, upper_red2   = np.array([160, 100, 100]), np.array([179, 255, 255])
         lower_green, upper_green = np.array([35, 100, 50]), np.array([85, 255, 255])
-        lower_blue, upper_blue   = np.array([100, 150, 50]), np.array([140, 255, 255])
+        lower_blue, upper_blue   = np.array([100, 100, 100]), np.array([140, 255, 255])
+        lower_brown, upper_brown = np.array((10, 100, 20)), np.array((20, 255, 200))
+
 
         # Create masks for each color
         mask_red1  = cv2.inRange(hsv_image, lower_red1, upper_red1)
@@ -132,8 +134,9 @@ class DetectionArmCam(Node):
         red_mask   = mask_red1 | mask_red2  # Combine both red masks
         green_mask = cv2.inRange(hsv_image, lower_green, upper_green)
         blue_mask  = cv2.inRange(hsv_image, lower_blue, upper_blue)
+        brown_mask = cv2.inRange(hsv_image, lower_brown, upper_brown)
 
-        return cv2.bitwise_or(red_mask, cv2.bitwise_or(green_mask, blue_mask))  # Combine all masks
+        return cv2.bitwise_or(red_mask, cv2.bitwise_or(green_mask, cv2.bitwise_or(brown_mask, blue_mask)))  # Combine all masks
 
 
     def clean_mask(self, mask):

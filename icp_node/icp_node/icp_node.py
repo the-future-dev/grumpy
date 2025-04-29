@@ -182,7 +182,7 @@ class ICP_node(Node):
                 if result_icp.fitness >= 0.25 and result_icp.inlier_rmse < 0.1:
                     t_mat = result_icp.transformation.copy()
                     new_x_y = np.array([t_mat[0, 3], t_mat[1, 3]])
-                    if np.linalg.norm(new_x_y) < 0.05:
+                    if np.linalg.norm(new_x_y) < 0.1: # before 0.05
                         # norm also okay so we have a good icp result
                         no_good_icp = False
                         if result_icp.fitness > best_overlap:
