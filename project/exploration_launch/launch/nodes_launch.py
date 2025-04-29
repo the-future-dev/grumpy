@@ -56,7 +56,8 @@ def generate_launch_description():
     perception = Node(
         package='perception_pkg',
         executable='detection_node',
-        output='screen'
+        output='screen',
+        parameters=[{'mode': 'exploration'}]
     )
 
     object_mapping = Node(

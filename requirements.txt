@@ -7,3 +7,4 @@ open3d
 shapely
 py_trees
 py_trees_ros (use this command to install both trees: sudo apt install ros-jazzy-py-trees ros-jazzy-py-trees-ros)
+pandas

@@ -46,9 +46,23 @@ class Detection(Node):
     def __init__(self):
         super().__init__('detection')
 
+        # Operating mode parameter - defaults to "exploration" if not specified
+        self.declare_parameter('mode', 'exploration')
+        self.operating_mode = self.get_parameter('mode').get_parameter_value().string_value
+        self.get_logger().info(f'Operating mode: {self.operating_mode}')
+
         self.filepath = os.path.join(os.path.expanduser('~'), 'dd2419_ws', 'outputs', 'object_detection_outputs.txt')
         with open(self.filepath, 'w') as file:
-            pass # creates empty file
+            line = (
+                f"{'LABEL':<{10}} "
+                f"{'X':>{4}} "
+                f"{'Y':>{4}} "
+                f"{'WIDTH':>{10}} "
+                f"{'DEPTH':>{10}} "
+                f"{'HEIGHT':>{10}}\n"
+            )
+
+            file.write(line)
 
         # Data IN: Front Camera PointCloud
         self.create_subscription(
@@ -69,7 +83,13 @@ class Detection(Node):
             self.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
             package_share_directory = packages.get_package_share_directory('perception_pkg')
-            model_path = os.path.join(package_share_directory, 'models', '06.pth')
+
+            if self.operating_mode == "exploration":
+                model_path = os.path.join(package_share_directory, 'models', '06.pth')
+            elif self.operating_mode == "collection":
+                model_path = os.path.join(package_share_directory, 'models', '05.pth')
+            else:
+                raise ValueError(f"Invalid operating mode: {self.operating_mode}")
 
             self.classification_model = DGCNNClassifier(
                 input_dims=6,  # XYZ + RGB
@@ -79,7 +99,8 @@ class Detection(Node):
             self.classification_model.load_state_dict(torch.load(f=model_path, weights_only=True, map_location=self.DEVICE))
             self.classification_model.eval()
 
-            self.get_logger().info(f"Classification model loaded in {self.DEVICE} completed")
+            self.get_logger().info(f"{self.operating_mode} mode - Classification model loaded in {self.DEVICE} completed")
+
         except Exception as e:
             self.get_logger().error(f"Error loading model: {e}")
 
@@ -98,8 +119,12 @@ class Detection(Node):
         # Relevant points:
         #  - distance: (x²+y²)  less than 2.0 meters
         #  - height:   (z)      between [0.010, 0.13]
-        distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 1.4
-        height_relevance = (points[:, 2] <= 0.13) & (points[:, 2] >= 0.000)
+        if self.operating_mode == "collection":
+            distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 0.8
+            height_relevance = (points[:, 2] <= 0.13) & (points[:, 2] >= 0.000)
+        elif self.operating_mode == "exploration":
+            distance_relevance = np.sqrt(points[:, 0]**2 + points[:, 1]**2) < 1.4
+            height_relevance = (points[:, 2] <= 0.13) & (points[:, 2] >= 0.000)
 
         relevant_mask = distance_relevance & height_relevance
         relevant_indices = np.where(relevant_mask)[0]
@@ -160,17 +185,14 @@ class Detection(Node):
             if len(cluster_points) < 20:
                 continue
 
+            x_obj, y_obj, z_obj = np.mean(cluster_points, axis=0)
             min_x, min_y, min_z = np.min(cluster_points, axis=0)
             max_x, max_y, max_z = np.max(cluster_points, axis=0)
             bbox_dims = np.array([max_x - min_x, max_y - min_y, max_z - min_z]) * 100
 
-
             if bbox_dims[2] < 3: # object at least 3 cm high
                 continue
 
-
-            if len(cluster_points) > 10000:
-                continue
 
             # Neural Network Train: save data Locally ##########################################################################
             # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
@@ -182,6 +204,33 @@ class Detection(Node):
             # np.savez_compressed(data_save_path, **arrays_to_save)
             # self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
 
+            if len(cluster_points) > 10000:
+                file_label_str = f'n BOX'
+
+                if self.operating_mode == "collection" and self.is_likely_box(bbox_dims):
+                    file_label_str = f'y BOX'
+                    object_label_enum = ObjectEnum.BOX
+                    # self.get_logger().info(f"Classified large cluster as BOX based on dimensions")
+                    self.publish_object_detection(msg, object_label_enum, x_obj, y_obj, z_obj, cluster_points, cluster_rgb)
+
+                with open(self.filepath, 'a') as file:
+                    file_x = float(round(x_obj, 2))
+                    file_y = float(round(y_obj, 2))
+                    file_dim0 = float(round(bbox_dims[0])) # Width in cm
+                    file_dim1 = float(round(bbox_dims[1])) # Depth in cm
+                    file_dim2 = float(round(bbox_dims[2])) # Height in cm
+
+                    line = (
+                        f"{file_label_str:<{10}} "
+                        f"{file_x:>{4}.2f} "
+                        f"{file_y:>{4}.2f} "
+                        f"{file_dim0:>{10}.2f} "
+                        f"{file_dim1:>{10}.2f} "
+                        f"{file_dim2:>{10}.2f}\n"
+                    )
+                    file.write(line)
+                continue
+            
             # Neural Network Inference:
             object_cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             cluster_tensor = torch.tensor(object_cluster, dtype=torch.float32).to(self.DEVICE)
@@ -201,29 +250,19 @@ class Detection(Node):
                 del cluster_tensor
                 torch.cuda.empty_cache()
 
+            # Apply softmax to get probabilities
+            probabilities = torch.nn.functional.softmax(pred_values, dim=1)
             prediction = torch.argmax(pred_values, dim=1)
             object_label = prediction.item()
             object_label_enum = ObjectEnum(object_label)
-            x_obj, y_obj, z_obj = np.mean(object_cluster[:, :3], axis=0)
 
             if object_label_enum != ObjectEnum.NOISE:
-                s = ObjectDetection1D()
-                s.header.stamp = msg.header.stamp
-                s.header.frame_id = "base_link"
-                s.label.data = object_label_enum.name
-                s.pose.position.x = x_obj
-                s.pose.position.y = y_obj
-                s.pose.position.z = z_obj
-                self._object_pose.publish(s)
+                self.publish_object_detection(msg, object_label_enum, x_obj, y_obj, z_obj, cluster_points, cluster_rgb)
+            elif self.operating_mode == "collection" and self.is_likely_box(bbox_dims):
+                object_label_enum = ObjectEnum.BOX
+                # self.get_logger().info(f"Classified large cluster as BOX based on dimensions")
+                self.publish_object_detection(msg, object_label_enum, x_obj, y_obj, z_obj, cluster_points, cluster_rgb)
 
-                # Object Pubblication
-                cluster_pc2 = np.concatenate([cluster_points, self.pack_rgb(cluster_rgb)], axis=1) # TODO: remove debug
-                msgs_pub = pc2.create_cloud(msg.header, msg.fields, cluster_pc2) # TODO: remove debug
-                msgs_pub.header.frame_id = "base_link" # TODO: remove debug
-                self._pub.publish(msgs_pub) # TODO: remove debug
-
-                self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{object_label_enum.name}")
-            
             with open(self.filepath, 'a') as file:
                 file_label_str = f'{object_label_enum.name}'
                 file_x = float(round(x_obj, 2))
@@ -232,17 +271,68 @@ class Detection(Node):
                 file_dim1 = float(round(bbox_dims[1])) # Depth in cm
                 file_dim2 = float(round(bbox_dims[2])) # Height in cm
 
+                # Add probabilities to output
+                probs_str = " ".join([f"{ObjectEnum(i).name}:{prob:.4f}" for i, prob in enumerate(probabilities[0].cpu().numpy())])
+
                 line = (
                     f"{file_label_str:<{10}} "
                     f"{file_x:>{4}.2f} "
                     f"{file_y:>{4}.2f} "
                     f"{file_dim0:>{10}.2f} "
                     f"{file_dim1:>{10}.2f} "
-                    f"{file_dim2:>{10}.2f}\n"
+                    f"{file_dim2:>{10}.2f} "
+                    f"Probs: {probs_str}\n"
                 )
 
                 file.write(line)
 
+    def publish_object_detection(self, msg, object_label_enum, x_obj, y_obj, z_obj, cluster_points, cluster_rgb):
+        """Publish object detection results
+        
+        Args:
+            msg: Original PointCloud2 message for header info
+            object_label_enum: Enum of detected object type
+            x_obj, y_obj, z_obj: Object position coordinates
+            cluster_points: Points belonging to detected object
+            cluster_rgb: RGB values for cluster points
+        """
+        # Publish object detection message
+        detection_msg = ObjectDetection1D()
+        detection_msg.header.stamp = msg.header.stamp
+        detection_msg.header.frame_id = "base_link"
+        detection_msg.label.data = object_label_enum.name
+        detection_msg.pose.position.x = x_obj
+        detection_msg.pose.position.y = y_obj
+        detection_msg.pose.position.z = z_obj
+        self._object_pose.publish(detection_msg)
+
+        # Publish visualization messages
+        cluster_pc2 = np.concatenate([cluster_points, self.pack_rgb(cluster_rgb)], axis=1)
+        vis_msg = pc2.create_cloud(msg.header, msg.fields, cluster_pc2)
+        vis_msg.header.frame_id = "base_link"
+        self._pub.publish(vis_msg)
+
+        # Place TF frame for object
+        self.place_object_frame((x_obj, y_obj, z_obj), "base_link", msg.header.stamp, f"{object_label_enum.name}")
+        
+
+
+    def is_likely_box(self, bbox_dims):
+        """
+        Determine if an object is likely a box based on its dimensions
+        Args:
+            bbox_dims: dimensions [width, depth, height] in cm
+        Returns:
+            bool: True if object is likely a box
+        """
+        width_cm, depth_cm, height_cm = bbox_dims
+
+        height_match = 9.0 <= height_cm <= 11.06
+        # size_match = (3 <= width_cm <= 25) and (15 <= depth_cm <= 31)
+        
+        # self.get_logger().info(f"Height: {height_cm} | Width: {width_cm} | Depth: {depth_cm}")
+
+        return height_match
 
     def unpack_rgb(self, packed_colors):
         """

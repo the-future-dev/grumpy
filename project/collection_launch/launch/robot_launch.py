@@ -33,6 +33,11 @@ def generate_launch_description():
             output='screen' 
         )
     
+    arm_communication = ExecuteProcess(
+            cmd=['ros2', 'run', 'micro_ros_agent', 'micro_ros_agent', 'serial', '--dev', '/dev/hiwonder_arm', '-v6'],   
+    )
+    
+
     # Static Transforms
     static_tf_base_lidar = Node(
         package='tf2_ros',
@@ -47,5 +52,6 @@ def generate_launch_description():
         frames_launch,
         lidar_launch,
         front_camera_launch,
-        static_tf_base_lidar
+        static_tf_base_lidar,
+        arm_communication,
     ])

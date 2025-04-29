@@ -12,17 +12,31 @@ import random
 from geometry_msgs.msg import PointStamped, TransformStamped
 from nav_msgs.msg import Path
 from std_msgs.msg import Bool
+from occupancy_grid_map.workspace_utils import Workspace
 
 class SampleDriveControlNode(Node):
 
     def __init__(self):
         super().__init__('sample_drive_control_node')
 
-        self.vel_forward = 0.13
-        self.vel_rotate = 0.09
-        self.vel_small_rotate = 0.015
-        self.vel_arrived = 0.0
-        self.right_extra = 1.05
+        self.ws_utils = Workspace()
+        self.phase = self.ws_utils.phase
+
+        if self.phase == 'collection':
+
+            self.vel_forward = 0.2 # 0.13 before
+            self.vel_rotate = 0.09 # 0.09 before
+            self.vel_small_rotate = 0.015
+            self.vel_arrived = 0.0
+            self.right_extra = 1.075
+
+        elif self.phase == 'exploration':
+
+            self.vel_forward = 0.13 # 0.13 before
+            self.vel_rotate = 0.09 # 0.09 before
+            self.vel_small_rotate = 0.015
+            self.vel_arrived = 0.0
+            self.right_extra = 1.075
 
         # stop variable
         self.stop = False
@@ -62,7 +76,7 @@ class SampleDriveControlNode(Node):
         #     return
 
         for pose in msg.poses:
-          result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y)
+          result =  self.set_drive_input(pose.pose.position.x, pose.pose.position.y, msg.header.frame_id)
           if result == False:
               break
 
@@ -94,7 +108,7 @@ class SampleDriveControlNode(Node):
     #     msg_stop.duty_cycle_right = 0.0
     #     self.motor_publisher.publish(msg_stop)
 
-    def set_drive_input(self, x, y):
+    def set_drive_input(self, x, y, given_frame_id):
 
         msg = DutyCycles()
         sample_point = PointStamped()
@@ -112,7 +126,6 @@ class SampleDriveControlNode(Node):
             # if self.stop == True and self.drive_to_free == False:
             #     self.get_logger().info(f'Stopping, in occupied zone')
             #     return False
-
             tf_future = self.tf_buffer.wait_for_transform_async('base_link', from_frame, self.get_clock().now())
             rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
 
@@ -134,7 +147,7 @@ class SampleDriveControlNode(Node):
             y = point_base_link.point.y
         
             #If y is zero and x > 0 means perfect alignment otherwise turning
-            if x >= 0.0 and abs(y) < 0.05:
+            if x >= 0.0 and abs(y) < 0.15:
                 #Stop turning
                 msg.duty_cycle_right = self.vel_arrived*self.right_extra
                 msg.duty_cycle_left = self.vel_arrived
@@ -156,9 +169,8 @@ class SampleDriveControlNode(Node):
 
             # if self.stop == True and self.drive_to_free == False:
             #     return False
-            
             tf_future = self.tf_buffer.wait_for_transform_async('base_link', from_frame, self.get_clock().now())
-            rclpy.spin_until_future_complete(self, tf_future, timeout_sec=1)
+            rclpy.spin_until_future_complete(self, tf_future, timeout_sec=0.5)
 
             try:
                 tf_odom_base_link = self.tf_buffer.lookup_transform('base_link', from_frame, rclpy.time.Time()) # get latest available transform

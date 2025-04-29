@@ -1,0 +1,6 @@
+bool box
+geometry_msgs/Pose pose
+bool backup
+---
+std_msgs/String label
+bool success

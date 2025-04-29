@@ -1,12 +1,10 @@
 
 import rclpy
-import rclpy.clock
 from rclpy.node import Node
 import rclpy.time
 import numpy as np
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
-import tf_transformations
 from tf2_ros import TransformException
 from std_msgs.msg import Int16MultiArray, MultiArrayDimension
 from nav_msgs.msg import Path
@@ -19,7 +17,7 @@ from matplotlib.colors import BoundaryNorm
 from scipy.ndimage import binary_dilation
 from occupancy_grid_map.workspace_utils import Workspace
 from time import sleep
-from robp_interfaces.msg import DutyCycles
+from grumpy_interfaces.msg import ObjectDetection1D
 
 class ANode:
     #Create a A-star Node for queueing
@@ -58,6 +56,8 @@ class AStarAlgorithmNode(Node):
         self.grid_recieved = False
         self.goal_pose_recieved = False
         self.ws_utils = Workspace()
+        self.limit = 0
+        self.phase = self.ws_utils.phase
 
         self.obstacle = 1
         self.outside = 3
@@ -71,15 +71,25 @@ class AStarAlgorithmNode(Node):
         self.inflate_grid_pub = self.create_publisher(Int16MultiArray, 'Astar/inflated_gridmap', 1)
 
         # Subscribe to grid and next goal topic
-        self.create_subscription(PoseStamped, 'Astar/next_goal', self.next_goal_cb, 1)
+        self.create_subscription(ObjectDetection1D, 'Astar/next_goal', self.next_goal_cb, 1)
         self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
 
-    def next_goal_cb(self, msg:PoseStamped):
+    def next_goal_cb(self, msg:ObjectDetection1D):
         #Call back when pose revieved
 
         goal_x = msg.pose.position.x
         goal_y = msg.pose.position.y
+        action = msg.label.data
+
         self.grid_xg, self.grid_yg = self.ws_utils.convert_map_to_grid(goal_x, goal_y)
+
+        if action == 'Pick':
+            # self.limit = 4 # TODO: If A* is used to get all the way to the object
+            self.limit = 9
+        else:
+            # self.limit = 6 # TODO: If A* is used to get all the way to the box
+            self.limit = 12 
+
         self.goal_pose_recieved = True
         #self.get_logger().info(f'{self.grid_xg}hej')
 
@@ -99,10 +109,6 @@ class AStarAlgorithmNode(Node):
 
         self.publish_inflated_grid()
         self.grid_recieved = True
-
-        # if self.grid_recieved == False:
-        #     self.grid_recieved = True
-        #     self.grid = self.updated_grid
         
         self.publish_path()
 
@@ -137,7 +143,7 @@ class AStarAlgorithmNode(Node):
     def inflate_grid(self, item):
 
         if item == self.obstacle:
-            size = 30
+            size = 35
         if item == self.outside:
             size = 30
         if item == self.object_box:
@@ -189,7 +195,6 @@ class AStarAlgorithmNode(Node):
     
     def solve_path_points(self):
         #Function which takes the Q and decides whether to go to next item in Q or if at endpoint
-        #sleep(3)
 
         #Take grid current pose
         self.grid_rob_x, self.grid_rob_y = self.current_pos()
@@ -219,7 +224,7 @@ class AStarAlgorithmNode(Node):
             grid_x = node_curr.grid_x
             grid_y = node_curr.grid_y
 
-            if abs(self.grid_xg - grid_x) < 8 and abs(self.grid_yg - grid_y) < 8: #limits can be changed
+            if abs(self.grid_xg - grid_x) <= self.limit and abs(self.grid_yg - grid_y) <= self.limit: #limits can be changed, 10 worked good with objects, 13 seems okay with boxes
                 pose_list, time = self.end_point(node_curr)
                 if not pose_list:
                     return None, time
@@ -289,46 +294,29 @@ class AStarAlgorithmNode(Node):
         x_list = []
         y_list = []
         time = self.get_clock().now().to_msg()
-        grid_curr_x = self.grid_rob_x
-        grid_curr_y = self.grid_rob_y
-        last_node = node_curr
 
         while node_curr.parent != None:
 
-            # x, y = self.grid_to_map(node_curr.grid_x, node_curr.grid_y)
             next_x, next_y = self.ws_utils.convert_grid_to_map(node_curr.grid_x, node_curr.grid_y)
-            #curr_x, curr_y = self.ws_utils.convert_grid_to_map(grid_curr_x, grid_curr_y)
-            #free = self.check_free_path(curr_x, curr_y, next_x, next_y)
-            #self.get_logger().info(f'{free}')
 
             x_list.append(next_x/100)
             y_list.append(next_y/100)
             self.grid[node_curr.grid_y, node_curr.grid_x] = -2
             node_curr = node_curr.parent
 
-            # if free == True:
-            #     x_list.append(next_x/100)
-            #     y_list.append(next_y/100)
-            #     self.grid[node_curr.grid_y, node_curr.grid_x] = -2
-
-            #     if node_curr.grid_x == last_node.grid_x and node_curr.grid_y == last_node.grid_y:
-            #         self.get_logger().info(f'{x_list}')
-            #         self.get_logger().info('Breaking loop')
-            #         break
-            #     else:
-            #         grid_curr_x = node_curr.grid_x
-            #         grid_curr_y = node_curr.grid_y
-            #         node_curr = last_node
-            # else:
-
         x_list = x_list[::-1]
         y_list = y_list[::-1]
 
         if len(x_list) == 0:
             return None, time
+        
+        if self.phase == 'collection':
+            x_list, y_list = self.collection_reduce(x_list, y_list)
+        elif self.phasse == 'exploration':
+            x_list, y_list = self.exploration_reduce(x_list, y_list)
 
-        x_list, y_list = self.reduce_poses(x_list, y_list)
-
+        # PLOTTING
+        
         cmap = plt.cm.get_cmap('Paired', 8)
         norm = BoundaryNorm([-2, -1, 0, 1, 2, 3, 4, 5, 6], cmap.N)
         plt.figure(figsize=(10, 10))
@@ -337,6 +325,8 @@ class AStarAlgorithmNode(Node):
         cbar.set_ticks([-2, -1, 0, 1, 2, 3, 4, 5])
         plt.savefig('/home/group5/dd2419_ws/outputs/astar_map')
         plt.close()
+
+        #Creating message
 
         for i in range(len(x_list)):
             pose = PoseStamped()
@@ -350,19 +340,60 @@ class AStarAlgorithmNode(Node):
         return pose_list, time
 
     def check_free_path(self, x_start, y_start, x_end, y_end):
+        #Checkin linspace between poses is free or occupied
 
-        x_line = np.linspace(x_start, x_end, 100)
-        y_line = np.linspace(y_start, y_end, 100)
+        x_line = np.linspace(x_start*100, x_end*100, 1000)
+        y_line = np.linspace(y_start*100, y_end*100, 1000)
 
-        # grid_x_line, grid_y_line = self.map_to_grid(100*x_line, 100*y_line)
         grid_x_line, grid_y_line = self.ws_utils.convert_map_to_grid(x_line, y_line)
 
         if np.any((self.grid[grid_y_line, grid_x_line] > 0) & (self.grid[grid_y_line, grid_x_line] < 5)):
             return False
         else:
             return True
+        
+    def collection_reduce(self, x_list, y_list):
+        #Reducing the poses in collection phase
+
+        new_x = [x_list[0]]
+        new_y = [y_list[0]]
+
+        curr_x = x_list[0]
+        curr_y = y_list[0]
+
+        for i in range(len(x_list) - 1):
+            
+            free = self.check_free_path(curr_x, curr_y, x_list[i+1], y_list[i+1])
+            
+            if free == True:
+                new_x.pop(-1)
+                new_y.pop(-1)
+            else:
+                curr_x = new_x[-1]
+                curr_y = new_y[-1]
+
+            new_x.append(x_list[i+1])
+            new_y.append(y_list[i+1])
+
+        new_x.insert(0, x_list[0])
+        new_y.insert(0, y_list[0])
+
+        N = len(new_x) * 2
+
+        cs = interp1d(new_x, new_y)
+        x_list = np.linspace(new_x[0], x_list[-1], N)
+        y_list = cs(x_list)
+
+        self.get_logger().info(f'length of path {len(new_x)}')
+
+        return x_list, y_list
+
     
-    def reduce_poses(self, x_list, y_list):
+    def exploration_reduce(self, x_list, y_list):
+        #Reducing the poses in exploration
+
+        if len(x_list) <= 3:
+            return x_list, y_list
 
         N = len(x_list) // 2
 

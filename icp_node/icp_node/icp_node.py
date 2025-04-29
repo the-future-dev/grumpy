@@ -35,7 +35,7 @@ class ICP_node(Node):
         # Initialize subscriber pose from update step of EKF
         self.create_subscription(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', self.localization_pose_cb, 1)
 
-        # Initialize the transform buffer§
+        # Initialize the transform buffer
         self.tf_buffer = Buffer()
 
         # Initialize the transform listener
@@ -61,8 +61,8 @@ class ICP_node(Node):
         self.t_mat = None
 
         # Initialize counters
-        # self.counter = 0
-        # self.N = 10
+        self.counter = 0
+        self.N = 1
         self.bad_scan_counter  = 0
         self.threshold_new_scan = 5
 
@@ -110,11 +110,11 @@ class ICP_node(Node):
             return
 
         # only process every nth scan
-        # if self.counter > 0:                                  # CHANGED SO THAT EVERY SCAN IS PROCESSED
-        #     self.counter -= 1
-        #     self.t.header.stamp = msg.header.stamp
-        #     self._tf_broadcaster.sendTransform(self.t)
-        #     return
+        if self.counter > 0:                                  
+            self.counter -= 1
+            self.t.header.stamp = msg.header.stamp
+            self._tf_broadcaster.sendTransform(self.t)
+            return
 
         # Get transform between odom and frame_id
         to_frame_rel = 'odom'
@@ -182,7 +182,7 @@ class ICP_node(Node):
                 if result_icp.fitness >= 0.25 and result_icp.inlier_rmse < 0.1:
                     t_mat = result_icp.transformation.copy()
                     new_x_y = np.array([t_mat[0, 3], t_mat[1, 3]])
-                    if np.linalg.norm(new_x_y) < 0.10:
+                    if np.linalg.norm(new_x_y) < 0.1: # before 0.05
                         # norm also okay so we have a good icp result
                         no_good_icp = False
                         if result_icp.fitness > best_overlap:
