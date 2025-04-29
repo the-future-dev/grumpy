@@ -56,7 +56,7 @@ class AStarAlgorithmNode(Node):
         self.grid_recieved = False
         self.goal_pose_recieved = False
         self.ws_utils = Workspace()
-        self.limit = 0
+        self.limit = 9
         self.phase = self.ws_utils.phase
 
         self.obstacle = 1
@@ -71,24 +71,16 @@ class AStarAlgorithmNode(Node):
         self.inflate_grid_pub = self.create_publisher(Int16MultiArray, 'Astar/inflated_gridmap', 1)
 
         # Subscribe to grid and next goal topic
-        self.create_subscription(ObjectDetection1D, 'Astar/next_goal', self.next_goal_cb, 1)
+        self.create_subscription(PoseStamped, 'Astar/next_goal', self.next_goal_cb, 1)
         self.create_subscription(Int16MultiArray, 'map/gridmap', self.grid_cb, 1)
 
-    def next_goal_cb(self, msg:ObjectDetection1D):
+    def next_goal_cb(self, msg:PoseStamped):
         #Call back when pose revieved
 
         goal_x = msg.pose.position.x
         goal_y = msg.pose.position.y
-        action = msg.label.data
 
         self.grid_xg, self.grid_yg = self.ws_utils.convert_map_to_grid(goal_x, goal_y)
-
-        if action == 'Pick':
-            # self.limit = 4 # TODO: If A* is used to get all the way to the object
-            self.limit = 9
-        else:
-            # self.limit = 6 # TODO: If A* is used to get all the way to the box
-            self.limit = 12 
 
         self.goal_pose_recieved = True
         #self.get_logger().info(f'{self.grid_xg}hej')
@@ -312,7 +304,7 @@ class AStarAlgorithmNode(Node):
         
         if self.phase == 'collection':
             x_list, y_list = self.collection_reduce(x_list, y_list)
-        elif self.phasse == 'exploration':
+        elif self.phase == 'exploration':
             x_list, y_list = self.exploration_reduce(x_list, y_list)
 
         # PLOTTING

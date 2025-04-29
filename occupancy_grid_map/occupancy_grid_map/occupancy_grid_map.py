@@ -245,7 +245,8 @@ class OccupancyGridMapNode(Node):
 
         self.grid_pub.publish(msg_grid)
 
-        self.visualize_grid_as_cells()
+        if self.phase == 'collection':
+            self.visualize_grid_as_cells()
     
     def filter_points(self, x_grid_points, y_grid_points, value):
 

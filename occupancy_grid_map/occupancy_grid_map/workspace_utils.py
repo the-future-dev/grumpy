@@ -29,7 +29,7 @@ class Workspace:
         self.unknown = -1
 
         self.grid = np.full((self.grid_ylength, self.grid_xlength), self.unknown, dtype=np.int16)
-        self.phase = 'collection' #### 'collection' or 'exploration'
+        self.phase = 'exploration' #### 'collection' or 'exploration'
         
     def create_grid(self):
  

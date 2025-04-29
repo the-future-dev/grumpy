@@ -197,17 +197,17 @@ class Detection(Node):
             # Neural Network Train: save data Locally ##########################################################################
             # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             # self.object_data_list.append(cluster)
-            # data_save_path = os.path.join(os.path.expanduser('~'), 'dd2419_ws', 'src', 'perception_pkg', 'trials', 'object_data', 'milestone3_shit')
+            # data_save_path = os.path.join(os.path.expanduser('~'), 'dd2419_ws', 'src', 'perception_pkg', 'trials', 'object_data', 'ms3_ws1')
             # arrays_to_save = {}
             # for i, item in enumerate(self.object_data_list):
             #     arrays_to_save[f'cluster_{i}'] = item
             # np.savez_compressed(data_save_path, **arrays_to_save)
-            # self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
+            # # self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
 
-            if len(cluster_points) > 10000:
+            if len(cluster_points) > 12000 and self.operating_mode == "collection":
                 file_label_str = f'n BOX'
 
-                if self.operating_mode == "collection" and self.is_likely_box(bbox_dims):
+                if self.is_likely_box(bbox_dims):
                     file_label_str = f'y BOX'
                     object_label_enum = ObjectEnum.BOX
                     # self.get_logger().info(f"Classified large cluster as BOX based on dimensions")
@@ -255,6 +255,11 @@ class Detection(Node):
             prediction = torch.argmax(pred_values, dim=1)
             object_label = prediction.item()
             object_label_enum = ObjectEnum(object_label)
+
+            # Check if puppy probability is above threshold
+            puppy_prob = probabilities[0][ObjectEnum.PUPPY.value].item()
+            if puppy_prob > 0.2:
+                self.get_logger().info(f"High puppy probability detected: {puppy_prob:.4f}")
 
             if object_label_enum != ObjectEnum.NOISE:
                 self.publish_object_detection(msg, object_label_enum, x_obj, y_obj, z_obj, cluster_points, cluster_rgb)
