@@ -15,11 +15,13 @@ class ArmCameraService(Node):
     def __init__(self):
         super().__init__('arm_camera_srv')
 
-        self.pick_center = 400  # The pixel in the y direction where the object should end up for easy pick up
-        self.min_area    = 1500  # The minimum required area of the object to be considered as an object
-        self.cam_pose    = ''  # String to get the pose of the arm camera in base_link frame
-        self.image       = None  # The image data from the arm camera
-        self.bridge      = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
+        self.pick_center    = 400  # The pixel in the y direction where the object should end up for easy pick up
+        self.min_area       = 1500  # The minimum required area of the object to be considered as an object
+        self.comp_percent   = 0.05  # The maximum distortion compensation for the x and y-direction when the camera is tilted
+        self.slope_degree   = 200.0  # How fast the maximum distortion compensation should increase with the distance to the image center
+        self.cam_pose       = ''  # String to get the pose of the arm camera in base_link frame
+        self.image          = None  # The image data from the arm camera
+        self.bridge         = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
 
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
@@ -326,14 +328,16 @@ class ArmCameraService(Node):
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
 
         # Convert pixel coordinates to cartesian, inverted because the rows and columns increase opposite to the base_link frame
-        x_image = - (y_pixel - cy) * (cam_pose.position.z / fy)
-        y_image = - (x_pixel - cx) * (cam_pose.position.z / fx)
+        x_image                   = - (y_pixel - cy) * (cam_pose.position.z / fy)
+        y_image                   = - (x_pixel - cx) * (cam_pose.position.z / fx)
+        distortion_compensation_x = 1 - self.comp_percent * (self.slope_degree ** (abs(y_pixel - cy) / cy - 1) - 1 / self.slope_degree)
+        distortion_compensation_y = 1 - self.comp_percent * (self.slope_degree ** (abs(x_pixel - cx) / cx - 1) - 1 / self.slope_degree)
 
         # self._logger.info(f'x_image: {x_image}, y_image: {y_image}')
 
         # Calculate angle and distance to x_image and y_image from the camera
-        angle         = np.rad2deg(np.arctan2(y_image, x_image))  # Angle to the object in radians
-        distance      = np.sqrt(x_image**2 + y_image**2)  # Distance to the object in meters
+        angle    = np.rad2deg(np.arctan2(y_image, x_image))  # Angle to the object in radians
+        distance = np.sqrt(x_image**2 + y_image**2)  # Distance to the object in meters
 
         if (sum_angles := (utils.theta_arm_cam + np.sum(angles[1:]))) % 90 == 0:
             center_offset = 0
@@ -346,8 +350,12 @@ class ArmCameraService(Node):
         # self._logger.info(f'angle: {angle}, dist: {distance}, center: {center_offset}')
 
         # Calculate the x and y coordinates in the base_link frame
-        x = cam_pose.position.x + center_offset * np.cos(np.deg2rad(angles[0])) + distance * np.cos(np.deg2rad(angles[0] + angle))
-        y = cam_pose.position.y + center_offset * np.sin(np.deg2rad(angles[0])) + distance * np.sin(np.deg2rad(angles[0] + angle))
+        x = (cam_pose.position.x + 
+             center_offset * np.cos(np.deg2rad(angles[0])) + 
+             distance * np.cos(np.deg2rad(angles[0] + angle)) * distortion_compensation_x)
+        y = (cam_pose.position.y + 
+             center_offset * np.sin(np.deg2rad(angles[0])) + 
+             distance * np.sin(np.deg2rad(angles[0] + angle)) * distortion_compensation_y)
 
         return x, y
     
