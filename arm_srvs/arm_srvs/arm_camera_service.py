@@ -15,11 +15,13 @@ class ArmCameraService(Node):
     def __init__(self):
         super().__init__('arm_camera_srv')
 
-        self.pick_center = 400  # The pixel in the y direction where the object should end up for easy pick up
-        self.min_area    = 1500  # The minimum required area of the object to be considered as an object
-        self.cam_pose    = ''  # String to get the pose of the arm camera in base_link frame
-        self.image       = None  # The image data from the arm camera
-        self.bridge      = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
+        self.pick_center  = 400  # The pixel in the y direction where the object should end up for easy pick up
+        self.min_area     = 1000  # The minimum required area of the object to be considered as an object
+        self.comp_percent = 0.05  # The maximum distortion compensation for the x and y-direction when the camera is tilted
+        self.slope_degree = 200.0  # How fast the maximum distortion compensation should increase with the distance to the image center
+        self.cam_pose     = ''  # String to get the pose of the arm camera in base_link frame
+        self.image        = None  # The image data from the arm camera
+        self.bridge       = cv_bridge.CvBridge()  # Bridge for converting between ROS messages and OpenCV images
 
         # Create group for the service and subscriber that will run on different threads
         self.service_cb_group    = MutuallyExclusiveCallbackGroup()
@@ -67,9 +69,9 @@ class ArmCameraService(Node):
         x, y          = -1.0, -1.0  # The x and y position of the object
 
         if self.cam_pose in ['View Drop', 'View Left', 'View Right']:
-            self.min_area = 1000  # Set the minimum area to 1000 when trying to find an object
+            self.min_area = 500  # Set the minimum area to 1000 when trying to find an object
         else:
-            self.min_area = 1500
+            self.min_area = 1000
 
         for _ in range(2):  # Try to get the object position a maximum of 3 times
             if request.box:
@@ -116,19 +118,44 @@ class ArmCameraService(Node):
         Other functions:
             Uses the image data from the arm camera to detect object(s) and its/their position(s)
         """
-        
-        x, y   = -1.0, -1.0  # Object position in base link
-        image  = self.image.copy()  # Makes sure the same image is used for the whole function
 
-        undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
-        hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for eaiser color-based object detection
+        plushies = True
+        x, y     = -1.0, -1.0  # Object position in base link
+        image    = self.image.copy()  # Makes sure the same image is used for the whole function
 
-        mask = self.create_masks(hsv_image)  # Create a combined mask for red, green, and blue objects
-        mask = cv2.medianBlur(mask, 5)  # Apply a median blur to the mask to reduce salt and pepper noise
-        mask = self.clean_mask(mask)  # Clean each mask using morphological operations
+        if plushies:
+            undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
+            gray = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2GRAY)
+
+            # Apply Gaussian blurs
+            blur1 = cv2.GaussianBlur(gray, (5, 5), 0)
+            blur2 = cv2.GaussianBlur(gray, (9, 9), 0)
+
+            # Compute DoG
+            dog = cv2.absdiff(blur1, blur2)
+
+            # Threshold the DoG image
+            _, thresh = cv2.threshold(dog, 10, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+            # _, binary_mask = cv2.threshold(dog, 10, 255, cv2.THRESH_BINARY)
+
+            # # Optional: Clean up the result with morphological operations
+            # kernel = np.ones((3, 3), np.uint8)
+            # binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel)
+
+            # # Find contours
+            # contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        else:
+            undistorted_image = cv2.undistort(image, utils.intrinsic_mtx, utils.dist_coeffs)  # Undistort the image
+            hsv_image         = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for eaiser color-based object detection
+
+            mask = self.create_masks(hsv_image)  # Create a combined mask for red, green, and blue objects
+            mask = cv2.medianBlur(mask, 5)  # Apply a median blur to the mask to reduce salt and pepper noise
+            mask = self.clean_mask(mask)  # Clean each mask using morphological operations
 
         # contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, only external contours
-        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
+        contours, _ = cv2.findContours(mask if not plushies else thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
         areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
 
         max_area = np.max(areas) if len(areas) > 0 else 0
@@ -143,14 +170,14 @@ class ArmCameraService(Node):
             cv2.circle(image, (cx, cy), radius, (255, 255, 255), 2)  # Draw the enclosing circle in the image
             cv2.circle(image, (cx, cy), 5, (0, 0, 0), -1)  # Draw the center of the circle in the image
 
-            # for c in contours:
-            #     (temp_cx, temp_cy), temp_radius = cv2.minEnclosingCircle(c)  # Get the center and radius of the enclosing circle
-            #     temp_cx, temp_cy, temp_radius   = int(temp_cx), int(temp_cy), int(temp_radius / 2)  # Convert to integers
+            for c in contours:
+                (temp_cx, temp_cy), temp_radius = cv2.minEnclosingCircle(c)  # Get the center and radius of the enclosing circle
+                temp_cx, temp_cy, temp_radius   = int(temp_cx), int(temp_cy), int(temp_radius / 2)  # Convert to integers
 
-            #     cv2.circle(image, (temp_cx, temp_cy), temp_radius, (102, 255, 255), 2)  # Draw the enclosing circle in the image
-            #     # cv2.circle(image, (temp_cx, temp_cy), 5, (153, 255, 153), -1)  # Draw the center of the circle in the image
+                cv2.circle(image, (temp_cx, temp_cy), temp_radius, (102, 255, 255), 2)  # Draw the enclosing circle in the image
+                # cv2.circle(image, (temp_cx, temp_cy), 5, (153, 255, 153), -1)  # Draw the center of the circle in the image
 
-            # self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}, number of countours: {len(contours)}')
+            self._logger.info(f'get_object_position: cx = {cx} and cy = {cy}, number of countours: {len(contours)}')
 
             if grasp_position:
                 x, y = self.pixel_to_adjust_in_base_link(cx, cy)
@@ -158,7 +185,7 @@ class ArmCameraService(Node):
             else:
                 x, y = self.pixel_to_base_link_new(cx, cy)  # Transform the position to the base_link frame
         
-        # self._logger.info(f'Max area was: {max_area}')
+        self._logger.info(f'Max area was: {max_area}')
 
         self.publish_image(image)  # Publish the image with or without the detected object(s)
 
@@ -321,35 +348,40 @@ class ArmCameraService(Node):
         angles, cam_pose = utils.cam_poses[self.cam_pose]  # Get the pose of the arm camera in base_link frame
 
         # self._logger.info(f'cam pose: {cam_pose.position.x, cam_pose.position.y, cam_pose.position.z}')
-
         fx, fy = utils.intrinsic_mtx[0, 0], utils.intrinsic_mtx[1, 1]  # Focal lengths from the intrinsic matrix
         cx, cy = utils.intrinsic_mtx[0, 2], utils.intrinsic_mtx[1, 2]  # Principal point from the intrinsic matrix
 
         # Convert pixel coordinates to cartesian, inverted because the rows and columns increase opposite to the base_link frame
-        x_image = - (y_pixel - cy) * (cam_pose.position.z / fy)
-        y_image = - (x_pixel - cx) * (cam_pose.position.z / fx)
+
+        x_image                   = - (y_pixel - cy) * (cam_pose.position.z / fy)
+        y_image                   = - (x_pixel - cx) * (cam_pose.position.z / fx)
+        distortion_compensation_x = 1 - self.comp_percent * (self.slope_degree ** (abs(y_pixel - cy) / cy - 1) - 1 / self.slope_degree)
+        distortion_compensation_y = 1 - self.comp_percent * (self.slope_degree ** (abs(x_pixel - cx) / cx - 1) - 1 / self.slope_degree)
 
         # self._logger.info(f'x_image: {x_image}, y_image: {y_image}')
 
         # Calculate angle and distance to x_image and y_image from the camera
-        angle         = np.rad2deg(np.arctan2(y_image, x_image))  # Angle to the object in radians
-        distance      = np.sqrt(x_image**2 + y_image**2)  # Distance to the object in meters
+        angle    = np.rad2deg(np.arctan2(y_image, x_image))  # Angle to the object in radians
+        distance = np.sqrt(x_image**2 + y_image**2)  # Distance to the object in meters
 
         if (sum_angles := (utils.theta_arm_cam + np.sum(angles[1:]))) % 90 == 0:
             center_offset = 0
-            
+
         else:
             center_offset = cam_pose.position.z / np.tan(np.deg2rad(sum_angles))
 
         # self._logger.info(f'sum angles: {sum_angles}, tan: {np.tan(np.deg2rad(sum_angles))}')
-
         # self._logger.info(f'angle: {angle}, dist: {distance}, center: {center_offset}')
 
         # Calculate the x and y coordinates in the base_link frame
-        x = cam_pose.position.x + center_offset * np.cos(np.deg2rad(angles[0])) + distance * np.cos(np.deg2rad(angles[0] + angle))
-        y = cam_pose.position.y + center_offset * np.sin(np.deg2rad(angles[0])) + distance * np.sin(np.deg2rad(angles[0] + angle))
+        x = (cam_pose.position.x +
+             center_offset * np.cos(np.deg2rad(angles[0])) +
+             distance * np.cos(np.deg2rad(angles[0] + angle)) * distortion_compensation_x)
+        y = (cam_pose.position.y +
+             center_offset * np.sin(np.deg2rad(angles[0])) +
+             distance * np.sin(np.deg2rad(angles[0] + angle)) * distortion_compensation_y)
 
-        return x, y
+        return x, y  # x, y in base_link
     
 
     def pixel_to_adjust_in_base_link(self, x_pixel, y_pixel):
