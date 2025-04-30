@@ -1,5 +1,6 @@
 bool grasp
 bool box
+bool puppy
 std_msgs/String cam_pose
 ---
 geometry_msgs/Pose pose

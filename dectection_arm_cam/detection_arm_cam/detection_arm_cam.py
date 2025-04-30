@@ -58,7 +58,7 @@ class DetectionArmCam(Node):
         """
         
         self.num_images += 1  # Increment the number of images processed
-        if self.num_images % 3 == 0:  # Every third image check if an object is in the gripper
+        if self.num_images % 2 == 0:  # Every third image check if an object is in the gripper
             pub_msg = Bool()
 
             image        = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')  # Convert the image message to an OpenCV image
@@ -80,8 +80,28 @@ class DetectionArmCam(Node):
         object_found = False  # Initialize the object_found variable to False
 
         height        = image.shape[0]  # Get the height of the image
-        offset_y      = int(height * (2/3))  # Calculate the offset to crop the image
+        offset_y      = int(height * (3/5))  # Calculate the offset to crop the image
         cropped_image = image[offset_y:, :]  # Crop the image to the lower third to reduce processing time
+
+        gray = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY)
+
+        # Apply Gaussian blurs
+        blur1 = cv2.GaussianBlur(gray, (5, 5), 0)
+        blur2 = cv2.GaussianBlur(gray, (9, 9), 0)
+        
+        # gray_blurred      = cv2.bilateralFilter(gray_equalized, 9, 75, 75)  # Add blur to simplify the image
+
+        # Compute DoG
+        dog = cv2.absdiff(blur1, blur2)
+
+        # Apply threshold to get a binary mask of edges
+        _, binary_mask = cv2.threshold(dog, 10, 255, cv2.THRESH_BINARY + cv2.THRESH_BINARY)
+
+        # Optional: Clean up the result with morphological operations
+        kernel = np.ones((2, 2), np.uint8)
+        thresh = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, kernel)
+
+        contours_1, _ = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
 
         hsv_image     = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for eaiser color-based object detection
 
@@ -90,10 +110,12 @@ class DetectionArmCam(Node):
         mask = self.clean_mask(mask)  # Clean each mask using morphological operations
 
         # contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, only external contours
-        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
+        contours_2, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
+
+        contours = contours_1 + contours_2
         areas = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
 
-        if len(areas) > 0 and np.max(areas) > 1500:  # If there are any contours found
+        if len(areas) > 0 and np.max(areas) > 3000:  # If there are any contours found
             max_index = np.argmax(areas)  # Get the index of the largest contour
             contour   = contours[max_index]  # Choose the largest contour
 

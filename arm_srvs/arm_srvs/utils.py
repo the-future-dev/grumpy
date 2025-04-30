@@ -43,7 +43,7 @@ view_thetas_drop     = [-1, -1, 3000, 15000, 9500, 12000]  # Angles when the arm
 still_thetas         = [-1] * 6 # Angles for when the arm should not move
 grasp_thetas         = {'CUBE': 10500, 'SPHERE': 9500, 'PUPPY': 13000}  # Angles for when the arm should not move
 
-times                = [1000] * 6  # Standard angle movement times to all servos
+times                = [1250] * 6  # Standard angle movement times to all servos
 
 servos_offset        = 350 # Allowed offset for the servos to be considered at the correct position
 

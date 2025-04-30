@@ -19,11 +19,11 @@ class PositioningService(Node):
         self.subscriber_cb_group = MutuallyExclusiveCallbackGroup()
 
         # Set speeds for the robot to move
-        self.vel_forward       = 0.07  # 0.03 before
-        self.vel_rotate        = 0.05  # 0.02 before
-        self.correct_right     = 1.00  # Correction of the right wheel
-        self.rotation_per_turn = 5.50  # Degrees of rotation per turn msg with vel_rotate = 0.06 and correct_right = 1.08
-        self.movement_per_forw = 0.0275  # Moved distance per forward msg with vel_forward = 0.07 and correct_right = 1.00
+        self.vel_forward       = 0.08  # 0.07 before
+        self.vel_rotate        = 0.06  # 0.05 before
+        self.correct_right     = 1.03  # Correction of the right wheel # 1.00
+        self.rotation_per_turn = 6.75  # Degrees of rotation per turn msg # 5.50
+        self.movement_per_forw = 0.0375  # Moved distance per forward msg # 0.0275
 
         self.object_pose  = Pose()  # The position of the object in base_link frame
         self.object_label = ""  # The label of the object
@@ -33,7 +33,7 @@ class PositioningService(Node):
         self.update       = True  # Flag to check if the driving should be updated with new perception data
 
         # Target distance-parameters to the goal object/box
-        self.unrealistic_x = 0.35  # The x-position where the RGB-D camera should not be able to locate an object
+        self.unrealistic_x = 0.30  # The x-position where the RGB-D camera should not be able to locate an object
         self.x_stop_goal   = 0.20  # The desired length in the x-direction from the goal object/box
         self.switch_pick   = 0.375  # The x-position where the robot should stop updating the position of the object with the RGB-D camera
         self.switch_drop   = 0.45  # The x-position where the robot should stop updating the position of the box with the RGB-D camera
