@@ -99,7 +99,8 @@ class DropService(Node):
                     time.sleep(0.5)  # Wait for the image from the arm camera to be processed
 
                     if self.object_in_gripper:
-                        step   = "PositionRobot"  # Next step
+                        # step = "PositionRobot"  # Next step
+                        step = "GetPosition"  # Next step
 
                     else:
                         self._logger.error('Object not in gripper, must have been dropped')
@@ -107,25 +108,24 @@ class DropService(Node):
                         step   = "Failure"  # End the FSM
 
 
-                case "PositionRobot":  # Call the position robot service to get to the position of the box
-                    res = self.position_robot(box=True, backup=False, pos_x=0.0, pos_y=0.0)  # Call the position robot service
+                # case "PositionRobot":  # Call the position robot service to get to the position of the box
+                #     res = self.position_robot(box=True, backup=False, pos_x=0.0, pos_y=0.0)  # Call the position robot service
 
-                    if res.success:
-                        step   = "GetPosition"  # Next step
+                #     if res.success:
+                #         step   = "GetPosition"  # Next step
 
-                    else:
-                        self._logger.error('Positioning service call failed, try using the arm instead')
-                        thetas = utils.initial_thetas
-                        step   = "GetPosition"  # End the FSM
+                #     else:
+                #         self._logger.error('Positioning service call failed, try using the arm instead')
+                #         step   = "GetPosition"  # End the FSM
 
 
                 case "GetPosition":  # Call the arm camera service to get the position of the object
                     res = self.arm_camera(box=True, grasp=False, puppy='', cam_pose='View Drop')  # Call the arm camera service
 
                     if res.success:
-                        x, y, _           = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
+                        x, y, _ = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
 
-                        if x >= 0.45 or y >= 0.0 or y <= -0.10:  # If the box is not close enough in the y-direction
+                        if x >= 0.40 or y >= 0.0 or y <= -0.10:  # If the box is not close enough in the y-direction
                             step = "RepositionRobot"  # Reposition the robot
 
                         else:
@@ -154,13 +154,12 @@ class DropService(Node):
                         
                         if find_step == 2:
                             self._logger.info('Did not find a box in the search sequence')
-                            find_step = 0
-                            thetas    = utils.initial_thetas
-                            step      = "Failure"  # End the FSM
+                            thetas = utils.initial_thetas
+                            step   = "Failure"  # End the FSM
 
 
                 case "RepositionRobot":  # Call the position robot service to get to the position of the object
-                    if num_repositions == 2:
+                    if num_repositions == 3:
                             self._logger.error('Repositioned to many times, move on to next object')
                             thetas = utils.initial_thetas
                             step   = "Failure"  # End the FSM
@@ -198,7 +197,7 @@ class DropService(Node):
             utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format
             self.publish_angles(thetas, times)  # Publish the angles to the arm
         
-        res = self.position_robot(box=False, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service
+        res = self.position_robot(box=True, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service
 
         self._logger.info(f'{step}')
         response.success = True if step == "Success" else False

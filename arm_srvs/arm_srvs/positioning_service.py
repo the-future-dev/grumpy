@@ -7,6 +7,7 @@ from robp_interfaces.msg import DutyCycles
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
 import numpy as np
+from collections import Counter
 import arm_srvs.utils as utils
 import time
 
@@ -21,12 +22,12 @@ class PositioningService(Node):
         # Set speeds for the robot to move
         self.vel_forward       = 0.08  # 0.07 before
         self.vel_rotate        = 0.06  # 0.05 before
-        self.correct_right     = 1.03  # Correction of the right wheel # 1.00
-        self.rotation_per_turn = 6.75  # Degrees of rotation per turn msg # 5.50
-        self.movement_per_forw = 0.0375  # Moved distance per forward msg # 0.0275
+        self.correct_right     = 1.00  # Correction of the right wheel # 1.00
+        self.rotation_per_turn = 4.00  # Degrees of rotation per turn msg # 5.50
+        self.movement_per_forw = 0.041  # Moved distance per forward msg # 0.0275
 
         self.object_pose  = Pose()  # The position of the object in base_link frame
-        self.object_label = ""  # The label of the object
+        self.object_label = []  # The label of the object
         self.object_found = False  # Flag to check if the object was found
         self.min_x        = 1.5  # The closest x-position of an object in base_link frame
         self.look_for_box = False  # Flag to check if the robot should only look for a box
@@ -79,11 +80,11 @@ class PositioningService(Node):
             Calls the publishing function which publishes the velocities to the wheel motors for each step in the sequence
         """
         
+        self.look_for_box   = request.box  # Reset the look for box flag
         self.min_x          = 1.5  # Reset the minimum x-position of the object
         self.object_pose    = Pose()  # Reset the object pose
-        self.object_label   = ""  # Reset the object label
+        self.object_label   = []  # Reset the object label
         self.object_found   = False  # Reset the object found flag
-        self.look_for_box   = False  # Reset the look for box flag
         self.update         = True  # Reset the update flag
 
         time.sleep(0.5)  # Sleep for 0.5 second to recive the perception messages
@@ -92,7 +93,6 @@ class PositioningService(Node):
 
         if request.pose.position.x != 0.0 or request.pose.position.y != 0.0:
             self.update       = False  # Do not update the position of the object with the RGB-D camera as it will not see it
-            self.look_for_box = request.box
             self._logger.info(f'positioning_sequence: Repositioning given x: {request.pose.position.x}, y: {request.pose.position.y}')
 
             self.publish_robot_movement(x=request.pose.position.x, y=request.pose.position.y)
@@ -110,12 +110,6 @@ class PositioningService(Node):
             response.label.data = ''  # Not needed, but required for the response
 
         else:
-            if request.box:  # If the robot should only look for a box
-                self.look_for_box = True
-                self.min_x        = 1.5    # Reset the minimum x-position of the box to make sure that only boxes are detected
-                self.object_found = False  # Reset the object found flag to make sure that only boxes are detected
-                time.sleep(1.0)  # Sleep for 1.0 second to read the perception messages
-            
             if not self.object_found:
                 self._logger.info(f'positioning_sequence: Did not find {'a' if self.look_for_box else 'an'} {position_to} initially, trying to find one')
                 self.publish_robot_movement(x=-1.0, y=0.0)
@@ -125,12 +119,15 @@ class PositioningService(Node):
 
                 self.publish_robot_movement(x=self.object_pose.position.x, y=self.object_pose.position.y)  # Drive the robot to the object/box
 
-                self._logger.info(f'positioning_sequence: Got to the calculated position of {position_to}')
-                response.success    = True # if step == "Success" else False
-                response.label.data = self.object_label  # Return the label of the closest object
+                self._logger.info(f'positioning_sequence: At the {position_to}')
+                response.success    = True
+                counter             = Counter(self.object_label)
+                most_common         = counter.most_common(1)[0][0]  # Returns the most common string
+                response.label.data = most_common  # Return the label of the closest object
+                self._logger.info(f'label: {most_common}')
 
             else:
-                self._logger.error(f'positioning_sequence: Could not find an {position_to}, returning failure')
+                self._logger.error(f'positioning_sequence: Could not find an {'a' if self.look_for_box else 'an'} {position_to}, returning failure')
                 response.success    = False
                 response.label.data = ""
         
@@ -158,17 +155,17 @@ class PositioningService(Node):
 
         # If there are more than one object, choose the closest one. First seen object is used as the base line. 
         # The allowed discrepancy is 0.01m for the object detection from the RGB-D camera
-        if self.get_clock().now().nanoseconds < time.nanoseconds + 2e9:
+        if self.get_clock().now().nanoseconds < time.nanoseconds + 3e9:
             if self.look_for_box:
                 if label == "BOX" and (self.unrealistic_x < pose.position.x <= self.min_x + 0.02):
                     self.object_pose  = pose
-                    self.object_label = label
+                    self.object_label.append(label)
                     self.min_x        = pose.position.x
                     self.object_found = True
 
             elif label in ['PUPPY', 'CUBE', 'SPHERE'] and (self.unrealistic_x < pose.position.x <= self.min_x + 0.02):
                 self.object_pose  = pose
-                self.object_label = label
+                self.object_label.append(label)
                 self.min_x        = pose.position.x  # Update the minimum x-position of the object
                 self.object_found = True
 
@@ -214,18 +211,21 @@ class PositioningService(Node):
                     break
 
                 self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
-                time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
+                time.sleep(0.4)  # Sleep for 0.5 second to give the robot time to turn
 
         else:
-            # if not self.update and self.look_for_box:
-            #     turns   = round(1.5 * np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
-            #     forward = round(abs(x - self.switch_drop) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
-            # else:
-            #     turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
-            #     forward = round(abs(x - (self.x_stop_goal if not self.look_for_box else self.x_stop_box)) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+            if not self.update and self.look_for_box:
+                x_offset = self.switch_drop
+                turns    = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
+                forward  = round(abs(max(0, x - x_offset)) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+            else:
+                x_offset = self.x_stop_goal if not self.look_for_box else self.x_stop_box
+                turns    = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
+                forward  = round(abs(x - x_offset) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
             
-            forward     = 10
-            self.update = False
+            # forward     = 0
+            # turns       = 5
+            # self.update = False
             # self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
 
             while forward > 0 or turns > 0:  # While the robot is not done moving
@@ -238,14 +238,14 @@ class PositioningService(Node):
                     turns                -= 1
                 
                 elif forward > 0:  # If the robot needs to move forward and does not have to turn too much
-                    msg.duty_cycle_right += self.vel_forward if x >= self.x_stop_goal else -self.vel_forward
-                    msg.duty_cycle_left  += self.vel_forward if x >= self.x_stop_goal else -self.vel_forward
+                    msg.duty_cycle_right += self.vel_forward if x >= x_offset else -self.vel_forward
+                    msg.duty_cycle_left  += self.vel_forward if x >= x_offset else -self.vel_forward
                     forward              -= 1
 
                 msg.duty_cycle_right *= self.correct_right  # Adjust the right wheel speed to compensate for it moving slower
 
                 self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
-                time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
+                time.sleep(0.4)  # Sleep for 0.5 second to give the robot time to move
                 
                 new_x, new_y = self.object_pose.position.x, self.object_pose.position.y  # Get the new positions of the object/box in base_link frame from perception
 
@@ -253,7 +253,7 @@ class PositioningService(Node):
                     x, y    = new_x, new_y  # Update the position of the object/box
                     # Update the number of turns and forward movements needed to get to the object/box
                     turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn)
-                    forward = round(abs(x - (self.x_stop_goal if not self.look_for_box else self.x_stop_box)) / self.movement_per_forw)
+                    forward = round(abs(x - x_offset) / self.movement_per_forw)
                     # self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
                     if x <= (self.switch_drop if self.look_for_box else self.switch_pick):  # If the robot is close enough to the object
                         # self._logger.info(f'Not updating the position of the object anymore')

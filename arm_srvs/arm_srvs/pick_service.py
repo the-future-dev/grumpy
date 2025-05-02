@@ -117,7 +117,7 @@ class PickService(Node):
                     res = self.arm_camera(box=False, grasp=False, puppy=label, cam_pose='View Pick')  # Call the arm camera service
 
                     if res.success:
-                        x, y, _           = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
+                        x, y, _ = utils.extract_object_position(node=self, pose=res.pose)  # Get the x and y position of the detected object
 
                         if (x >= 0.22 or x <= 0.15 or y >= 0.025 or y <= -0.125):  # If the object is out of reach in the non grasp position
                             step = "RepositionRobot"  # Reposition the robot
@@ -127,8 +127,8 @@ class PickService(Node):
 
                     else:
                         self._logger.info('Did not find an object, searching for it')
-                        thetas     = utils.view_thetas_drop
-                        step       = "SearchForObject"  # Fallback
+                        thetas = utils.view_thetas_drop
+                        step   = "SearchForObject"  # Fallback
 
 
                 case "SearchForObject":  # Call the arm camera service to get the position of the object
@@ -159,7 +159,7 @@ class PickService(Node):
 
 
                 case "RepositionRobot":  # Call the position robot service to get to the position of the object
-                    if num_repositions == 2:
+                    if num_repositions == 3:
                             self._logger.error('Repositioned to many times, move on to next object')
                             thetas = utils.initial_thetas
                             step   = "Failure"  # End the FSM
@@ -182,12 +182,13 @@ class PickService(Node):
                     thetas[4]            = round(utils.theta_servo5_pick * 100)  # Set the angle for servo 5 for inverse kinematics
                     thetas[2], thetas[3] = utils.inverse_kinematics(node=self, x=x, y=y, z=z)  # Calculate change of the angles for servo 3 and 4
                     
-                    if not grasp_position:
+                    if not grasp_position and not label == 'PUPPY':
                         grasp_position = True
                         step           = "GetGraspPosition"  # Next step
 
                     else:
-                        step = "GraspObject"  # Next step
+                        times = [500] * 6
+                        step  = "GraspObject"  # Next step
 
 
                 case "GetGraspPosition":  # Call the arm camera service to get the position of the object
@@ -247,8 +248,8 @@ class PickService(Node):
             self.publish_angles(angles=thetas, times=times)  # Publish the angles to the arm
         
         self._logger.info(f'Pick Service: {step}')
-        if step == "Failure":
-            res = self.position_robot(box=False, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service
+        # if step == "Failure":
+        res = self.position_robot(box=False, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service
         
         response.success = True if step == "Success" else False
         

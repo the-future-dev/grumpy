@@ -87,7 +87,7 @@ class ArmCameraService(Node):
 
         if x != -1.0 and y != -1.0:
             found_object = True  # If the object was found, set the flag to true
-            self._logger.info(f'Found {'a box' if request.box else 'an object'} at: x: {x}, y: {y}')
+            self._logger.info(f'Found {'a box' if request.box else 'an object'} at: x: {round(x, 6)}, y: {round(y, 6)}')
 
         if not found_object:
             self._logger.info(f'Arm camera could not find {'a box' if request.box else 'an object'}')
@@ -149,8 +149,11 @@ class ArmCameraService(Node):
 
         else:
             hsv_image = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2HSV)  # Convert to HSV for eaiser color-based object detection
+            h, s, v = cv2.split(hsv_image)
+            v = cv2.equalizeHist(v)
+            hsv_eq = cv2.merge((h, s, v))
 
-            mask = self.create_masks(hsv_image)  # Create a combined mask for red, green, and blue objects
+            mask = self.create_masks(hsv_eq)  # Create a combined mask for red, green, and blue objects
             mask = cv2.medianBlur(mask, 5)  # Apply a median blur to the mask to reduce salt and pepper noise
             mask = self.clean_mask(mask)  # Clean each mask using morphological operations
 
@@ -158,6 +161,14 @@ class ArmCameraService(Node):
         contours, _ = cv2.findContours(mask if not puppy else thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)  # Find contours in the mask, all contours inc. internal
         areas       = [cv2.contourArea(c) for c in contours]  # Calculate the area of each contour
         max_area    = np.max(areas) if len(areas) > 0 else 0
+
+        for c in contours:
+            if cv2.contourArea(c) > 100:
+                (temp_cx, temp_cy), temp_radius = cv2.minEnclosingCircle(c)  # Get the center and radius of the enclosing circle
+                temp_cx, temp_cy, temp_radius   = int(temp_cx), int(temp_cy), int(temp_radius)  # Convert to integers
+
+                cv2.circle(image, (temp_cx, temp_cy), temp_radius, (102, 255, 255), 2)  # Draw the enclosing circle in the image
+                cv2.circle(image, (temp_cx, temp_cy), 5, (153, 255, 153), -1)  # Draw the center of the circle in the image
 
         if len(areas) > 0 and max_area > self.min_area:  # If there are any contours found
             max_index = np.argmax(areas)  # Get the index of the largest contour
@@ -281,20 +292,20 @@ class ArmCameraService(Node):
 
         lines_list = []
         lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=80, minLineLength=80, maxLineGap=5) ## was t=80, min=80
-        # cv2.line(image, (220,350), (420,350), (0,255,100), 2)
-        # cv2.line(image, (220,350), (220,480), (0,255,100), 2)
-        # cv2.line(image, (420,350), (420,480), (0,255,100), 2)
-
+        cv2.line(image, (210,320), (400,320), (0,255,100), 2)
+        cv2.line(image, (210,320), (210,480), (0,255,100), 2)
+        cv2.line(image, (400,320), (400,480), (0,255,100), 2)
 
         if lines is not None:
+            self._logger.info(f'lines: {len(lines)}') 
             for points in lines:  # Iterate over points
                 x1, y1, x2, y2 = points[0]  # Extracted points nested in the list
                 lines_list.append([(x1,y1),(x2,y2)])
                 
-                #if y1 < 330 or y2 < 330
-                if (y1 < 350 or y2 < 350 or 
-                    x1 < 220 or x1 > 420 or
-                    x2 < 220 or x2 > 420):  # Ignore lines that are too close to the top or left of the image
+                
+                if (y1 < 320 or y2 < 320 or 
+                    x1 < 210 or x1 > 400 or
+                    x2 < 210 or x2 > 400):  # Ignore lines that are too close to the top or left of the image
                     num_lines += 1
                     cx        += ((x2 - x1) / 2 + x1)
                     cy        += ((y2 - y1) / 2 + y1)
@@ -306,17 +317,11 @@ class ArmCameraService(Node):
 
                     cv2.line(image, (x1,y1), (x2,y2), (0,255,0), 2)
 
-            if num_lines >= 1:
+            if num_lines > 4:
                 cx /= num_lines
                 cy /= num_lines
-                # x_1_tot /= num_lines
-                # x_2_tot /= num_lines
-                # y_1_tot /= num_lines
-                # y_2_tot /= num_lines
-                # cx       = ((x_2_tot - x_1_tot) / 2 + x_1_tot)
-                # cy       = ((y_2_tot - y_1_tot) / 2 + y_1_tot)
 
-                # self._logger.info(f'num_lines: {num_lines}')
+                self._logger.info(f'num_lines: {num_lines}')
                 
                 cv2.circle(image, (int(cx), int(cy)), 10, (0, 0, 255), -1)
 

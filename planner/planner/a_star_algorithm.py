@@ -88,7 +88,7 @@ class AStarAlgorithmNode(Node):
             self.limit = 9
         else:
             # self.limit = 6 # TODO: If A* is used to get all the way to the box
-            self.limit = 12 
+            self.limit = 7 
 
         self.goal_pose_recieved = True
         #self.get_logger().info(f'{self.grid_xg}hej')
