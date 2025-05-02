@@ -217,13 +217,15 @@ class PositioningService(Node):
                 time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
 
         else:
-            if not self.update and self.look_for_box:
-                turns   = round(1.5 * np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
-                forward = round(abs(x - self.switch_drop) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
-            else:
-                turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
-                forward = round(abs(x - (self.x_stop_goal if not self.look_for_box else self.x_stop_box)) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+            # if not self.update and self.look_for_box:
+            #     turns   = round(1.5 * np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
+            #     forward = round(abs(x - self.switch_drop) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
+            # else:
+            #     turns   = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
+            #     forward = round(abs(x - (self.x_stop_goal if not self.look_for_box else self.x_stop_box)) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
             
+            forward     = 10
+            self.update = False
             # self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
 
             while forward > 0 or turns > 0:  # While the robot is not done moving
