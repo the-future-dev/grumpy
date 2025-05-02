@@ -30,7 +30,7 @@ class PlannerExplorationNode(Node):
                                    [-50, -50, 154, 154, 376, 376, 220, 220]])
         
         self.n_corners = self.workspace.shape[1]
-        self.counter = 8
+        self.counter = 1
         self.grid = None
         self.ws_utils = Workspace()
     
@@ -81,13 +81,13 @@ class PlannerExplorationNode(Node):
         y_corner = self.workspace[1, self.counter]
 
         if x_corner < 0:
-            next_x = float(x_corner + 40)
+            next_x = float(x_corner + 30)
         else:
-            next_x = float(x_corner - 40)
+            next_x = float(x_corner - 30)
         if y_corner < 0:
-            next_y = float(y_corner + 40)
+            next_y = float(y_corner + 30)
         else:
-            next_y = float(y_corner - 40)
+            next_y = float(y_corner - 30)
     
         msg_goal.pose.position.x = next_x
         msg_goal.pose.position.y = next_y

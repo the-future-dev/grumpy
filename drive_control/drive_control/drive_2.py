@@ -26,17 +26,21 @@ class SampleDriveControlNode(Node):
 
             self.vel_forward = 0.2 # 0.13 before
             self.vel_rotate = 0.09 # 0.09 before
-            self.vel_small_rotate = 0.015
+            self.vel_small_rotate = 0.0175
             self.vel_arrived = 0.0
-            self.right_extra = 1.075
+            self.right_extra = 1.05
+            self.vel_close = 0.07
+            self.limit = 0.15
 
         elif self.phase == 'exploration':
 
             self.vel_forward = 0.13 # 0.13 before
-            self.vel_rotate = 0.09 # 0.09 before
-            self.vel_small_rotate = 0.015
+            self.vel_rotate = 0.08 # 0.09 before
+            self.vel_small_rotate = 0.0175
             self.vel_arrived = 0.0
-            self.right_extra = 1.075
+            self.right_extra = 1.0
+            self.vel_close = 0.08
+            self.limit = 0.08
 
         # stop variable
         self.stop = False
@@ -147,20 +151,20 @@ class SampleDriveControlNode(Node):
             y = point_base_link.point.y
         
             #If y is zero and x > 0 means perfect alignment otherwise turning
-            if x >= 0.0 and abs(y) < 0.15:
+            if x >= 0.0 and abs(y) < 0.07:
                 #Stop turning
-                msg.duty_cycle_right = self.vel_arrived*self.right_extra
+                msg.duty_cycle_right = self.vel_arrived
                 msg.duty_cycle_left = self.vel_arrived
                 self.motor_publisher.publish(msg)
                 break
             elif y >= 0.0:
                 #Turn left
-                msg.duty_cycle_right = self.vel_rotate*self.right_extra
+                msg.duty_cycle_right = self.vel_rotate
                 msg.duty_cycle_left = -self.vel_rotate
                 self.motor_publisher.publish(msg)
             elif y < 0.0:
                 #Turn right
-                msg.duty_cycle_right = -self.vel_rotate*self.right_extra
+                msg.duty_cycle_right = -self.vel_rotate
                 msg.duty_cycle_left = self.vel_rotate
                 self.motor_publisher.publish(msg)
  
@@ -188,29 +192,36 @@ class SampleDriveControlNode(Node):
             point_base_link = tf2_geometry_msgs.do_transform_point(sample_point, tf_odom_base_link)
             x = point_base_link.point.x
             y = point_base_link.point.y
+            vel = 0
 
-            if abs(x) < 0.05:
+            if abs(x) < 0.06:
                 #Stop driving
-                msg.duty_cycle_right = self.vel_arrived*self.right_extra
+                msg.duty_cycle_right = self.vel_arrived
                 msg.duty_cycle_left = self.vel_arrived
                 self.motor_publisher.publish(msg)
                 self.get_logger().info(f'SUCCESS, point reached')
                 return True
-            elif y > 0.05:
+            elif abs(x) < self.limit:
+                #Getting close velocity
+                vel = self.vel_close
+            else:
+                vel = self.vel_forward
+
+            if y > 0.05:
                 #Small turn left
-                msg.duty_cycle_right = (self.vel_forward + self.vel_small_rotate)*self.right_extra
-                msg.duty_cycle_left = self.vel_forward - self.vel_small_rotate
+                msg.duty_cycle_right = (vel+ self.vel_small_rotate)*self.right_extra
+                msg.duty_cycle_left = vel - self.vel_small_rotate
                 self.motor_publisher.publish(msg)
-            elif y < 0.05:
+            elif y < -0.05:
                 #Small turn right
-                msg.duty_cycle_right = (self.vel_forward - self.vel_small_rotate)*self.right_extra
-                msg.duty_cycle_left = self.vel_forward + self.vel_small_rotate
+                msg.duty_cycle_right = (vel - self.vel_small_rotate)*self.right_extra
+                msg.duty_cycle_left = vel + self.vel_small_rotate
                 self.motor_publisher.publish(msg)
             else:
-                #Drive forward
-                msg.duty_cycle_right = self.vel_forward*self.right_extra
-                msg.duty_cycle_left = self.vel_forward
+                msg.duty_cycle_right = vel*self.right_extra
+                msg.duty_cycle_left = vel
                 self.motor_publisher.publish(msg)
+
 
 
     
