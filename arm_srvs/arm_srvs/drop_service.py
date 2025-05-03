@@ -96,11 +96,11 @@ class DropService(Node):
                     
 
                 case "CheckObject":  # Check if the object is in the gripper
-                    time.sleep(0.5)  # Wait for the image from the arm camera to be processed
+                    time.sleep(0.5)  # Wait for the image from the arm camera to be updated
 
                     if self.object_in_gripper:
-                        # step = "PositionRobot"  # Next step
-                        step = "GetPosition"  # Next step
+                        step = "PositionRobot"  # Next step
+                        # step = "GetPosition"  # Next step
 
                     else:
                         self._logger.error('Object not in gripper, must have been dropped')
@@ -108,15 +108,15 @@ class DropService(Node):
                         step   = "Failure"  # End the FSM
 
 
-                # case "PositionRobot":  # Call the position robot service to get to the position of the box
-                #     res = self.position_robot(box=True, backup=False, pos_x=0.0, pos_y=0.0)  # Call the position robot service
+                case "PositionRobot":  # Call the position robot service to get to the position of the box
+                    res = self.position_robot(box=True, backup=False, pos_x=0.0, pos_y=0.0)  # Call the position robot service
 
-                #     if res.success:
-                #         step   = "GetPosition"  # Next step
+                    if res.success:
+                        step   = "GetPosition"  # Next step
 
-                #     else:
-                #         self._logger.error('Positioning service call failed, try using the arm instead')
-                #         step   = "GetPosition"  # End the FSM
+                    else:
+                        self._logger.error('Positioning service call failed, try using the arm instead')
+                        step   = "GetPosition"  # End the FSM
 
 
                 case "GetPosition":  # Call the arm camera service to get the position of the object

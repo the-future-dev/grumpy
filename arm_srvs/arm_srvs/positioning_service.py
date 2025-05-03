@@ -124,7 +124,7 @@ class PositioningService(Node):
                 counter             = Counter(self.object_label)
                 most_common         = counter.most_common(1)[0][0]  # Returns the most common string
                 response.label.data = most_common  # Return the label of the closest object
-                self._logger.info(f'label: {most_common}')
+                # self._logger.info(f'label: {most_common}')
 
             else:
                 self._logger.error(f'positioning_sequence: Could not find an {'a' if self.look_for_box else 'an'} {position_to}, returning failure')
@@ -211,7 +211,7 @@ class PositioningService(Node):
                     break
 
                 self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
-                time.sleep(0.4)  # Sleep for 0.5 second to give the robot time to turn
+                time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to turn
 
         else:
             if not self.update and self.look_for_box:
@@ -222,11 +222,6 @@ class PositioningService(Node):
                 x_offset = self.x_stop_goal if not self.look_for_box else self.x_stop_box
                 turns    = round(np.rad2deg(np.arctan(abs(y - self.y_offset) / x)) / self.rotation_per_turn) if x != 0.0 else 0 # Calculate the number of turns needed to align the robot with the object
                 forward  = round(abs(x - x_offset) / self.movement_per_forw) # Calculate the number of forward movements needed to get to the object
-            
-            # forward     = 0
-            # turns       = 5
-            # self.update = False
-            # self._logger.info(f'Updated turns and forward: {turns} : {y}, {forward} : {x}')
 
             while forward > 0 or turns > 0:  # While the robot is not done moving
                 # self._logger.info(f'Turns: {turns}, Forward: {forward}')
@@ -245,7 +240,7 @@ class PositioningService(Node):
                 msg.duty_cycle_right *= self.correct_right  # Adjust the right wheel speed to compensate for it moving slower
 
                 self.motor_publisher.publish(msg)  # Publish the velocities to the wheel motors
-                time.sleep(0.4)  # Sleep for 0.5 second to give the robot time to move
+                time.sleep(0.5)  # Sleep for 0.5 second to give the robot time to move
                 
                 new_x, new_y = self.object_pose.position.x, self.object_pose.position.y  # Get the new positions of the object/box in base_link frame from perception
 

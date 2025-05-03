@@ -247,9 +247,9 @@ class PickService(Node):
             utils.check_angles_and_times(node=self, angles=thetas, times=times)  # Assert that the angles and times are in the correct format and intervals
             self.publish_angles(angles=thetas, times=times)  # Publish the angles to the arm
         
+        res = self.position_robot(box=False, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service to back up
+
         self._logger.info(f'Pick Service: {step}')
-        # if step == "Failure":
-        res = self.position_robot(box=False, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service
         
         response.success = True if step == "Success" else False
         
