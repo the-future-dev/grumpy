@@ -26,11 +26,13 @@ class PlannerExplorationNode(Node):
     def __init__(self):
         super().__init__('planner_exploration_node') 
 
+
+        # TODO: import from utils
         self.workspace = np.array([[-50, 470, 750, 950, 950, 810, 810, -50],
                                    [-50, -50, 154, 154, 376, 376, 220, 220]])
         
         self.n_corners = self.workspace.shape[1]
-        self.counter = 1
+        self.counter = 8
         self.grid = None
         self.ws_utils = Workspace()
     
@@ -128,7 +130,7 @@ class PlannerExplorationNode(Node):
         # next_x, next_y = self.grid_to_map(x, y)
         next_x, next_y = self.ws_utils.convert_grid_to_map(grid_x_unknown, grid_y_unknown)
 
-        dists = np.sqrt(abs(next_x - rob_x)**2 + abs(next_y - rob_y)**2)
+        dists = np.sqrt((next_x - rob_x)**2 + (next_y - rob_y)**2)
         dist_msk = dists > 200
         dists = dists[dist_msk]
         next_x = next_x[dist_msk]

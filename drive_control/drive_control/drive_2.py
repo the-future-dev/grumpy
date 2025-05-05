@@ -34,12 +34,12 @@ class SampleDriveControlNode(Node):
 
         elif self.phase == 'exploration':
 
-            self.vel_forward = 0.13 # 0.13 before
-            self.vel_rotate = 0.08 # 0.09 before
-            self.vel_small_rotate = 0.0175
+            self.vel_forward = 0.15 # 0.13 before
+            self.vel_rotate = 0.09 # 0.09 before
+            self.vel_small_rotate = 0.02
             self.vel_arrived = 0.0
             self.right_extra = 1.0
-            self.vel_close = 0.08
+            self.vel_close = 0.10
             self.limit = 0.08
 
         # stop variable
@@ -194,7 +194,7 @@ class SampleDriveControlNode(Node):
             y = point_base_link.point.y
             vel = 0
 
-            if abs(x) < 0.06:
+            if x < 0.06:
                 #Stop driving
                 msg.duty_cycle_right = self.vel_arrived
                 msg.duty_cycle_left = self.vel_arrived

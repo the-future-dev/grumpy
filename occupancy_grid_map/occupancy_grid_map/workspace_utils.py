@@ -7,7 +7,7 @@ class Workspace:
     def __init__(self):
 
         self.file_path_ws = '/home/group5/dd2419_ws/outputs/workspace_exploration.csv'
-        self.file_path_map = '/home/group5/dd2419_ws/outputs/normal_map1.csv'
+        self.file_path_map = '/home/group5/dd2419_ws/outputs/normal_map2.csv'
         ws = pd.read_csv(self.file_path_ws)
         mp = pd.read_csv(self.file_path_map, header=None)
 

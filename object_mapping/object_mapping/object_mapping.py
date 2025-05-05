@@ -119,6 +119,9 @@ class ObjectMapping(Node):
         self.margin_object = 0.15
         self.margin_box = 0.20
 
+        # Minimum number of scans to consider an object confident
+        self.min_scans = 3
+
         # Intialize map file
         self.filepath = os.path.join(os.path.expanduser('~'), 'dd2419_ws', 'outputs', 'object_map.txt')
         with open(self.filepath, 'w') as file:
@@ -147,6 +150,10 @@ class ObjectMapping(Node):
         # Write to file
         with open(self.filepath, 'w') as file:
             for obj in self.output_object_list:
+                # check scan count for confidence
+                scan_count = len(obj.arr_label)
+                is_confident = scan_count >= self.min_scans
+
                 # Write object information to file
                 label = obj.get_label()
                 if label == ObjectEnum.BOX:
@@ -162,21 +169,27 @@ class ObjectMapping(Node):
 
                 file_x = float(round(obj.get_x(), 2))
                 file_y = float(round(obj.get_y(), 2))
-                file.write(f"{file_label_str} {file_x} {file_y}\n")
+                file_line = f"{file_label_str} {file_x} {file_y}"
+                # wrap low-confidence entries in parentheses
+                if not is_confident:
+                    file_line = f"({file_line})"
+                file.write(file_line + "\n")
 
                 detection1D = ObjectDetection1D()
                 detection1D.pose.position.x = obj.get_x()
                 detection1D.pose.position.y = obj.get_y()
-                detection1D.label.data = obj.get_label().name
-                detection1D.pose.position.z = 0.0  # Add z coordinate
-                detection1D.pose.orientation.w = 1.0  # Add orientation
+                det_label = obj.get_label().name
+                # wrap low-confidence labels in parentheses
+                detection1D.label.data = det_label if is_confident else f"({det_label})"
+                detection1D.pose.position.z = 0.0
+                detection1D.pose.orientation.w = 1.0
 
                 object_detection_array.detected_objects.append(detection1D)
 
                 marker = Marker()
                 marker.header.frame_id = 'map'
                 marker.header.stamp = self.get_clock().now().to_msg()
-                marker.text = obj.get_label().name
+                marker.text = det_label if is_confident else f"({det_label})"
                 marker.id = idx
                 marker.ns = "object_mapping"
                 marker.type = Marker.TEXT_VIEW_FACING

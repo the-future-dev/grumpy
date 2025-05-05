@@ -193,44 +193,41 @@ class Detection(Node):
             if bbox_dims[2] < 3: # object at least 3 cm high
                 continue
 
+            if len(cluster_points) > 10000:
+                if self.operating_mode == "collection" and self.is_likely_box(bbox_dims):
+                    file_label_str = f'y BOX'
+                    object_label_enum = ObjectEnum.BOX
+                    # self.get_logger().info(f"Classified large cluster as BOX based on dimensions")
+                    self.publish_object_detection(msg, object_label_enum, x_obj, y_obj, z_obj, cluster_points, cluster_rgb)
 
+                    with open(self.filepath, 'a') as file:
+                        file_x = float(round(x_obj, 2))
+                        file_y = float(round(y_obj, 2))
+                        file_dim0 = float(round(bbox_dims[0])) # Width in cm
+                        file_dim1 = float(round(bbox_dims[1])) # Depth in cm
+                        file_dim2 = float(round(bbox_dims[2])) # Height in cm
+
+                        line = (
+                            f"{file_label_str:<{10}} "
+                            f"{file_x:>{4}.2f} "
+                            f"{file_y:>{4}.2f} "
+                            f"{file_dim0:>{10}.2f} "
+                            f"{file_dim1:>{10}.2f} "
+                            f"{file_dim2:>{10}.2f}\n"
+                        )
+                        file.write(line)
+                continue
+            
             # Neural Network Train: save data Locally ##########################################################################
             # cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             # self.object_data_list.append(cluster)
-            # data_save_path = os.path.join(os.path.expanduser('~'), 'dd2419_ws', 'src', 'perception_pkg', 'trials', 'object_data', 'ms3_ws1')
+            # data_save_path = os.path.join(os.path.expanduser('~'), 'dd2419_ws', 'src', 'perception_pkg', 'trials', 'object_data', 'ms3_shit')
             # arrays_to_save = {}
             # for i, item in enumerate(self.object_data_list):
             #     arrays_to_save[f'cluster_{i}'] = item
             # np.savez_compressed(data_save_path, **arrays_to_save)
             # # self.get_logger().info(f"Saved object data to {data_save_path} | {len(self.object_data_list)}")
 
-            if len(cluster_points) > 12000 and self.operating_mode == "collection":
-                file_label_str = f'n BOX'
-
-                if self.is_likely_box(bbox_dims):
-                    file_label_str = f'y BOX'
-                    object_label_enum = ObjectEnum.BOX
-                    # self.get_logger().info(f"Classified large cluster as BOX based on dimensions")
-                    self.publish_object_detection(msg, object_label_enum, x_obj, y_obj, z_obj, cluster_points, cluster_rgb)
-
-                with open(self.filepath, 'a') as file:
-                    file_x = float(round(x_obj, 2))
-                    file_y = float(round(y_obj, 2))
-                    file_dim0 = float(round(bbox_dims[0])) # Width in cm
-                    file_dim1 = float(round(bbox_dims[1])) # Depth in cm
-                    file_dim2 = float(round(bbox_dims[2])) # Height in cm
-
-                    line = (
-                        f"{file_label_str:<{10}} "
-                        f"{file_x:>{4}.2f} "
-                        f"{file_y:>{4}.2f} "
-                        f"{file_dim0:>{10}.2f} "
-                        f"{file_dim1:>{10}.2f} "
-                        f"{file_dim2:>{10}.2f}\n"
-                    )
-                    file.write(line)
-                continue
-            
             # Neural Network Inference:
             object_cluster = np.concatenate((cluster_points, cluster_rgb), axis=1)
             cluster_tensor = torch.tensor(object_cluster, dtype=torch.float32).to(self.DEVICE)
@@ -243,8 +240,6 @@ class Detection(Node):
                 self.get_logger().info(f"\n\n\n----------- CUDA out of memory: {e}. Skipping this cluster, cluster length {cluster_tensor.shape}. -------------\n\n\n")
                 with open(self.filepath, 'a') as file:
                     file.write(f"----------- CUDA out of memory: {e}. Skipping this cluster, cluster length {cluster_tensor.shape}. -------------")
-                    file.write(line)
-
                 continue  # Skip this cluster, proceed to the next one
             finally:
                 del cluster_tensor

@@ -392,7 +392,7 @@ class AStarAlgorithmNode(Node):
         if len(x_list) <= 3:
             return x_list, y_list
 
-        N = len(x_list) // 2
+        N = len(x_list) // 3
 
         cs = interp1d(x_list, y_list)
 

@@ -121,11 +121,6 @@ class OccupancyGridMapNode(Node):
 
     #Lidar callback calculates detected object from laser scan, would implement to only run every xth time
     def lidar_cb(self, msg:LaserScan):
-
-        self.counter += 1
-
-        if self.counter % 5 != 0:
-            return
         
         #Get data from message
         min_angle = msg.angle_min
@@ -287,7 +282,7 @@ class OccupancyGridMapNode(Node):
         x_free = np.concatenate(x_line)
         y_free = np.concatenate(y_line)
 
-        mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.4) & (x_free > abs(0.85*y_free))  #Cone shape
+        mask_rgbd_scope = (x_free > 0.2) & (x_free < 1.4) & (x_free > abs(1.15*y_free))  #Cone shape
         #mask_rgbd_scope = (x_free > 0) & (x_free < 1.5) & (y_free > -0.4) & (y_free < 0.4)  #Box shape
         
         x_unknown = x_free[~mask_rgbd_scope]
