@@ -103,8 +103,8 @@ class AStarAlgorithmNode(Node):
         data = msg.data
         self.grid = np.array([data]).reshape(rows, columns)
 
-        self.inflate_grid(self.obstacle)
         self.inflate_grid(self.outside)
+        self.inflate_grid(self.obstacle)
         self.inflate_grid(self.object_box)
 
         self.publish_inflated_grid()
@@ -156,6 +156,11 @@ class AStarAlgorithmNode(Node):
         arg_item = np.argwhere(self.grid == item)
 
         new_grid[arg_item[:, 0], arg_item[:, 1]] = 1
+
+        if item == self.obstacle:
+            arg_outside = np.argwhere(self.grid == self.outside)
+            new_grid[arg_outside[:, 0], arg_outside[:, 1]] = 0
+
         new_grid = binary_dilation(new_grid, structure=inflate_matrix)*item
 
         mask_zeros = new_grid == 0
