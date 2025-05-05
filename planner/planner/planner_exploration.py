@@ -159,7 +159,7 @@ class PlannerExplorationNode(Node):
             tf = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
         except TransformException as ex:
              self.get_logger().info(f'Could not transform{ex}')
-             return None, None
+             return 0.0, 0.0
         
         rob_x = tf.transform.translation.x
         rob_y = tf.transform.translation.y

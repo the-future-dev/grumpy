@@ -33,7 +33,7 @@ class ICP_node(Node):
         self.create_subscription(LaserScan,'/scan',self.lidar_callback,1)
 
         # Initialize subscriber pose from update step of EKF
-        self.create_subscription(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', self.localization_pose_cb, 1)
+        self.create_subscription(PoseWithCovarianceStamped, '/localization/dead_reckoning_position', self.localization_pose_cb, 10)
 
         # Initialize the transform buffer
         self.tf_buffer = Buffer()
