@@ -197,7 +197,7 @@ class DropService(Node):
             utils.check_angles_and_times(self, thetas, times)  # Assert that the angles and times are in the correct format
             self.publish_angles(thetas, times)  # Publish the angles to the arm
         
-        res = self.position_robot(box=True, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service
+        res = self.position_robot(box=False, backup=True, pos_x=0.0, pos_y=0.0)  # Call the position robot service
 
         self._logger.info(f'{step}')
         response.success = True if step == "Success" else False
